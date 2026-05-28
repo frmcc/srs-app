@@ -1,0 +1,66 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String     @id @default(cuid())
+  email     String     @unique
+  name      String?
+  createdAt DateTime   @default(now())
+  srsItems  SRSItem[]
+}
+
+model SRSItem {
+  id               String   @id @default(cuid())
+  subjectMain      String   // Equivalent to Google Sheet Column A
+  subjectSub       String   // Equivalent to Google Sheet Column B
+  createdAt        DateTime @default(now()) // Column C
+  
+  tutorPromptDocId String?  // Column D
+  
+  currentLevel     Int      @default(0) // Column E
+  nextReviewDate   DateTime // Column F
+  
+  quiz1DocId       String?  // Column G
+  quiz2DocId       String?  // Column H
+  quiz3DocId       String?  // Column I
+  quiz4DocId       String?  // Column J
+  quiz5DocId       String?  // Column K
+  
+  sourceMaterialId String?  // Column L
+  sourceMaterialContent String?
+  
+  // Grading History and Explainer Prompts (Phase 2 additions)
+  lastFeedback     String?
+  lastVideoPrompt1 String?
+  lastVideoPrompt2 String?
+  
+  // Relationship to User for future multi-tenant support
+  userId           String?
+  user             User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+}
+
+model BackgroundJob {
+  id          String    @id @default(cuid())
+  type        String    // "quiz_generation" or "grading"
+  status      String    @default("pending") // pending, processing, done, error
+  subjectMain String
+  subjectSub  String    @default("Module")
+  itemId      String?   // for grading jobs, references SRSItem
+  error       String?
+  createdAt   DateTime  @default(now())
+  completedAt DateTime?
+}
