@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { after } from "next/server";
 import { generatePodcastWorker } from "@/lib/notebooklm";
 
 export async function POST(req: NextRequest) {
@@ -9,15 +10,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "itemId and podcastType are required" }, { status: 400 });
     }
 
-    // Fire and forget the background worker
-    // Node.js will continue executing this promise in the background
-    generatePodcastWorker(itemId, podcastType).catch(err => {
-      console.error("[Background Worker Error]", err);
+    // Fire and forget the background worker safely in Vercel
+    after(async () => {
+      try {
+        await generatePodcastWorker(itemId, podcastType);
+      } catch (err) {
+        console.error("[Background Worker Error]", err);
+      }
     });
 
     return NextResponse.json({ success: true, message: "Podcast generation started in the background" });
-  } catch (error: any) {
-    console.error("[Podcast Generate API Error]", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const errObj = error instanceof Error ? error : new Error(String(error));
+    console.error("[Podcast Generate API Error]", errObj);
+    return NextResponse.json({ error: errObj.message }, { status: 500 });
   }
 }

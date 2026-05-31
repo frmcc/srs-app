@@ -37,6 +37,11 @@ export async function POST(req: NextRequest) {
     
     // Process uploaded files
     const files = formData.getAll("files") as File[];
+    
+    if (!subjectMain || (!textContent && files.length === 0)) {
+      return NextResponse.json({ error: "Missing subject or content." }, { status: 400 });
+    }
+
     const uploadedFilesData: { path: string, mimeType: string }[] = [];
     const geminiFileParts: any[] = [];
     
@@ -71,10 +76,6 @@ export async function POST(req: NextRequest) {
       } catch (err: any) {
         console.error(`Error uploading file ${file.name} to Gemini:`, err);
       }
-    }
-
-    if (!subjectMain || (!textContent && files.length === 0)) {
-      return NextResponse.json({ error: "Missing subject or content." }, { status: 400 });
     }
 
     // Build the master parts array for the prompt

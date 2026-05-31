@@ -156,8 +156,10 @@ export async function runQuizGeneration(params: {
     }).catch((e) => console.error("Push notification failed:", e));
 
     // Automatically trigger podcast generation in the background
-    generatePodcastWorker(createdItem.id, "pre").catch(console.error);
-    generatePodcastWorker(createdItem.id, "post").catch(console.error);
+    await Promise.allSettled([
+      generatePodcastWorker(createdItem.id, "pre"),
+      generatePodcastWorker(createdItem.id, "post")
+    ]);
 
     return createdItem;
   } catch (error: unknown) {
