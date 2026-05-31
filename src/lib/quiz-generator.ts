@@ -4,6 +4,7 @@ import { PROMPTS, podcast_prompts } from "../app/api/quiz/prompts";
 import { sendPushNotification } from "./push";
 import { generatePodcastWorker } from "./notebooklm";
 import { generateContentWithRetry } from "./gemini-retry";
+import { createDriveFolder, uploadToDrive, createGoogleDoc } from "./google-drive";
 import fs from "fs/promises";
 import path from "path";
 
@@ -24,7 +25,7 @@ export async function runQuizGeneration(params: {
   subjectMain: string;
   subjectSub: string;
   textContent: string;
-  filePaths: { path: string; mimeType: string }[];
+  filePaths: { name?: string; path: string; mimeType: string; base64?: string }[];
   onProgress?: (step: number, message: string) => void;
   jobId?: string;
 }) {
@@ -53,8 +54,9 @@ export async function runQuizGeneration(params: {
         geminiFileParts.push({
           fileData: { fileUri: uploadResult.uri, mimeType: uploadResult.mimeType },
         });
-      } catch (err: any) {
-        console.error(`Error uploading file to Gemini:`, err);
+      } catch (err: unknown) {
+        const errObj = err instanceof Error ? err : new Error(String(err));
+        console.error(`Error uploading file to Gemini:`, errObj);
       }
     }
 
@@ -63,10 +65,11 @@ export async function runQuizGeneration(params: {
       masterContextParts.push({ text: `\n\nZusätzliches Textmaterial:\n${textContent}` });
     }
 
-    const sourceMaterialContentPayload = JSON.stringify({
-      text: textContent,
-      files: filePaths,
-    });
+    const dbFilesData = filePaths.map(f => ({
+      name: f.name || path.basename(f.path),
+      mimeType: f.mimeType,
+      base64: f.base64 || ""
+    }));
 
     // Step 1: Blueprint
     progress(1, "Analyzing material & Generating Blueprint...");
@@ -112,8 +115,44 @@ export async function runQuizGeneration(params: {
     const prePodcastPrompt = extractSection(podcastOutput, "===PRE_PODCAST_START===", "===PRE_PODCAST_END===");
     const postPodcastPrompt = extractSection(podcastOutput, "===POST_PODCAST_START===", "===POST_PODCAST_END===");
 
-    // Step 9: Save to DB
-    progress(9, "Saving records to database...");
+    // Step 9: Save to Google Drive
+    progress(9, "Uploading to Google Drive...");
+    let folderId = "";
+    let mainPdfId = "";
+    try {
+      const folderName = `${subjectMain} - ${subjectSub}`;
+      folderId = await createDriveFolder(folderName);
+      
+      // Upload PDF if present
+      if (filePaths.length > 0) {
+        const firstFile = filePaths[0];
+        mainPdfId = await uploadToDrive(
+          firstFile.name || "Vorlesungsmaterial.pdf",
+          firstFile.mimeType,
+          firstFile.base64 ? Buffer.from(firstFile.base64, "base64") : Buffer.from(""),
+          folderId
+        );
+      } else if (textContent) {
+        // If no file but text content, create a doc for it
+        mainPdfId = await createGoogleDoc("Vorlesungsmaterial", textContent, folderId);
+      }
+
+      // Create Docs for Quizzes and Tutor Prompt
+      await Promise.allSettled([
+        createGoogleDoc("Quiz 1 (Tag 1)", quizResults[0] || "", folderId),
+        createGoogleDoc("Quiz 2 (Tag 3)", quizResults[1] || "", folderId),
+        createGoogleDoc("Quiz 3 (Tag 7)", quizResults[2] || "", folderId),
+        createGoogleDoc("Quiz 4 (Tag 21)", quizResults[3] || "", folderId),
+        createGoogleDoc("Quiz 5 (Tag 60)", quizResults[4] || "", folderId),
+        createGoogleDoc("Tutor Prompt", tutorPrompt, folderId)
+      ]);
+    } catch (e) {
+      console.error("Google Drive upload failed:", e);
+      // Fallback: Continue saving to DB even if Drive fails
+    }
+
+    // Step 10: Save to DB
+    progress(10, "Saving records to database...");
     const createdItem = await prisma.sRSItem.create({
       data: {
         subjectMain,
@@ -129,7 +168,7 @@ export async function runQuizGeneration(params: {
         tutorPromptDocId: "pending",
         prePodcastPrompt: prePodcastPrompt || null,
         postPodcastPrompt: postPodcastPrompt || null,
-        sourceMaterialContent: sourceMaterialContentPayload,
+        sourceMaterialContent: JSON.stringify({ driveFileId: mainPdfId, driveFolderId: folderId }),
       },
     });
 

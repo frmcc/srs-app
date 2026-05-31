@@ -3,6 +3,7 @@ import fs from "fs/promises";
 import { createReadStream } from "fs";
 import path from "path";
 import { sendPushNotification } from "./push";
+import { downloadFromDrive } from "./google-drive";
 
 const getApiUrl = () => {
   const url = process.env.NOTEBOOKLM_API_URL;
@@ -31,14 +32,20 @@ export async function uploadText(notebookId: string, title: string, content: str
   return await res.json();
 }
 
-export async function uploadFile(notebookId: string, filePath: string) {
+export async function uploadFile(notebookId: string, filePath: string, base64Data?: string, originalName?: string) {
   const formData = new FormData();
   
-  // Read file as Blob for fetch API
-  const fileBuffer = await fs.readFile(filePath);
-  const fileName = path.basename(filePath);
-  const blob = new Blob([fileBuffer]);
+  let fileBuffer: Buffer;
+  const fileName = originalName || path.basename(filePath);
   
+  if (base64Data) {
+    fileBuffer = Buffer.from(base64Data, "base64");
+  } else {
+    // Read file as Blob for fetch API
+    fileBuffer = await fs.readFile(filePath);
+  }
+  
+  const blob = new Blob([new Uint8Array(fileBuffer)]);
   formData.append("upload", blob, fileName);
 
   const res = await fetch(`${getApiUrl()}/v1/notebooks/${notebookId}/sources/file`, {
@@ -128,13 +135,22 @@ export async function generatePodcastWorker(itemId: string, podcastType: "pre" |
     }
     
     // Upload files
-    if (sourceMaterial.files && sourceMaterial.files.length > 0) {
+    if (sourceMaterial.driveFileId) {
+      console.log(`[NotebookLM] Downloading file from Google Drive: ${sourceMaterial.driveFileId}`);
+      try {
+        const buffer = await downloadFromDrive(sourceMaterial.driveFileId);
+        await uploadFile(notebookId, "Vorlesungsmaterial.pdf", buffer.toString("base64"), "Vorlesungsmaterial.pdf");
+      } catch (e) {
+        console.error(`[NotebookLM] Failed to download/upload file from Drive ${sourceMaterial.driveFileId}`, e);
+      }
+    } else if (sourceMaterial.files && sourceMaterial.files.length > 0) {
+      // Legacy fallback
       for (const file of sourceMaterial.files) {
-        console.log(`[NotebookLM] Uploading file: ${file.path}`);
+        console.log(`[NotebookLM] Uploading file: ${file.name || file.path}`);
         try {
-          await uploadFile(notebookId, file.path);
+          await uploadFile(notebookId, file.path || "fallback.pdf", file.base64, file.name);
         } catch(e) {
-          console.error(`[NotebookLM] Failed to upload file ${file.path}`, e);
+          console.error(`[NotebookLM] Failed to upload file ${file.name || file.path}`, e);
         }
       }
     }

@@ -1,6 +1,6 @@
 export const maxDuration = 300;
 import { prisma } from "@/lib/db";
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 import { PROMPTS, podcast_prompts } from "./prompts";
 import { sendPushNotification } from "@/lib/push";
@@ -43,6 +43,7 @@ export async function POST(req: NextRequest) {
     }
 
     const uploadedFilesData: { path: string, mimeType: string }[] = [];
+    const dbFilesData: { name: string, mimeType: string, base64: string }[] = [];
     const geminiFileParts: any[] = [];
     
     // Ensure uploads directory exists
@@ -59,6 +60,11 @@ export async function POST(req: NextRequest) {
       await fs.writeFile(localFilePath, buffer);
       
       uploadedFilesData.push({ path: localFilePath, mimeType: file.type || "application/octet-stream" });
+      dbFilesData.push({ 
+        name: file.name, 
+        mimeType: file.type || "application/octet-stream", 
+        base64: buffer.toString("base64") 
+      });
 
       try {
         // Upload to Gemini File API
@@ -73,8 +79,9 @@ export async function POST(req: NextRequest) {
             mimeType: uploadResult.mimeType
           }
         });
-      } catch (err: any) {
-        console.error(`Error uploading file ${file.name} to Gemini:`, err);
+      } catch (err: unknown) {
+        const errObj = err instanceof Error ? err : new Error(String(err));
+        console.error(`Error uploading file ${file.name} to Gemini:`, errObj);
       }
     }
 
@@ -87,8 +94,10 @@ export async function POST(req: NextRequest) {
     // Serialize sourceMaterialContent to store in DB
     const sourceMaterialContentPayload = JSON.stringify({
       text: textContent,
-      files: uploadedFilesData
+      files: dbFilesData
     });
+
+    let generationSuccess = false;
 
     const stream = new ReadableStream({
       async start(controller) {
@@ -169,6 +178,7 @@ export async function POST(req: NextRequest) {
         });
 
         sendEvent("done", { success: true, srsItem: createdItem });
+        generationSuccess = true;
 
         // Send push notification
         sendPushNotification({
@@ -179,8 +189,25 @@ export async function POST(req: NextRequest) {
         }).catch((e) => console.error("Push notification failed:", e));
 
         // Automatically trigger podcast generation in the background
-        generatePodcastWorker(createdItem.id, "pre").catch(console.error);
-        generatePodcastWorker(createdItem.id, "post").catch(console.error);
+        after(async () => {
+          try {
+            await Promise.allSettled([
+              generatePodcastWorker(createdItem.id, "pre"),
+              generatePodcastWorker(createdItem.id, "post")
+            ]);
+          } catch (e) {
+            console.error("Error in background podcast worker:", e);
+          } finally {
+            // Delete temp files after background workers are completely finished
+            for (const fileInfo of uploadedFilesData) {
+              try {
+                await fs.unlink(fileInfo.path);
+              } catch (e) {
+                console.error("Failed to delete temp file:", fileInfo.path, e);
+              }
+            }
+          }
+        });
 
         controller.close();
       } catch (error: any) {
@@ -188,11 +215,13 @@ export async function POST(req: NextRequest) {
         sendEvent("error", { message: error.message });
         controller.close();
       } finally {
-        for (const fileInfo of uploadedFilesData) {
-          try {
-            await fs.unlink(fileInfo.path);
-          } catch (e) {
-            console.error("Failed to delete temp file:", fileInfo.path, e);
+        if (!generationSuccess) {
+          for (const fileInfo of uploadedFilesData) {
+            try {
+              await fs.unlink(fileInfo.path);
+            } catch (e) {
+              console.error("Failed to delete temp file:", fileInfo.path, e);
+            }
           }
         }
       }

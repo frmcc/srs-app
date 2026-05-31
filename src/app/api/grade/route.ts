@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 import { GRADE_PROMPTS } from "./prompts";
+import { downloadFromDrive } from "@/lib/google-drive";
 import { sendPushNotification } from "@/lib/push";
 import { generateContentWithRetry } from "@/lib/gemini-retry";
 import fs from "fs/promises";
@@ -57,22 +58,50 @@ export async function POST(req: NextRequest) {
           try {
             const parsed = JSON.parse(srsItem.sourceMaterialContent);
             // Re-upload files from local disk
-            if (parsed.files && Array.isArray(parsed.files)) {
+            if (parsed.driveFileId) {
+              try {
+                // Download from Google Drive into memory
+                const buffer = await downloadFromDrive(parsed.driveFileId);
+                const base64Data = buffer.toString("base64");
+                
+                // Pass directly to Gemini via inlineData
+                sourceMaterialParts.push({
+                  inlineData: {
+                    data: base64Data,
+                    mimeType: "application/pdf" // Assuming PDF since the user uploads PDFs
+                  }
+                });
+              } catch (err: unknown) {
+                const errObj = err instanceof Error ? err : new Error(String(err));
+                console.error(`Could not download file from Drive:`, errObj.message);
+              }
+            } else if (parsed.files && Array.isArray(parsed.files)) {
+              // Legacy fallback logic for older items
               for (const fileInfo of parsed.files) {
                 try {
-                  await fs.access(fileInfo.path); // Check file exists
-                  const uploadResult = await ai.files.upload({
-                    file: fileInfo.path,
-                    config: { mimeType: fileInfo.mimeType }
-                  });
-                  sourceMaterialParts.push({
-                    fileData: {
-                      fileUri: uploadResult.uri,
-                      mimeType: uploadResult.mimeType
-                    }
-                  });
-                } catch (fileErr: any) {
-                  console.error(`Could not re-upload file ${fileInfo.path}:`, fileErr.message);
+                  if (fileInfo.base64) {
+                    sourceMaterialParts.push({
+                      inlineData: {
+                        data: fileInfo.base64,
+                        mimeType: fileInfo.mimeType
+                      }
+                    });
+                  } else {
+                    await fs.access(fileInfo.path); 
+                    const uploadResult = await ai.files.upload({
+                      file: fileInfo.path,
+                      config: { mimeType: fileInfo.mimeType }
+                    });
+                    sourceMaterialParts.push({
+                      fileData: {
+                        fileUri: uploadResult.uri,
+                        mimeType: uploadResult.mimeType
+                      }
+                    });
+                  }
+                } catch (fileErr: unknown) {
+                  const errObj = fileErr instanceof Error ? fileErr : new Error(String(fileErr));
+                  console.error(`Could not use file ${fileInfo.name || fileInfo.path}:`, errObj.message);
                 }
               }
             }

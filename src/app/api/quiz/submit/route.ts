@@ -18,6 +18,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Missing GEMINI_API_KEY" }, { status: 500 });
   }
 
+  const savedFiles: { path: string; mimeType: string }[] = [];
+  let backgroundWorkerScheduled = false;
+
   try {
     const formData = await req.formData();
     const subjectMain = (formData.get("subjectMain") as string) || "";
@@ -36,15 +39,19 @@ export async function POST(req: NextRequest) {
     // Save files to disk immediately
     const uploadsDir = path.join(process.cwd(), "uploads");
     await fs.mkdir(uploadsDir, { recursive: true });
-
-    const savedFiles: { path: string; mimeType: string }[] = [];
+    const savedFiles: { name: string; path: string; mimeType: string; base64: string }[] = [];
     for (const file of files) {
       const arrayBuffer = await file.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
       const uniqueFileName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
       const localFilePath = path.join(uploadsDir, uniqueFileName);
       await fs.writeFile(localFilePath, buffer);
-      savedFiles.push({ path: localFilePath, mimeType: file.type || "application/octet-stream" });
+      savedFiles.push({ 
+        name: file.name,
+        path: localFilePath, 
+        mimeType: file.type || "application/octet-stream",
+        base64: buffer.toString("base64")
+      });
     }
 
     // Create background job record
@@ -71,6 +78,7 @@ export async function POST(req: NextRequest) {
         console.error("Background quiz generation failed:", err);
       }
     });
+    backgroundWorkerScheduled = true;
 
     // Return immediately — the Shortcut gets a fast response
     return NextResponse.json({
@@ -81,6 +89,16 @@ export async function POST(req: NextRequest) {
   } catch (err: any) {
     console.error("Submit error:", err);
     return NextResponse.json({ error: err.message }, { status: 500 });
+  } finally {
+    if (!backgroundWorkerScheduled) {
+      for (const fileInfo of savedFiles) {
+        try {
+          await fs.unlink(fileInfo.path);
+        } catch (e) {
+          console.error("Failed to delete temp file during failure cleanup:", fileInfo.path, e);
+        }
+      }
+    }
   }
 }
 

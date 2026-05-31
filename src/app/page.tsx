@@ -1428,7 +1428,11 @@ export default function Dashboard() {
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ action: 'update_presets', presets: newPresets })
                           }).then(res => res.json()).then(data => {
-                            setModulePresets(data.modulePresets);
+                            if (data.error) {
+                              alert(`Error: ${data.error}`);
+                              return;
+                            }
+                            setModulePresets(data.modulePresets || []);
                             if (!subjectInput) setSubjectInput(newPresetInput.trim());
                             setNewPresetInput("");
                           });
@@ -1446,7 +1450,11 @@ export default function Dashboard() {
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ action: 'update_presets', presets: newPresets })
                           }).then(res => res.json()).then(data => {
-                            setModulePresets(data.modulePresets);
+                            if (data.error) {
+                              alert(`Error: ${data.error}`);
+                              return;
+                            }
+                            setModulePresets(data.modulePresets || []);
                             if (!subjectInput) setSubjectInput(newPresetInput.trim());
                             setNewPresetInput("");
                           });
@@ -1470,8 +1478,12 @@ export default function Dashboard() {
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({ action: 'new_semester' })
                         }).then(res => res.json()).then(data => {
+                          if (data.error) {
+                            alert(`Error: ${data.error}`);
+                            return;
+                          }
                           setCurrentSemester(data.currentSemester);
-                          setModulePresets(data.modulePresets);
+                          setModulePresets(data.modulePresets || []);
                           setSubjectInput("");
                         });
                       }
@@ -1489,8 +1501,12 @@ export default function Dashboard() {
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({ action: 'reset_semester' })
                         }).then(res => res.json()).then(data => {
+                          if (data.error) {
+                            alert(`Error: ${data.error}`);
+                            return;
+                          }
                           setCurrentSemester(data.currentSemester);
-                          setModulePresets(data.modulePresets);
+                          setModulePresets(data.modulePresets || []);
                           setSubjectInput("");
                         });
                       }
