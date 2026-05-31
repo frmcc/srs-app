@@ -1,3 +1,4 @@
+export const maxDuration = 300;
 import { prisma } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";

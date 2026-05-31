@@ -6,7 +6,7 @@ import fs from "fs/promises";
 import path from "path";
 
 
-export const maxDuration = 600; // 10 minutes max for background processing
+export const maxDuration = 300; // 5 minutes max for background processing on Vercel Hobby
 
 /**
  * Fire-and-forget quiz generation endpoint for iPhone Shortcuts.

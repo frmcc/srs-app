@@ -1,3 +1,4 @@
+export const maxDuration = 300;
 import { prisma } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
@@ -308,6 +309,17 @@ export async function POST(req: NextRequest) {
         const updatedItem = await prisma.sRSItem.update({
           where: { id: itemId },
           data: updatePayload
+        });
+
+        // Log the completed review for the "Done" calendar
+        await prisma.reviewLog.create({
+          data: {
+            subjectMain: srsItem.subjectMain,
+            subjectSub: srsItem.subjectSub,
+            level: srsItem.currentLevel,
+            passed: isPass,
+            userId: srsItem.userId
+          }
         });
 
         sendEvent("done", { success: true, srsItem: updatedItem, isPass });

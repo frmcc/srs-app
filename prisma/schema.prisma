@@ -13,6 +13,7 @@ model User {
   name      String?
   createdAt DateTime   @default(now())
   srsItems  SRSItem[]
+  reviewLogs ReviewLog[]
 }
 
 model SRSItem {
@@ -81,4 +82,15 @@ model AppConfig {
   currentSemester Int      @default(1)
   modulePresets   String   @default("[]") // JSON string array
   updatedAt       DateTime @updatedAt
+}
+
+model ReviewLog {
+  id          String   @id @default(cuid())
+  subjectMain String
+  subjectSub  String
+  level       Int      // The level they were at when they reviewed
+  passed      Boolean  // Did they pass or repeat?
+  completedAt DateTime @default(now())
+  userId      String?
+  User        User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
