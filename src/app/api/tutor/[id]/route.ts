@@ -9,7 +9,12 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const item = await prisma.sRSItem.findUnique({ where: { id } });
+    let item = await prisma.sRSItem.findUnique({ where: { id } });
+    
+    if (!item) {
+      // Fallback for legacy items where the Google Doc ID is stored in tutorPromptDocId
+      item = await prisma.sRSItem.findFirst({ where: { tutorPromptDocId: id } });
+    }
 
     if (!item || !item.tutorPromptContent) {
       return new Response("Not Found", { status: 404 });
