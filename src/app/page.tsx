@@ -18,7 +18,9 @@ import {
   GraduationCap,
   ChevronDown,
   UploadCloud,
-  AlertTriangle
+  AlertTriangle,
+  Printer,
+  Trash2
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { Bell, BellOff } from "lucide-react";
@@ -42,11 +44,16 @@ const parseQuizTasks = (studentQuizText: string) => {
       const taskName = taskNameMatch ? taskNameMatch[0] : "Aufgabe";
       const label = headerLine.replace(/:\s*$/, "").trim();
       
+      let cleanQuestionText = trimmed;
+      if (cleanQuestionText.startsWith(headerLine)) {
+        cleanQuestionText = cleanQuestionText.substring(headerLine.length).trim();
+      }
+      
       tasks.push({
         id: taskName.toLowerCase().replace(/\s+/g, ""),
         header: taskName + ":",
         label: label,
-        questionText: trimmed
+        questionText: cleanQuestionText
       });
     }
   }
@@ -61,9 +68,31 @@ export default function Dashboard() {
   const [progressMsg, setProgressMsg] = useState("");
   
   const [subjectInput, setSubjectInput] = useState("");
+  const [topicInput, setTopicInput] = useState("");
   const [textInput, setTextInput] = useState("");
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [isDragging, setIsDragging] = useState(false);
+  
+  // Semester & Settings State
+  const [currentSemester, setCurrentSemester] = useState<number>(1);
+  const [modulePresets, setModulePresets] = useState<string[]>([]);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [newPresetInput, setNewPresetInput] = useState("");
+  
+  useEffect(() => {
+    fetch('/api/settings')
+      .then(res => res.json())
+      .then(data => {
+        if (!data.error) {
+          setCurrentSemester(data.currentSemester);
+          setModulePresets(data.modulePresets || []);
+          if (data.modulePresets && data.modulePresets.length > 0) {
+            setSubjectInput(data.modulePresets[0]);
+          }
+        }
+      })
+      .catch(console.error);
+  }, []);
 
   // Quiz taking state
   const [selectedReview, setSelectedReview] = useState<any>(null);
@@ -83,6 +112,9 @@ export default function Dashboard() {
   const [resultTab, setResultTab] = useState("brief");
   const [showCalendarModal, setShowCalendarModal] = useState(false);
   const [calendarUrlCopied, setCalendarUrlCopied] = useState(false);
+  
+  // Podcast State
+  const [generatingPodcasts, setGeneratingPodcasts] = useState<Record<string, boolean>>({});
 
   // Push notification state
   const [pushPermission, setPushPermission] = useState<string>("default");
@@ -125,36 +157,91 @@ export default function Dashboard() {
     }
   }, []);
 
+  const fetchReviews = useCallback(() => {
+    fetch('/api/reviews')
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) {
+          const formatted = data.map(item => {
+            const dueDate = new Date(item.nextReviewDate);
+            const isDue = dueDate <= new Date();
+            return {
+              id: item.id,
+              subject: item.subjectMain,
+              topic: item.subjectSub,
+              level: item.currentLevel,
+              dueDate: isDue ? "Due Now" : dueDate.toLocaleDateString(),
+              isDue,
+              semester: item.semester || 1,
+              raw: item
+            };
+          });
+          
+          // Sort logic: Due items first, then group by module, then by urgency
+          formatted.sort((a, b) => {
+            if (a.isDue && !b.isDue) return -1;
+            if (!a.isDue && b.isDue) return 1;
+            
+            const subjectCompare = a.subject.localeCompare(b.subject);
+            if (subjectCompare !== 0) return subjectCompare;
+            
+            return new Date(a.raw.nextReviewDate).getTime() - new Date(b.raw.nextReviewDate).getTime();
+          });
+
+          setUpcomingReviews(formatted);
+        }
+      })
+      .catch(console.error);
+  }, []);
+
   useEffect(() => {
     if (activeTab === "dashboard") {
-      fetch('/api/reviews')
-        .then(res => res.json())
-        .then(data => {
-          if (Array.isArray(data)) {
-            const formatted = data.map(item => {
-              const dueDate = new Date(item.nextReviewDate);
-              const isDue = dueDate <= new Date();
-              return {
-                id: item.id,
-                subject: item.subjectMain,
-                topic: item.subjectSub,
-                level: item.currentLevel,
-                dueDate: isDue ? "Due Now" : dueDate.toLocaleDateString(),
-                isDue,
-                raw: item
-              };
-            });
-            setUpcomingReviews(formatted);
-          }
-        })
-        .catch(console.error);
+      fetchReviews();
     }
-  }, [activeTab]);
+  }, [activeTab, fetchReviews]);
+
+  const handleDeleteModule = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    if (confirm("Möchtest du dieses Modul wirklich löschen?")) {
+      try {
+        const res = await fetch(`/api/reviews/${id}`, { method: "DELETE" });
+        if (res.ok) {
+          fetchReviews();
+        } else {
+          alert("Fehler beim Löschen des Moduls.");
+        }
+      } catch (err) {
+        console.error(err);
+        alert("Fehler beim Löschen des Moduls.");
+      }
+    }
+  };
 
   const copyToClipboard = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
     setCopiedId(id);
     setTimeout(() => setCopiedId(""), 2000);
+  };
+
+  const handleGeneratePodcast = async (e: React.MouseEvent, reviewId: string, podcastType: "pre" | "post") => {
+    e.stopPropagation();
+    const stateKey = `${reviewId}-${podcastType}`;
+    setGeneratingPodcasts(prev => ({ ...prev, [stateKey]: true }));
+    try {
+      const res = await fetch("/api/podcast/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ itemId: reviewId, podcastType })
+      });
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || "Failed to start generation");
+      }
+      alert(`Podcast generation started in the background! This takes about 3-5 minutes. You will receive a push notification when it's ready (refresh the page later).`);
+    } catch (err: any) {
+      alert(`Error: ${err.message}`);
+      setGeneratingPodcasts(prev => ({ ...prev, [stateKey]: false }));
+    }
   };
 
   const startQuiz = (review: any) => {
@@ -201,6 +288,11 @@ export default function Dashboard() {
     setActiveTab("quiz");
   };
 
+  const exportQuizForPrint = () => {
+    if (!selectedReview || parsedTasks.length === 0) return;
+    window.print();
+  };
+
   const handleGenerate = async () => {
     if ((!textInput && uploadedFiles.length === 0) || !subjectInput) return;
     setIsGenerating(true);
@@ -210,7 +302,7 @@ export default function Dashboard() {
     try {
       const formData = new FormData();
       formData.append("subjectMain", subjectInput);
-      formData.append("subjectSub", "Module");
+      formData.append("subjectSub", topicInput || "Module");
       if (textInput) formData.append("content", textInput);
       uploadedFiles.forEach(file => formData.append("files", file));
 
@@ -254,6 +346,7 @@ export default function Dashboard() {
                   }, 3000);
                 } else if (data.event === "error") {
                   setProgressMsg(data.data.message);
+                  alert(`Generierungsfehler: ${data.data.message}`);
                   setIsGenerating(false);
                 }
               } catch (e) {
@@ -329,6 +422,7 @@ export default function Dashboard() {
                 } else if (data.event === "error") {
                   setGradingMsg(data.data.message);
                   setGradingError(data.data.message);
+                  alert(`Grading Error: ${data.data.message}`);
                   setIsGrading(false);
                 }
               } catch (e) {
@@ -347,31 +441,92 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="min-h-screen flex w-full">
+    <div className="min-h-screen bg-transparent flex font-sans selection:bg-white/[0.12]">
+      
+      {/* Print-Only Wrapper */}
+      {activeTab === "quiz" && selectedReview && parsedTasks.length > 0 && (
+        <div className="hidden print:block p-8 w-full bg-white text-black">
+          <div className="max-w-3xl mx-auto">
+            <div className="border-b-2 border-zinc-200 pb-5 mb-8">
+              <h1 className="text-2xl font-bold font-sans text-zinc-900 mb-1">{selectedReview.topic}</h1>
+              <p className="text-xs text-zinc-500 font-medium">
+                <span className="bg-zinc-900 text-zinc-300 px-2 py-0.5 rounded mr-2 font-bold uppercase tracking-wider">Level {selectedReview.level}</span>
+                {selectedReview.subject}
+              </p>
+              <div className="flex justify-between mt-4 pt-4 border-t border-zinc-200 text-xs text-zinc-500">
+                <p>Name: ___________________________</p>
+                <p>Datum: _______________</p>
+              </div>
+            </div>
+
+            <div className="space-y-8">
+              {parsedTasks.map(task => {
+                let lineCount = 4;
+                const isMC = /^[A-D]\)\s/m.test(task.questionText);
+                if (isMC) {
+                  lineCount = 2;
+                } else {
+                  const match = task.questionText.match(/(\d+)(?:[-–](\d+))?\s*(Sätze|Stichpunkt)/i);
+                  if (match) {
+                    const num = parseInt(match[2] || match[1], 10);
+                    if (!isNaN(num)) {
+                      lineCount = Math.max(3, Math.min(15, Math.ceil(num * 1.5)));
+                    }
+                  }
+                }
+                
+                return (
+                  <div key={task.id} className="break-inside-avoid" style={{ pageBreakInside: 'avoid' }}>
+                    <h2 className="text-sm font-bold text-white uppercase tracking-wider mb-2">{task.label}</h2>
+                    <div className="text-sm text-zinc-800 bg-zinc-50 border border-zinc-200 rounded-lg p-4 mb-4 whitespace-pre-wrap leading-relaxed">
+                      {task.questionText}
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-1">Antwort:</p>
+                      {Array.from({ length: lineCount }).map((_, i) => (
+                        <div key={i} className="border-b border-zinc-300 h-7 w-full"></div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Main App (Hidden in Print) */}
+      <div className="flex w-full print:hidden">
+
       {/* Sidebar */}
       <motion.aside 
         initial={{ x: -300, opacity: 0 }}
         animate={{ x: 0, opacity: 1 }}
         transition={{ duration: 0.5, ease: "easeOut" }}
-        className="w-64 bg-white border-r border-stone-200 shadow-sm flex flex-col p-6 sticky top-0 h-screen"
+        className="w-64 sidebar-gradient border-r border-white/[0.06] flex flex-col p-6 sticky top-0 h-screen"
       >
         <div className="flex items-center gap-3 mb-12">
-          <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center shadow-md">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-zinc-9000 to-violet-600 flex items-center justify-center shadow-lg shadow-white/[0.12]">
             <BrainCircuit className="text-white w-5 h-5" />
           </div>
-          <h1 className="text-xl font-bold tracking-tight">SRS<span className="text-primary">Master</span></h1>
+          <div className="flex flex-col">
+            <h1 className="text-xl font-bold tracking-tight">SRS<span className="text-gradient">Master</span></h1>
+            <div className="mt-1 text-[10px] font-bold text-accent-1 bg-accent-1/10 px-2 py-0.5 rounded-full border border-accent-1/20 self-start">
+              Semester {currentSemester}
+            </div>
+          </div>
         </div>
 
         <nav className="flex flex-col gap-2">
-          <button onClick={() => setActiveTab("dashboard")} className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 ${activeTab === 'dashboard' ? 'bg-indigo-50 text-primary border border-indigo-200' : 'text-stone-600 hover:bg-stone-100 hover:text-stone-900'}`}>
+          <button onClick={() => setActiveTab("dashboard")} className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${activeTab === 'dashboard' ? 'nav-item-active' : 'nav-item-idle'}`}>
             <CalendarDays className="w-5 h-5" />
             <span className="font-medium">Dashboard</span>
           </button>
-          <button onClick={() => setActiveTab("upload")} className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 ${activeTab === 'upload' ? 'bg-indigo-50 text-primary border border-indigo-200' : 'text-stone-600 hover:bg-stone-100 hover:text-stone-900'}`}>
+          <button onClick={() => setActiveTab("upload")} className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${activeTab === 'upload' ? 'nav-item-active' : 'nav-item-idle'}`}>
             <UploadCloud className="w-5 h-5" />
             <span className="font-medium">Upload Material</span>
           </button>
-          <button onClick={() => setActiveTab("library")} className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 ${activeTab === 'library' ? 'bg-indigo-50 text-primary border border-indigo-200' : 'text-stone-600 hover:bg-stone-100 hover:text-stone-900'}`}>
+          <button onClick={() => setActiveTab("library")} className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${activeTab === 'library' ? 'nav-item-active' : 'nav-item-idle'}`}>
             <BookOpen className="w-5 h-5" />
             <span className="font-medium">Library</span>
           </button>
@@ -381,10 +536,10 @@ export default function Dashboard() {
           {/* Push Notification Toggle */}
           <button
             onClick={subscribeToPush}
-            className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 ${
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${
               pushPermission === "granted" && pushSubscribed
-                ? "bg-emerald-50 text-emerald-600 border border-emerald-200"
-                : "text-stone-500 hover:bg-stone-100 hover:text-stone-900"
+                ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                : "nav-item-idle"
             }`}
           >
             {pushPermission === "granted" && pushSubscribed ? (
@@ -401,12 +556,12 @@ export default function Dashboard() {
             </span>
           </button>
 
-          <div className="bg-stone-50 rounded-xl p-4 border border-stone-200 relative overflow-hidden">
+          <div className="card-surface p-4 relative overflow-hidden">
             <div className="absolute -top-10 -right-10 w-24 h-24 hidden"></div>
-            <Sparkles className="w-6 h-6 text-accent mb-2" />
-            <h3 className="font-medium text-stone-900 text-sm mb-1">Live Tutor Pro</h3>
-            <p className="text-xs text-stone-500 mb-3">Upgrade your learning with voice AI.</p>
-            <button className="w-full py-2 bg-stone-100 hover:bg-stone-100 rounded-lg text-xs font-medium transition-colors border border-stone-200 text-stone-500 cursor-not-allowed">
+            <Sparkles className="w-6 h-6 text-amber-400 mb-2" />
+            <h3 className="font-medium text-white/90 text-sm mb-1">Live Tutor Pro</h3>
+            <p className="text-xs text-white/40 mb-3">Upgrade your learning with voice AI.</p>
+            <button className="w-full py-2 bg-white/[0.04] hover:bg-white/[0.06] rounded-lg text-xs font-medium border border-white/[0.08] text-white/30 cursor-not-allowed transition-colors">
               Unlock (Phase 2)
             </button>
           </div>
@@ -426,9 +581,9 @@ export default function Dashboard() {
             >
               <header className="mb-12 flex justify-between items-end">
                 <div>
-                  <h2 className="text-sm font-medium text-primary mb-1 uppercase tracking-wider">Welcome back</h2>
-                  <h1 className="text-4xl font-bold tracking-tight text-stone-900 mb-2">Ready to level up?</h1>
-                  <p className="text-stone-500">You have {upcomingReviews.filter(r => r.isDue).length} reviews due today.</p>
+                  <h2 className="text-sm font-medium text-white mb-1 uppercase tracking-wider">Welcome back</h2>
+                  <h1 className="text-4xl font-bold tracking-tight text-white mb-2">Ready to level up?</h1>
+                  <p className="text-white/50">You have {upcomingReviews.filter(r => r.isDue).length} reviews due today.</p>
                 </div>
               </header>
 
@@ -437,12 +592,12 @@ export default function Dashboard() {
                 <div className="lg:col-span-2 flex flex-col gap-4">
                   <div className="flex items-center justify-between mb-2">
                     <h3 className="text-xl font-semibold flex items-center gap-2">
-                      <Clock className="w-5 h-5 text-primary" />
+                      <Clock className="w-5 h-5 text-white" />
                       Upcoming Reviews
                     </h3>
                     <button
                       onClick={() => setShowCalendarModal(true)}
-                      className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg bg-indigo-50 hover:bg-primary/20 border border-indigo-200 text-primary hover:text-stone-900 transition-all"
+                      className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.12] text-white hover:text-indigo-300 transition-all"
                     >
                       <CalendarDays className="w-3.5 h-3.5" />
                       Sync to Calendar
@@ -450,7 +605,7 @@ export default function Dashboard() {
                   </div>
 
                   {upcomingReviews.length === 0 ? (
-                    <div className="bg-white p-10 rounded-xl shadow-sm border border-stone-200 text-center text-stone-500">
+                    <div className="card-surface p-10 text-center text-white/40">
                       No reviews found. Upload lecture material to generate your first quiz!
                     </div>
                   ) : (
@@ -458,17 +613,20 @@ export default function Dashboard() {
                       <motion.div 
                         key={review.id} 
                         onClick={() => startQuiz(review)}
-                        className={`bg-white shadow-sm border border-stone-200 p-5 rounded-xl border transition-all duration-300 group cursor-pointer hover:border-primary/50 relative overflow-hidden ${review.isDue ? 'border-primary/30 shadow-lg shadow-primary/5' : 'border-stone-200'}`}
+                        className={`card-surface-elevated p-5 transition-all duration-300 group cursor-pointer hover:border-white/[0.2] relative overflow-hidden ${review.isDue ? 'border-white/[0.12] glow-primary' : ''}`}
                       >
-                        <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-primary to-accent opacity-75 group-hover:opacity-100 transition-opacity"></div>
+                        <div className="accent-bar"></div>
                         <div className="flex justify-between items-center pl-2">
                           <div className="flex-1">
                             <div className="flex items-center gap-3 mb-1">
-                              <span className={`text-xs font-semibold px-2 py-1 rounded-md ${review.isDue ? 'bg-primary/20 text-primary' : 'bg-secondary text-stone-500'}`}>Level {review.level}</span>
-                              <span className="text-xs text-stone-500">{review.isDue ? "Due Now" : `Scheduled: ${review.dueDate}`}</span>
+                              <span className={`text-xs font-semibold px-2.5 py-1 rounded-md ${review.isDue ? 'badge-due' : 'badge-level'}`}>Level {review.level}</span>
+                              <span className="text-[10px] font-bold text-white/50 bg-white/[0.04] px-2 py-0.5 rounded-full border border-white/[0.08]">
+                                Sem {review.semester}
+                              </span>
+                              <span className="text-xs text-white/40">{review.isDue ? "Due Now" : `Scheduled: ${review.dueDate}`}</span>
                             </div>
-                            <h4 className="text-lg font-medium text-stone-900">{review.topic}</h4>
-                            <p className="text-sm text-stone-500">{review.subject}</p>
+                            <h4 className="text-lg font-medium text-white">{review.subject}</h4>
+                            <p className="text-sm text-white/40">{review.topic}</p>
 
                             {review.raw.lastFeedback && (
                               <button 
@@ -477,16 +635,69 @@ export default function Dashboard() {
                                   setActiveFeedbackItem(review.raw);
                                   setFeedbackTab("brief");
                                 }}
-                                className="mt-3 text-xs bg-stone-100 hover:bg-stone-200 border border-stone-200 text-stone-600 px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all cursor-pointer"
+                                className="mt-3 text-xs bg-white/[0.04] hover:bg-white/[0.06] border border-white/[0.08] text-white/50 px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all cursor-pointer"
                               >
-                                <FileText className="w-3.5 h-3.5 text-accent" />
+                                <FileText className="w-3.5 h-3.5 text-white" />
                                 View Last Feedback & Video Prompts
                               </button>
                             )}
+
+                            <div className="flex gap-2 w-full mt-4" onClick={(e) => e.stopPropagation()}>
+                              {/* PRE-PODCAST */}
+                              <div className="flex-1">
+                                <h5 className="text-[10px] font-bold text-stone-500 uppercase mb-1">Pre-Lecture Teaser</h5>
+                                {review.raw.prePodcastUrl && review.raw.prePodcastUrl.startsWith("http") ? (
+                                  <a 
+                                    href={review.raw.prePodcastUrl} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer" 
+                                    className="text-xs bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 px-2 py-1.5 rounded-md flex items-center justify-center gap-1.5 transition-all w-full font-medium"
+                                  >
+                                    <Sparkles className="w-3 h-3" />
+                                    Notebook öffnen
+                                  </a>
+                                ) : (
+                                  <div className="text-xs bg-amber-50 border border-amber-200 text-amber-600 px-2 py-1.5 rounded-md flex items-center gap-1.5 w-full justify-center">
+                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                    Wird konfiguriert...
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* POST-PODCAST */}
+                              <div className="flex-1">
+                                <h5 className="text-[10px] font-bold text-stone-500 uppercase mb-1">Post-Lecture Deep Dive</h5>
+                                {review.raw.postPodcastUrl && review.raw.postPodcastUrl.startsWith("http") ? (
+                                  <a 
+                                    href={review.raw.postPodcastUrl} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer" 
+                                    className="text-xs bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 px-2 py-1.5 rounded-md flex items-center justify-center gap-1.5 transition-all w-full font-medium"
+                                  >
+                                    <Sparkles className="w-3 h-3" />
+                                    Notebook öffnen
+                                  </a>
+                                ) : (
+                                  <div className="text-xs bg-amber-50 border border-amber-200 text-amber-600 px-2 py-1.5 rounded-md flex items-center gap-1.5 w-full justify-center">
+                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                    Wird konfiguriert...
+                                  </div>
+                                )}
+                              </div>
+                            </div>
                           </div>
-                          <button className="w-12 h-12 rounded-full flex items-center justify-center transition-all bg-indigo-50 text-primary group-hover:bg-primary group-hover:text-stone-900 shadow-lg group-hover:scale-110 cursor-pointer">
-                            <ChevronRight className="w-6 h-6 ml-1" />
-                          </button>
+                          <div className="flex flex-col items-center gap-2">
+                            <button className="w-12 h-12 rounded-full flex items-center justify-center transition-all bg-white/[0.04] text-white/40 group-hover:bg-white/[0.08] group-hover:text-white group-hover:scale-110 cursor-pointer">
+                              <ChevronRight className="w-6 h-6 ml-1" />
+                            </button>
+                            <button 
+                              onClick={(e) => handleDeleteModule(e, review.id)}
+                              className="w-10 h-10 rounded-full flex items-center justify-center transition-all bg-white/[0.04] text-white/40 hover:bg-red-500/20 hover:text-red-400 cursor-pointer"
+                              title="Delete Module"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
                         </div>
                       </motion.div>
                     ))
@@ -495,10 +706,10 @@ export default function Dashboard() {
 
                 {/* Quick Actions */}
                 <div className="flex flex-col gap-6">
-                  <motion.div className="bg-white shadow-sm border border-stone-200 p-6 rounded-3xl border border-stone-200 bg-gradient-to-br from-primary/10 to-transparent cursor-pointer hover:border-primary/50 transition-colors" onClick={() => setActiveTab("upload")}>
-                    <h3 className="text-lg font-semibold mb-2">Upload Material</h3>
-                    <p className="text-sm text-stone-500 mb-4">Feed the engine a new module to start the 6-stage generative AI pipeline.</p>
-                    <button className="w-full py-3 px-4 bg-white text-black font-semibold rounded-xl hover:bg-gray-200 transition-colors flex items-center justify-center gap-2 shadow-lg shadow-white/10 cursor-pointer">
+                  <motion.div className="card-surface-elevated p-6 gradient-border cursor-pointer transition-colors" onClick={() => setActiveTab("upload")}>
+                    <h3 className="text-lg font-semibold mb-2 text-white">Upload Material</h3>
+                    <p className="text-sm text-white/40 mb-4">Feed the engine a new module to start the 6-stage generative AI pipeline.</p>
+                    <button className="btn-primary w-full py-3 px-4 flex items-center justify-center gap-2 cursor-pointer">
                       <UploadCloud className="w-5 h-5" />
                       Upload Now
                     </button>
@@ -517,19 +728,19 @@ export default function Dashboard() {
               className="max-w-3xl mx-auto"
             >
               <header className="mb-8">
-                <h1 className="text-3xl font-bold tracking-tight text-stone-900 mb-2">Ironclad Generator</h1>
-                <p className="text-stone-500">Paste your lecture material below to run the full 6-stage Didactic AI chain.</p>
+                <h1 className="text-3xl font-bold tracking-tight text-white mb-2">Ironclad Generator</h1>
+                <p className="text-white/50">Paste your lecture material below to run the full 6-stage Didactic AI chain.</p>
               </header>
 
               {isGenerating ? (
-                <div className="bg-white shadow-sm border border-stone-200 p-10 rounded-3xl border border-primary/30 flex flex-col items-center justify-center text-center">
-                  <Loader2 className="w-12 h-12 text-primary animate-spin mb-6" />
-                  <h3 className="text-2xl font-bold mb-2">Processing Module...</h3>
-                  <p className="text-stone-500 mb-8 text-lg">{progressMsg}</p>
+                <div className="card-surface-elevated p-10 flex flex-col items-center justify-center text-center">
+                  <Loader2 className="w-12 h-12 text-white animate-spin mb-6" />
+                  <h3 className="text-2xl font-bold text-white mb-2">Processing Module...</h3>
+                  <p className="text-white/50 mb-8 text-lg">{progressMsg}</p>
                   
-                  <div className="w-full max-w-md bg-secondary h-3 rounded-full overflow-hidden">
+                  <div className="progress-track w-full max-w-md h-3">
                     <motion.div 
-                      className="bg-indigo-600 h-full rounded-full"
+                      className="progress-fill h-full"
                       initial={{ width: 0 }}
                       animate={{ width: `${(progressStep / 8) * 100}%` }}
                       transition={{ duration: 0.5 }}
@@ -537,7 +748,7 @@ export default function Dashboard() {
                   </div>
                   <div className="w-full max-w-md mt-4 text-left space-y-3">
                      {[1,2,3,4,5,6,7].map(step => (
-                        <div key={step} className={`flex items-center gap-3 text-sm ${progressStep > step ? 'text-green-400' : progressStep === step ? 'text-primary font-medium' : 'text-stone-500/50'}`}>
+                        <div key={step} className={`flex items-center gap-3 text-sm ${progressStep > step ? 'text-emerald-400' : progressStep === step ? 'text-white font-medium' : 'text-white/20'}`}>
                            {progressStep > step ? <CheckCircle2 className="w-4 h-4" /> : <div className="w-4 h-4 rounded-full border-2 border-current" />}
                            {step === 1 ? "Blueprint Engine" : step === 7 ? "Tutor Prompt Engine" : `Quiz Agent (Level ${step-1})`}
                         </div>
@@ -545,21 +756,45 @@ export default function Dashboard() {
                   </div>
                 </div>
               ) : (
-                <div className="bg-white shadow-sm border border-stone-200 p-8 rounded-3xl border border-stone-200 flex flex-col gap-6">
-                  <div>
-                    <label className="block text-sm font-medium text-stone-500 mb-2">Subject / Module Name</label>
-                    <input 
-                      type="text" 
-                      value={subjectInput}
-                      onChange={e => setSubjectInput(e.target.value)}
-                      placeholder="e.g. Psychology 101 - Motivation"
-                      className="w-full bg-stone-50 border border-stone-300 rounded-xl px-4 py-3 text-stone-900 placeholder:text-stone-400 focus:outline-none focus:border-primary transition-colors"
-                    />
+                <div className="card-surface-elevated p-8 flex flex-col gap-6">
+                  <div className="flex gap-4">
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="text-sm font-medium text-white/50">Module (Semester {currentSemester})</label>
+                        <button onClick={() => setShowSettingsModal(true)} className="text-xs text-accent-1 hover:text-white transition-colors">Manage Presets</button>
+                      </div>
+                      {modulePresets.length > 0 ? (
+                        <select 
+                          value={subjectInput}
+                          onChange={e => setSubjectInput(e.target.value)}
+                          className="input-dark w-full px-4 py-3 appearance-none bg-zinc-900"
+                        >
+                          {modulePresets.map(preset => (
+                            <option key={preset} value={preset}>{preset}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <div className="input-dark w-full px-4 py-3 text-white/50 text-sm flex items-center justify-between">
+                          No modules defined for Semester {currentSemester}
+                          <button onClick={() => setShowSettingsModal(true)} className="text-accent-1 hover:text-white font-medium">Add Presets</button>
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <label className="block text-sm font-medium text-white/50 mb-2">Topic / Thema</label>
+                      <input 
+                        type="text" 
+                        value={topicInput}
+                        onChange={e => setTopicInput(e.target.value)}
+                        placeholder="e.g. Memory & Motivation"
+                        className="input-dark w-full px-4 py-3"
+                      />
+                    </div>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-stone-500 mb-2">Lecture Material (Files or Text)</label>
+                    <label className="block text-sm font-medium text-white/50 mb-2">Lecture Material (Files or Text)</label>
                     <div 
-                      className={`w-full border-2 border-dashed rounded-xl p-8 mb-4 flex flex-col items-center justify-center transition-colors ${isDragging ? 'border-primary bg-indigo-50' : 'border-stone-200 bg-secondary'}`}
+                      className={`w-full border-2 border-dashed rounded-xl p-8 mb-4 flex flex-col items-center justify-center transition-colors ${isDragging ? 'border-zinc-9000 bg-white/[0.04]' : 'border-white/[0.08] bg-white/[0.02]'}`}
                       onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
                       onDragLeave={() => setIsDragging(false)}
                       onDrop={(e) => {
@@ -570,8 +805,8 @@ export default function Dashboard() {
                         }
                       }}
                     >
-                      <UploadCloud className="w-8 h-8 text-stone-500 mb-3" />
-                      <p className="text-stone-500 text-sm text-center mb-4">
+                      <UploadCloud className="w-8 h-8 text-white/30 mb-3" />
+                      <p className="text-white/40 text-sm text-center mb-4">
                         Drag and drop your PDFs, Excel, or Word files here
                       </p>
                       <input 
@@ -586,7 +821,7 @@ export default function Dashboard() {
                           }
                         }}
                       />
-                      <label htmlFor="file-upload" className="px-4 py-2 bg-stone-100 hover:bg-stone-200 rounded-lg text-sm text-stone-600 cursor-pointer transition-colors">
+                      <label htmlFor="file-upload" className="px-4 py-2 bg-white/[0.06] hover:bg-white/[0.1] rounded-lg text-sm text-white/60 cursor-pointer border border-white/[0.1] transition-colors">
                         Browse Files
                       </label>
                     </div>
@@ -594,10 +829,10 @@ export default function Dashboard() {
                     {uploadedFiles.length > 0 && (
                       <div className="flex flex-wrap gap-2 mb-4">
                         {uploadedFiles.map((file, idx) => (
-                          <div key={idx} className="flex items-center gap-2 bg-primary/20 text-primary px-3 py-1.5 rounded-lg text-xs font-medium">
+                          <div key={idx} className="flex items-center gap-2 bg-white/[0.08] text-indigo-300 px-3 py-1.5 rounded-lg text-xs font-medium border border-white/[0.12]">
                             <FileText className="w-3.5 h-3.5" />
                             {file.name}
-                            <button onClick={() => setUploadedFiles(prev => prev.filter((_, i) => i !== idx))} className="ml-1 hover:text-stone-900 cursor-pointer">
+                            <button onClick={() => setUploadedFiles(prev => prev.filter((_, i) => i !== idx))} className="ml-1 hover:text-white cursor-pointer">
                               <X className="w-3.5 h-3.5" />
                             </button>
                           </div>
@@ -609,13 +844,13 @@ export default function Dashboard() {
                       value={textInput}
                       onChange={e => setTextInput(e.target.value)}
                       placeholder="...or paste your lecture notes, transcript, or raw text here..."
-                      className="w-full bg-stone-50 border border-stone-300 rounded-xl px-4 py-3 text-stone-900 placeholder:text-stone-400 focus:outline-none focus:border-primary transition-colors h-32 resize-none"
+                      className="input-dark w-full px-4 py-3 h-32 resize-none"
                     />
                   </div>
                   <button 
                     onClick={handleGenerate}
                     disabled={(!textInput && uploadedFiles.length === 0) || !subjectInput}
-                    className="w-full py-4 bg-indigo-600 text-white font-bold rounded-xl hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
+                    className="btn-primary w-full py-4 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40"
                   >
                     <BrainCircuit className="w-5 h-5" />
                     Start 6-Stage AI Generation
@@ -634,10 +869,10 @@ export default function Dashboard() {
               className="max-w-5xl mx-auto"
             >
               <header className="mb-12">
-                <h1 className="text-4xl font-bold tracking-tight text-stone-900 mb-2">My Library</h1>
-                <p className="text-stone-500">Review your stored modules, tutor prompts, and generating schedules.</p>
+                <h1 className="text-4xl font-bold tracking-tight text-white mb-2">My Library</h1>
+                <p className="text-white/50">Review your stored modules, tutor prompts, and generating schedules.</p>
               </header>
-              <div className="bg-white p-10 rounded-xl shadow-sm border border-stone-200 text-center text-stone-500">
+              <div className="card-surface p-10 text-center text-white/40">
                 All generated courses and details will reflect here as we build custom features!
               </div>
             </motion.div>
@@ -657,7 +892,7 @@ export default function Dashboard() {
                   setSelectedReview(null);
                   setGradingResult(null);
                 }} 
-                className="flex items-center gap-2 text-sm text-stone-500 hover:text-stone-900 mb-6 transition-colors cursor-pointer"
+                className="flex items-center gap-2 text-sm text-white/40 hover:text-white mb-6 transition-colors cursor-pointer"
               >
                 <ArrowLeft className="w-4 h-4" />
                 Back to Dashboard
@@ -665,37 +900,52 @@ export default function Dashboard() {
 
               <header className="mb-8">
                 <div className="flex items-center gap-3 mb-2">
-                  <span className="text-xs font-semibold px-2.5 py-1 rounded-md bg-primary/20 text-primary border border-primary/10">Level {selectedReview.level}</span>
-                  <span className="text-xs text-stone-500">Active Quiz</span>
+                  <span className="text-xs font-semibold px-2.5 py-1 rounded-md badge-level">Level {selectedReview.level}</span>
+                  <span className="text-xs text-white/40">Active Quiz</span>
                 </div>
-                <h1 className="text-3xl font-bold tracking-tight text-stone-900">{selectedReview.topic}</h1>
-                <p className="text-stone-500">{selectedReview.subject}</p>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h1 className="text-2xl font-bold tracking-tight text-white">{selectedReview.subject}</h1>
+                    <p className="text-xs text-white/40 mt-1 font-medium">{selectedReview.topic}</p>
+                  </div>
+                  {parsedTasks.length > 0 && (
+                    <motion.button
+                      whileHover={{ scale: 1.04 }}
+                      whileTap={{ scale: 0.96 }}
+                      onClick={exportQuizForPrint}
+                      className="flex items-center gap-2 px-4 py-2.5 btn-secondary text-xs font-bold rounded-xl cursor-pointer"
+                    >
+                      <Printer className="w-4 h-4" />
+                      Exportieren
+                    </motion.button>
+                  )}
+                </div>
               </header>
 
               {gradingError && !isGrading && (
-                <div className="mb-6 p-5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-200 text-sm flex flex-col gap-2 shadow-lg shadow-rose-950/20">
-                  <div className="flex items-center gap-2 text-rose-400 font-semibold">
+                <div className="mb-6 p-5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-300 text-sm flex flex-col gap-2">
+                  <div className="flex items-center gap-2 text-red-400 font-semibold">
                     <AlertTriangle className="w-5 h-5" />
                     <span>Grading Failed</span>
                   </div>
-                  <pre className="text-xs font-mono bg-stone-50 p-4 rounded-xl border border-stone-200 whitespace-pre-wrap overflow-x-auto max-h-40 overflow-y-auto leading-relaxed text-left">
+                  <pre className="text-xs font-mono bg-white/[0.03] p-4 rounded-xl border border-white/[0.06] whitespace-pre-wrap overflow-x-auto max-h-40 overflow-y-auto leading-relaxed text-left text-red-300/70">
                     {gradingError}
                   </pre>
-                  <p className="text-xs text-stone-500 text-left">
+                  <p className="text-xs text-white/30 text-left">
                     Please check your database, Gemini API key, or server logs, and click below to try submitting again.
                   </p>
                 </div>
               )}
 
               {isGrading ? (
-                <div className="bg-white shadow-sm border border-stone-200 p-10 rounded-3xl border border-primary/30 flex flex-col items-center justify-center text-center">
-                  <Loader2 className="w-12 h-12 text-primary animate-spin mb-6" />
-                  <h3 className="text-2xl font-bold mb-2">Grading Submission...</h3>
-                  <p className="text-stone-500 mb-8 text-lg">{gradingMsg}</p>
+                <div className="card-surface-elevated p-10 flex flex-col items-center justify-center text-center">
+                  <Loader2 className="w-12 h-12 text-white animate-spin mb-6" />
+                  <h3 className="text-2xl font-bold mb-2 text-white">Grading Submission...</h3>
+                  <p className="text-white/50 mb-8 text-lg">{gradingMsg}</p>
                   
-                  <div className="w-full max-w-md bg-secondary h-3 rounded-full overflow-hidden">
+                  <div className="progress-track w-full max-w-md h-3">
                     <motion.div 
-                      className="bg-indigo-600 h-full rounded-full"
+                      className="progress-fill h-full"
                       initial={{ width: 0 }}
                       animate={{ width: `${Math.min(100, (gradingStep / 4) * 100)}%` }}
                       transition={{ duration: 0.5 }}
@@ -703,7 +953,7 @@ export default function Dashboard() {
                   </div>
                   <div className="w-full max-w-md mt-4 text-left space-y-3">
                      {[1,2,3,4].map(step => (
-                        <div key={step} className={`flex items-center gap-3 text-sm ${gradingStep > step ? 'text-green-400' : gradingStep === step ? 'text-primary font-medium' : 'text-stone-500/50'}`}>
+                        <div key={step} className={`flex items-center gap-3 text-sm ${gradingStep > step ? 'text-emerald-400' : gradingStep === step ? 'text-white font-medium' : 'text-white/20'}`}>
                            {gradingStep > step ? <CheckCircle2 className="w-4 h-4" /> : <div className="w-4 h-4 rounded-full border-2 border-current" />}
                            {step === 1 ? "Co-Prüfer 1 & 2 (Parallel Evaluation)" : 
                             step === 2 ? "Chef-Prüfer (Consolidation & Brief)" : 
@@ -713,18 +963,17 @@ export default function Dashboard() {
                   </div>
                 </div>
               ) : gradingResult ? (
-                // Results UI
                 <div className="space-y-6">
-                  <div className={`bg-white shadow-sm border border-stone-200 p-8 rounded-3xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 ${gradingResult.isPass ? 'border-green-500/30 bg-green-500/5' : 'border-rose-500/30 bg-rose-500/5'}`}>
+                  <div className={`card-surface-elevated p-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 ${gradingResult.isPass ? 'border-emerald-500/20 glow-success' : 'border-red-500/20 glow-danger'}`}>
                     <div>
-                      <span className={`text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full ${gradingResult.isPass ? 'bg-green-500/20 text-green-400' : 'bg-rose-500/20 text-rose-400'}`}>
+                      <span className={`text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full ${gradingResult.isPass ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/15 text-red-400 border border-red-500/20'}`}>
                         {gradingResult.isPass ? "PASS (Bestanden)" : "REPEAT (Wiederholen)"}
                       </span>
-                      <h2 className="text-3xl font-extrabold text-stone-900 mt-3">
+                      <h2 className="text-3xl font-extrabold text-white mt-3">
                         {gradingResult.isPass ? "Level Promoted!" : "Remediation Scheduled"}
                       </h2>
-                      <p className="text-stone-500 mt-1 text-sm">
-                        Next review set to: <strong className="text-stone-900">{new Date(gradingResult.srsItem.nextReviewDate).toLocaleDateString()}</strong> (Level {gradingResult.srsItem.currentLevel})
+                      <p className="text-white/50 mt-1 text-sm">
+                        Next review set to: <strong className="text-white">{new Date(gradingResult.srsItem.nextReviewDate).toLocaleDateString()}</strong> (Level {gradingResult.srsItem.currentLevel})
                       </p>
                     </div>
                     <button 
@@ -733,23 +982,23 @@ export default function Dashboard() {
                         setSelectedReview(null);
                         setGradingResult(null);
                       }}
-                      className="px-6 py-3 bg-white text-black font-semibold rounded-xl hover:bg-gray-200 transition-colors shadow-lg cursor-pointer"
+                      className="btn-secondary px-6 py-3 font-semibold rounded-xl cursor-pointer"
                     >
                       Back to Dashboard
                     </button>
                   </div>
 
-                  <div className="bg-white shadow-sm border border-stone-200 rounded-3xl border border-stone-200 overflow-hidden">
-                    <div className="flex border-b border-stone-200 bg-stone-50">
+                  <div className="card-surface-elevated overflow-hidden">
+                    <div className="flex border-b border-white/[0.06] bg-white/[0.02]">
                       <button 
                         onClick={() => setResultTab("brief")} 
-                        className={`flex-1 sm:flex-none px-6 py-4 text-sm font-medium border-b-2 transition-all cursor-pointer ${resultTab === 'brief' ? 'border-primary text-indigo-600 bg-indigo-50' : 'border-transparent text-stone-500 hover:text-stone-900'}`}
+                        className={`flex-1 sm:flex-none px-6 py-4 text-sm font-medium border-b-2 transition-all cursor-pointer ${resultTab === 'brief' ? 'border-zinc-9000 text-white bg-zinc-9000/5' : 'border-transparent text-white/40 hover:text-white/60'}`}
                       >
                         Remediation Brief
                       </button>
                       <button 
                         onClick={() => setResultTab("prompts")} 
-                        className={`flex-1 sm:flex-none px-6 py-4 text-sm font-medium border-b-2 transition-all cursor-pointer ${resultTab === 'prompts' ? 'border-primary text-indigo-600 bg-indigo-50' : 'border-transparent text-stone-500 hover:text-stone-900'}`}
+                        className={`flex-1 sm:flex-none px-6 py-4 text-sm font-medium border-b-2 transition-all cursor-pointer ${resultTab === 'prompts' ? 'border-zinc-9000 text-white bg-zinc-9000/5' : 'border-transparent text-white/40 hover:text-white/60'}`}
                       >
                         NotebookLM Video Prompts
                       </button>
@@ -757,43 +1006,41 @@ export default function Dashboard() {
 
                     <div className="p-8">
                       {resultTab === "brief" && (
-                        <div className="prose prose-invert max-w-none text-stone-500 space-y-4">
-                          <div className="whitespace-pre-wrap font-sans text-stone-800 text-base leading-relaxed">
-                            {gradingResult.srsItem.lastFeedback}
-                          </div>
+                        <div className="whitespace-pre-wrap font-sans text-white/60 text-base leading-relaxed">
+                          {gradingResult.srsItem.lastFeedback}
                         </div>
                       )}
 
                       {resultTab === "prompts" && (
                         <div className="space-y-8">
-                          <div className="p-5 bg-stone-100 rounded-xl border border-stone-200 relative group">
+                          <div className="p-5 card-surface rounded-xl relative group">
                             <div className="flex justify-between items-center mb-4">
-                              <h3 className="font-semibold text-stone-900">Video Prompt 1 (Episode 1 - Polishing)</h3>
+                              <h3 className="font-semibold text-white">Video Prompt 1 (Episode 1 - Polishing)</h3>
                               <button 
                                 onClick={() => copyToClipboard(gradingResult.srsItem.lastVideoPrompt1, 'v1')}
-                                className="flex items-center gap-1.5 text-xs bg-stone-100 hover:bg-stone-200 text-stone-600 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+                                className="btn-secondary text-xs px-3 py-1.5 cursor-pointer flex items-center gap-1.5"
                               >
-                                {copiedId === 'v1' ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
+                                {copiedId === 'v1' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                                 {copiedId === 'v1' ? 'Copied!' : 'Copy Prompt'}
                               </button>
                             </div>
-                            <pre className="text-xs text-stone-500 whitespace-pre-wrap font-mono max-h-60 overflow-y-auto bg-stone-50 p-4 rounded-xl border border-stone-200 leading-relaxed">
+                            <pre className="text-xs text-white/40 whitespace-pre-wrap font-mono max-h-60 overflow-y-auto bg-white/[0.02] p-4 rounded-xl border border-white/[0.06] leading-relaxed">
                               {gradingResult.srsItem.lastVideoPrompt1}
                             </pre>
                           </div>
 
-                          <div className="p-5 bg-stone-100 rounded-xl border border-stone-200 relative group">
+                          <div className="p-5 card-surface rounded-xl relative group">
                             <div className="flex justify-between items-center mb-4">
-                              <h3 className="font-semibold text-stone-900">Video Prompt 2 (Episode 2 - Synthesis)</h3>
+                              <h3 className="font-semibold text-white">Video Prompt 2 (Episode 2 - Synthesis)</h3>
                               <button 
                                 onClick={() => copyToClipboard(gradingResult.srsItem.lastVideoPrompt2, 'v2')}
-                                className="flex items-center gap-1.5 text-xs bg-stone-100 hover:bg-stone-200 text-stone-600 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+                                className="btn-secondary text-xs px-3 py-1.5 cursor-pointer flex items-center gap-1.5"
                               >
-                                {copiedId === 'v2' ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
+                                {copiedId === 'v2' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                                 {copiedId === 'v2' ? 'Copied!' : 'Copy Prompt'}
                               </button>
                             </div>
-                            <pre className="text-xs text-stone-500 whitespace-pre-wrap font-mono max-h-60 overflow-y-auto bg-stone-50 p-4 rounded-xl border border-stone-200 leading-relaxed">
+                            <pre className="text-xs text-white/40 whitespace-pre-wrap font-mono max-h-60 overflow-y-auto bg-white/[0.02] p-4 rounded-xl border border-white/[0.06] leading-relaxed">
                               {gradingResult.srsItem.lastVideoPrompt2}
                             </pre>
                           </div>
@@ -803,43 +1050,34 @@ export default function Dashboard() {
                   </div>
                 </div>
               ) : (
-                // Quiz taking UI
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                  {/* Left: Questions */}
-                  <div className="bg-white shadow-sm border border-stone-200 p-6 rounded-3xl border border-stone-200 flex flex-col h-[600px]">
-                    <h3 className="text-lg font-semibold mb-4 text-stone-900 flex items-center gap-2">
-                      <GraduationCap className="w-5 h-5 text-primary" />
-                      Quiz Questions
+                /* Quiz taking UI */
+                <div className="max-w-4xl mx-auto flex flex-col gap-6 pb-20">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                      <GraduationCap className="w-6 h-6 text-white" />
+                      Quiz Assignment
                     </h3>
-                    <div className="flex-1 overflow-y-auto bg-stone-50 border border-stone-200 rounded-xl p-5 font-sans whitespace-pre-wrap text-stone-500 text-sm leading-relaxed max-h-[500px]">
-                      {(() => {
-                        const level = selectedReview.level;
-                        const quizFields = [
-                          selectedReview.raw.quiz1DocId,
-                          selectedReview.raw.quiz2DocId,
-                          selectedReview.raw.quiz3DocId,
-                          selectedReview.raw.quiz4DocId,
-                          selectedReview.raw.quiz5DocId
-                        ];
-                        const rawQuiz = quizFields[level] || selectedReview.raw.quiz1DocId || "";
-                        return extractStudentQuiz(rawQuiz);
-                      })()}
-                    </div>
                   </div>
 
-                  {/* Right: Answer Sheet */}
-                  <div className="bg-white shadow-sm border border-stone-200 p-6 rounded-3xl border border-stone-200 flex flex-col h-[600px]">
-                    <h3 className="text-lg font-semibold mb-4 text-stone-900 flex items-center gap-2">
-                      <FileText className="w-5 h-5 text-accent" />
-                      Answer Sheet
-                    </h3>
-                    {parsedTasks.length > 0 ? (
-                      <div className="flex-1 overflow-y-auto pr-1 mb-4 space-y-5">
-                        {parsedTasks.map(task => {
-                          const isMC = /^[A-D]\)\s/m.test(task.questionText);
-                          return (
-                            <div key={task.id} className="flex flex-col gap-1.5 text-left">
-                              <span className="text-sm font-semibold text-accent font-mono">{task.label}:</span>
+                  {parsedTasks.length > 0 ? (
+                    <div className="space-y-6">
+                      {parsedTasks.map((task, idx) => {
+                        const isMC = /^[A-D]\)\s/m.test(task.questionText);
+                        return (
+                          <motion.div 
+                            key={task.id} 
+                            initial={{ opacity: 0, y: 15 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: idx * 0.05 }}
+                            className="card-surface-elevated p-8 rounded-3xl"
+                          >
+                            <h3 className="text-sm font-bold text-white uppercase tracking-wider mb-3">{task.label}</h3>
+                            <div className="text-sm text-white/70 whitespace-pre-wrap leading-relaxed mb-6 font-medium">
+                              {task.questionText}
+                            </div>
+                            
+                            <div className="border-t border-white/[0.06] pt-5">
+                              <span className="block text-xs font-bold text-white/30 uppercase tracking-wider mb-3">Your Answer:</span>
                               <textarea
                                 value={individualAnswers[task.id] || ""}
                                 onChange={e => {
@@ -850,33 +1088,62 @@ export default function Dashboard() {
                                 }}
                                 placeholder={isMC ? "Type A, B, C, or D..." : "Type your answer here..."}
                                 rows={isMC ? 2 : 4}
-                                className="w-full bg-stone-50 border border-stone-200 rounded-xl px-4 py-3 text-stone-900 text-sm focus:outline-none focus:border-accent transition-colors font-mono resize-none"
+                                className="input-dark w-full px-5 py-4 text-sm resize-none"
                               />
                             </div>
-                          );
-                        })}
+                          </motion.div>
+                        );
+                      })}
+                      
+                      <div className="pt-6">
+                        <motion.button 
+                          whileHover={{ scale: 1.01 }}
+                          whileTap={{ scale: 0.98 }}
+                          onClick={handleGrade}
+                          disabled={!parsedTasks.some(task => (individualAnswers[task.id] || "").trim().length > 0)}
+                          className="btn-primary w-full py-5 text-sm font-bold uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40"
+                        >
+                          <Sparkles className="w-5 h-5" />
+                          Submit All Answers for AI Grading
+                        </motion.button>
                       </div>
-                    ) : (
+                    </div>
+                  ) : (
+                    <div className="card-surface-elevated p-8 rounded-3xl flex flex-col">
+                      <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-6 font-sans whitespace-pre-wrap text-white/50 text-sm leading-relaxed mb-6">
+                        {(() => {
+                          const level = selectedReview.level;
+                          const quizFields = [
+                            selectedReview.raw.quiz1DocId,
+                            selectedReview.raw.quiz2DocId,
+                            selectedReview.raw.quiz3DocId,
+                            selectedReview.raw.quiz4DocId,
+                            selectedReview.raw.quiz5DocId
+                          ];
+                          const rawQuiz = quizFields[level] || selectedReview.raw.quiz1DocId || "";
+                          return extractStudentQuiz(rawQuiz);
+                        })()}
+                      </div>
+                      
+                      <span className="block text-xs font-bold text-white/30 uppercase tracking-wider mb-3">Your Answer:</span>
                       <textarea 
                         value={studentAnswers}
                         onChange={e => setStudentAnswers(e.target.value)}
                         placeholder="Write your answers here..."
-                        className="flex-1 w-full bg-stone-50 border border-stone-200 rounded-xl p-5 text-stone-900 text-sm focus:outline-none focus:border-accent transition-colors font-mono resize-none h-[400px] mb-4"
+                        className="input-dark flex-1 w-full p-6 text-sm resize-none min-h-[300px] mb-6"
                       />
-                    )}
-                    <button 
-                      onClick={handleGrade}
-                      disabled={
-                        parsedTasks.length > 0 
-                          ? !parsedTasks.some(task => (individualAnswers[task.id] || "").trim().length > 0)
-                          : !studentAnswers.trim()
-                      }
-                      className="w-full py-4 bg-indigo-600 text-white font-bold rounded-xl hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
-                    >
-                      <Sparkles className="w-5 h-5" />
-                      Submit & Grade via AI Chain
-                    </button>
-                  </div>
+                      <motion.button 
+                        whileHover={{ scale: 1.01 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={handleGrade}
+                        disabled={!studentAnswers.trim()}
+                        className="btn-primary w-full py-5 text-sm font-bold uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40"
+                      >
+                        <Sparkles className="w-5 h-5" />
+                        Submit Answer for AI Grading
+                      </motion.button>
+                    </div>
+                  )}
                 </div>
               )}
             </motion.div>
@@ -887,81 +1154,81 @@ export default function Dashboard() {
       {/* Historical Feedback Modal */}
       <AnimatePresence>
         {activeFeedbackItem && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 ">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
             <motion.div 
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white shadow-sm border border-stone-200 w-full max-w-4xl rounded-3xl border border-stone-200 overflow-hidden shadow-2xl flex flex-col max-h-[85vh]"
+              className="card-glass w-full max-w-4xl rounded-3xl overflow-hidden shadow-2xl shadow-black/50 flex flex-col max-h-[85vh] border border-white/[0.1]"
             >
               {/* Header */}
-              <div className="p-6 border-b border-stone-200 flex justify-between items-center bg-stone-50">
+              <div className="p-6 border-b border-white/[0.06] flex justify-between items-center bg-white/[0.02]">
                 <div>
-                  <h3 className="text-xl font-bold text-stone-900">{activeFeedbackItem.subjectSub}</h3>
-                  <p className="text-xs text-stone-500">{activeFeedbackItem.subjectMain} — Level {activeFeedbackItem.currentLevel}</p>
+                  <h3 className="text-xl font-bold text-white">{activeFeedbackItem.subjectSub}</h3>
+                  <p className="text-xs text-white/40">{activeFeedbackItem.subjectMain} — Level {activeFeedbackItem.currentLevel}</p>
                 </div>
                 <button 
                   onClick={() => setActiveFeedbackItem(null)}
-                  className="w-8 h-8 rounded-full bg-stone-100 hover:bg-stone-200 flex items-center justify-center text-stone-500 transition-colors cursor-pointer"
+                  className="w-8 h-8 rounded-full bg-white/[0.06] hover:bg-white/[0.1] flex items-center justify-center text-white/40 hover:text-white transition-colors cursor-pointer"
                 >
                   <X className="w-4 h-4" />
                 </button>
               </div>
 
               {/* Tabs */}
-              <div className="flex border-b border-stone-200 bg-black/20">
+              <div className="flex border-b border-white/[0.06] bg-white/[0.02]">
                 <button 
                   onClick={() => setFeedbackTab("brief")} 
-                  className={`px-6 py-4 text-sm font-medium border-b-2 transition-all cursor-pointer ${feedbackTab === 'brief' ? 'border-primary text-indigo-600 bg-indigo-50' : 'border-transparent text-stone-500 hover:text-stone-900'}`}
+                  className={`px-6 py-4 text-sm font-medium border-b-2 transition-all cursor-pointer ${feedbackTab === 'brief' ? 'border-zinc-9000 text-white bg-zinc-9000/5' : 'border-transparent text-white/40 hover:text-white/60'}`}
                 >
                   Remediation Brief & Feedback
                 </button>
                 <button 
                   onClick={() => setFeedbackTab("prompts")} 
-                  className={`px-6 py-4 text-sm font-medium border-b-2 transition-all cursor-pointer ${feedbackTab === 'prompts' ? 'border-primary text-indigo-600 bg-indigo-50' : 'border-transparent text-stone-500 hover:text-stone-900'}`}
+                  className={`px-6 py-4 text-sm font-medium border-b-2 transition-all cursor-pointer ${feedbackTab === 'prompts' ? 'border-zinc-9000 text-white bg-zinc-9000/5' : 'border-transparent text-white/40 hover:text-white/60'}`}
                 >
                   NotebookLM Prompts
                 </button>
               </div>
 
               {/* Body */}
-              <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
                 {feedbackTab === "brief" && (
-                  <div className="whitespace-pre-wrap font-sans text-stone-500 text-sm leading-relaxed">
+                  <div className="whitespace-pre-wrap font-sans text-white/55 text-sm leading-relaxed">
                     {activeFeedbackItem.lastFeedback}
                   </div>
                 )}
 
                 {feedbackTab === "prompts" && (
                   <div className="space-y-6">
-                    <div className="p-5 bg-stone-100 rounded-xl border border-stone-200 relative group">
+                    <div className="p-5 card-surface rounded-xl relative group">
                       <div className="flex justify-between items-center mb-4">
-                        <h4 className="font-semibold text-stone-900">Video Prompt 1 (Episode 1 - Polishing)</h4>
+                        <h4 className="font-semibold text-white">Video Prompt 1 (Episode 1 - Polishing)</h4>
                         <button 
                           onClick={() => copyToClipboard(activeFeedbackItem.lastVideoPrompt1, 'fv1')}
-                          className="flex items-center gap-1.5 text-xs bg-stone-100 hover:bg-stone-200 text-stone-600 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+                          className="flex items-center gap-1.5 text-xs bg-white/[0.04] hover:bg-white/[0.08] text-white/50 px-3 py-1.5 rounded-lg transition-colors cursor-pointer border border-white/[0.06]"
                         >
-                          {copiedId === 'fv1' ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
+                          {copiedId === 'fv1' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                           {copiedId === 'fv1' ? 'Copied!' : 'Copy Prompt'}
                         </button>
                       </div>
-                      <pre className="text-xs text-stone-500 whitespace-pre-wrap font-mono max-h-60 overflow-y-auto bg-stone-50 p-4 rounded-xl border border-stone-200 leading-relaxed">
+                      <pre className="text-xs text-white/40 whitespace-pre-wrap font-mono max-h-60 overflow-y-auto bg-white/[0.02] p-4 rounded-xl border border-white/[0.06] leading-relaxed">
                         {activeFeedbackItem.lastVideoPrompt1}
                       </pre>
                     </div>
 
-                    <div className="p-5 bg-stone-100 rounded-xl border border-stone-200 relative group">
+                    <div className="p-5 card-surface rounded-xl relative group">
                       <div className="flex justify-between items-center mb-4">
-                        <h4 className="font-semibold text-stone-900">Video Prompt 2 (Episode 2 - Synthesis)</h4>
+                        <h4 className="font-semibold text-white">Video Prompt 2 (Episode 2 - Synthesis)</h4>
                         <button 
                           onClick={() => copyToClipboard(activeFeedbackItem.lastVideoPrompt2, 'fv2')}
-                          className="flex items-center gap-1.5 text-xs bg-stone-100 hover:bg-stone-200 text-stone-600 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+                          className="flex items-center gap-1.5 text-xs bg-white/[0.04] hover:bg-white/[0.08] text-white/50 px-3 py-1.5 rounded-lg transition-colors cursor-pointer border border-white/[0.06]"
                         >
-                          {copiedId === 'fv2' ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
+                          {copiedId === 'fv2' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                           {copiedId === 'fv2' ? 'Copied!' : 'Copy Prompt'}
                         </button>
                       </div>
-                      <pre className="text-xs text-stone-500 whitespace-pre-wrap font-mono max-h-60 overflow-y-auto bg-stone-50 p-4 rounded-xl border border-stone-200 leading-relaxed">
+                      <pre className="text-xs text-white/40 whitespace-pre-wrap font-mono max-h-60 overflow-y-auto bg-white/[0.02] p-4 rounded-xl border border-white/[0.06] leading-relaxed">
                         {activeFeedbackItem.lastVideoPrompt2}
                       </pre>
                     </div>
@@ -979,51 +1246,53 @@ export default function Dashboard() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-stone-50  z-50 flex items-center justify-center p-4"
+            className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4"
             onClick={() => setShowCalendarModal(false)}
           >
             <motion.div
               initial={{ scale: 0.9, opacity: 0, y: 20 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.9, opacity: 0, y: 20 }}
-              className="bg-white rounded-xl shadow-sm border border-stone-200 p-6 max-w-lg w-full"
+              className="card-glass p-6 max-w-lg w-full border border-white/[0.1] shadow-2xl shadow-black/50"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-lg font-bold flex items-center gap-2">
-                  <CalendarDays className="w-5 h-5 text-primary" />
+                <h2 className="text-lg font-bold flex items-center gap-2 text-white">
+                  <CalendarDays className="w-5 h-5 text-white" />
                   Calendar Sync
                 </h2>
-                <button onClick={() => setShowCalendarModal(false)} className="text-stone-500 hover:text-stone-900 p-1">
+                <button onClick={() => setShowCalendarModal(false)} className="text-white/40 hover:text-white p-1 transition-colors cursor-pointer">
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
-              <p className="text-sm text-stone-500 mb-6">
+              <p className="text-sm text-white/50 mb-6">
                 Subscribe once — all future reviews will automatically appear in your calendar.
               </p>
 
               {/* Apple Calendar */}
               <div className="mb-4">
-                <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">🍎 Apple Calendar (Mac/iPhone)</h3>
+                <h3 className="text-sm font-semibold mb-2 flex items-center gap-2 text-white">🍎 Apple Calendar (Mac/iPhone)</h3>
                 <a
                   href={`webcal://${typeof window !== 'undefined' ? window.location.host : 'localhost:3000'}/api/calendar`}
-                  className="flex items-center justify-center gap-2 w-full py-3 bg-gradient-to-r from-indigo-50 to-indigo-100 hover:from-indigo-100 hover:to-indigo-200 rounded-xl text-sm font-medium text-indigo-700 transition-all border border-indigo-200"
+                  className="flex items-center justify-center gap-2 w-full py-3 bg-white/[0.04] hover:bg-white/[0.08] rounded-xl text-sm font-medium text-white transition-all border border-white/[0.12]"
                 >
                   <CalendarDays className="w-4 h-4" />
                   Subscribe in Apple Calendar
                 </a>
-                <p className="text-xs text-stone-500 mt-1.5 ml-1">Opens Apple Calendar and adds a live subscription. Updates automatically.</p>
+                <p className="text-xs text-white/30 mt-1.5 ml-1">
+                  <strong className="text-white/50">Hinweis für lokales Testen:</strong> Apple blockiert 1-Click Abos ohne HTTPS. Für ein Live-Abo füge <code className="bg-white/[0.06] px-1 py-0.5 rounded text-white/40">http://localhost:3000/api/calendar</code> manuell in Apple Calendar ein. Im Live-Betrieb funktioniert der Button automatisch.
+                </p>
               </div>
 
               {/* Google Calendar */}
               <div className="mb-4">
-                <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">📅 Google Calendar</h3>
+                <h3 className="text-sm font-semibold mb-2 flex items-center gap-2 text-white">📅 Google Calendar</h3>
                 <div className="flex gap-2">
                   <input
                     readOnly
                     value={`${typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000'}/api/calendar`}
-                    className="flex-1 px-3 py-2.5 bg-stone-50 rounded-xl text-xs font-mono text-stone-500 border border-stone-200 truncate"
+                    className="input-dark flex-1 px-3 py-2.5 text-xs font-mono truncate"
                   />
                   <button
                     onClick={() => {
@@ -1031,23 +1300,23 @@ export default function Dashboard() {
                       setCalendarUrlCopied(true);
                       setTimeout(() => setCalendarUrlCopied(false), 2000);
                     }}
-                    className="px-3 py-2.5 bg-stone-100 hover:bg-stone-100 rounded-xl border border-stone-200 text-xs font-medium transition-all flex items-center gap-1.5"
+                    className="px-3 py-2.5 btn-secondary rounded-xl text-xs font-medium flex items-center gap-1.5"
                   >
-                    {calendarUrlCopied ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
+                    {calendarUrlCopied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                     {calendarUrlCopied ? "Copied!" : "Copy"}
                   </button>
                 </div>
-                <p className="text-xs text-stone-500 mt-1.5 ml-1">
+                <p className="text-xs text-white/30 mt-1.5 ml-1">
                   Google Calendar → Other calendars (+) → From URL → Paste the URL above.
                 </p>
               </div>
 
               {/* One-time download fallback */}
-              <div className="pt-4 border-t border-stone-200">
+              <div className="pt-4 border-t border-white/[0.06]">
                 <a
                   href="/api/calendar"
                   download="srs-reviews.ics"
-                  className="flex items-center justify-center gap-2 w-full py-2.5 bg-stone-100 hover:bg-stone-100 rounded-xl text-xs font-medium text-stone-500 hover:text-stone-900 transition-all border border-stone-200"
+                  className="flex items-center justify-center gap-2 w-full py-2.5 bg-white/[0.04] hover:bg-white/[0.06] rounded-xl text-xs font-medium text-white/40 hover:text-white/60 transition-all border border-white/[0.06]"
                 >
                   <FileText className="w-3.5 h-3.5" />
                   Download .ics file (one-time import)
@@ -1057,6 +1326,171 @@ export default function Dashboard() {
           </motion.div>
         )}
       </AnimatePresence>
+      </div>
+
+      {/* Settings / Semester Modal */}
+      <AnimatePresence>
+        {showSettingsModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-[#0a0a0a] rounded-2xl p-6 w-full max-w-lg shadow-2xl border border-white/[0.08]"
+            >
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                  <GraduationCap className="w-5 h-5 text-accent-1" />
+                  Semester Settings
+                </h3>
+                <button 
+                  onClick={() => setShowSettingsModal(false)}
+                  className="p-2 hover:bg-white/[0.06] rounded-full transition-colors text-white/50"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-6">
+                <div>
+                  <h4 className="text-sm font-semibold text-white/50 uppercase tracking-wider mb-3">Current Status</h4>
+                  <div className="bg-white/[0.02] border border-white/[0.04] rounded-xl p-4 flex items-center justify-between">
+                    <div>
+                      <div className="text-2xl font-bold text-white">Semester {currentSemester}</div>
+                      <div className="text-sm text-white/40">Active study period</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <h4 className="text-sm font-semibold text-white/50 uppercase tracking-wider mb-3">Module Presets</h4>
+                  <div className="space-y-2 mb-3">
+                    {modulePresets.length === 0 ? (
+                      <div className="text-white/30 text-sm italic py-2">No modules defined yet.</div>
+                    ) : (
+                      modulePresets.map((preset, idx) => (
+                        <div key={idx} className="flex items-center justify-between bg-white/[0.02] border border-white/[0.04] p-3 rounded-lg">
+                          <span className="text-white text-sm">{preset}</span>
+                          <button 
+                            onClick={() => {
+                              const newPresets = modulePresets.filter((_, i) => i !== idx);
+                              fetch('/api/settings', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ action: 'update_presets', presets: newPresets })
+                              }).then(res => res.json()).then(data => {
+                            if (data.error) {
+                              alert(`Error: ${data.error}`);
+                              return;
+                            }
+                            setModulePresets(data.modulePresets || []);
+                            if (subjectInput === preset) setSubjectInput((data.modulePresets && data.modulePresets[0]) || "");
+                              });
+                            }}
+                            className="text-white/30 hover:text-red-400 transition-colors"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <input 
+                      type="text" 
+                      value={newPresetInput}
+                      onChange={e => setNewPresetInput(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' && newPresetInput.trim()) {
+                          const newPresets = [...modulePresets, newPresetInput.trim()];
+                          fetch('/api/settings', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ action: 'update_presets', presets: newPresets })
+                          }).then(res => res.json()).then(data => {
+                            setModulePresets(data.modulePresets);
+                            if (!subjectInput) setSubjectInput(newPresetInput.trim());
+                            setNewPresetInput("");
+                          });
+                        }
+                      }}
+                      placeholder="e.g. Linear Algebra"
+                      className="input-dark flex-1 px-4 py-2 text-sm"
+                    />
+                    <button 
+                      onClick={() => {
+                        if (newPresetInput.trim()) {
+                          const newPresets = [...modulePresets, newPresetInput.trim()];
+                          fetch('/api/settings', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ action: 'update_presets', presets: newPresets })
+                          }).then(res => res.json()).then(data => {
+                            setModulePresets(data.modulePresets);
+                            if (!subjectInput) setSubjectInput(newPresetInput.trim());
+                            setNewPresetInput("");
+                          });
+                        }
+                      }}
+                      className="bg-white/[0.06] hover:bg-white/[0.1] text-white px-4 py-2 rounded-lg text-sm transition-colors border border-white/[0.08]"
+                    >
+                      Add
+                    </button>
+                  </div>
+                </div>
+
+                <div className="pt-4 mt-6 border-t border-white/[0.08]">
+                  <h4 className="text-sm font-semibold text-red-400 uppercase tracking-wider mb-2">Danger Zone</h4>
+                  <p className="text-white/40 text-xs mb-4">Starting a new semester will increment your semester counter and wipe your current module presets so you can start fresh.</p>
+                  <button 
+                    onClick={() => {
+                      if (confirm("Are you sure you want to start a new semester? Your presets will be reset.")) {
+                        fetch('/api/settings', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ action: 'new_semester' })
+                        }).then(res => res.json()).then(data => {
+                          setCurrentSemester(data.currentSemester);
+                          setModulePresets(data.modulePresets);
+                          setSubjectInput("");
+                        });
+                      }
+                    }}
+                    className="w-full py-3 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded-xl text-sm font-medium transition-colors flex items-center justify-center gap-2 mb-2"
+                  >
+                    <AlertTriangle className="w-4 h-4" />
+                    Start New Semester (Semester {currentSemester + 1})
+                  </button>
+                  <button 
+                    onClick={() => {
+                      if (confirm("Are you absolutely sure you want to reset back to Semester 1? Your presets will be wiped.")) {
+                        fetch('/api/settings', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ action: 'reset_semester' })
+                        }).then(res => res.json()).then(data => {
+                          setCurrentSemester(data.currentSemester);
+                          setModulePresets(data.modulePresets);
+                          setSubjectInput("");
+                        });
+                      }
+                    }}
+                    className="w-full py-2 bg-transparent hover:bg-red-500/10 text-white/40 hover:text-red-400 border border-transparent hover:border-red-500/20 rounded-xl text-xs font-medium transition-colors flex items-center justify-center gap-2"
+                  >
+                    Reset to Semester 1
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
     </div>
   );
 }

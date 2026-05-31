@@ -1,6 +1,7 @@
+export const dynamic = "force-dynamic";
+
 import { prisma } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
-
 
 /**
  * Generates an ICS calendar feed with all upcoming SRS reviews.
@@ -36,16 +37,21 @@ export async function GET(req: NextRequest) {
     const endDateStr = formatICSDate(endDate);
 
     const intervals = ["Tag 1", "Tag 3", "Tag 7", "Tag 21", "Tag 60", "Tag 180", "Tag 365"];
-    const interval = intervals[item.currentLevel] || `Level ${item.currentLevel}`;
-    const isDue = reviewDate <= now;
+    const interval = intervals[item.currentLevel] || `Tag ?`;
+    const levelNum = item.currentLevel + 1;
+    const baseUrl = req.nextUrl.origin;
 
     const summary = `🧠 Review: ${item.subjectMain} - ${item.subjectSub}`;
+    const tutorUrl = item.tutorPromptDocId ? `${baseUrl}/tutor/${item.tutorPromptDocId}` : 'Keine';
     const description = [
-      `📝 Quiz Level: ${item.currentLevel + 1} (${interval})`,
-      isDue ? "⚡ FÄLLIG - Jetzt reviewen!" : `📅 Fällig am ${reviewDate.toLocaleDateString("de-DE")}`,
+      `Dein Review für ${interval} (Level ${levelNum})`,
       "",
-      `ID: ${item.id}`,
-    ].join("\\n");
+      "📝 Dein Quiz für heute:",
+      `${baseUrl}/`,
+      "",
+      "🤖 Tutor Prompt:",
+      tutorUrl,
+    ].join("\n");
 
     ics.push(
       "BEGIN:VEVENT",
@@ -67,12 +73,25 @@ export async function GET(req: NextRequest) {
 
   ics.push("END:VCALENDAR");
 
-  const icsContent = ics.join("\r\n");
+  // Fold lines at 75 characters as required by iCalendar RFC 5545
+  const icsContent = ics
+    .map(line => {
+      if (line.length <= 75) return line;
+      let folded = "";
+      let currentLine = line;
+      while (currentLine.length > 75) {
+        folded += currentLine.substring(0, 75) + "\r\n ";
+        currentLine = currentLine.substring(75);
+      }
+      folded += currentLine;
+      return folded;
+    })
+    .join("\r\n");
 
   return new Response(icsContent, {
     headers: {
       "Content-Type": "text/calendar; charset=utf-8",
-      "Content-Disposition": 'attachment; filename="srs-reviews.ics"',
+      "Content-Disposition": 'inline; filename="srs-reviews.ics"',
       "Cache-Control": "no-cache, no-store, must-revalidate",
     },
   });
@@ -90,5 +109,9 @@ function formatICSDateTime(date: Date): string {
 }
 
 function escapeICS(text: string): string {
-  return text.replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,");
+  return text
+    .replace(/\\/g, "\\\\") // Escape backslashes first
+    .replace(/;/g, "\\;")   // Escape semicolons
+    .replace(/,/g, "\\,")   // Escape commas
+    .replace(/\n/g, "\\n"); // Replace actual newlines with the literal \n string for ICS
 }

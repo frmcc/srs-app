@@ -3,9 +3,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 import { GRADE_PROMPTS } from "./prompts";
 import { sendPushNotification } from "@/lib/push";
+import { generateContentWithRetry } from "@/lib/gemini-retry";
 import fs from "fs/promises";
 
-const modelName = "gemini-3.0-flash";
+const modelName = "gemini-3.1-flash-lite";
 
 const formatPrompt = (template: string, vars: Record<string, any>) => {
   let formatted = template;
@@ -109,15 +110,14 @@ export async function POST(req: NextRequest) {
 
         // Step 0: Verify Submission
         sendEvent("progress", { step: 0, message: "Verifying submission (MATCH/MISMATCH check)..." });
-        const mismatchCheckRes = await ai.models.generateContent({
-          model: modelName,
+        const mismatchCheckRes = await generateContentWithRetry(ai, modelName, {
           contents: [{ role: "user", parts: [{ text: `Studenten-Antworten:\n${studentAnswers}` }] }],
           config: {
             systemInstruction: formatPrompt(GRADE_PROMPTS.mismatch_check, {
               QUIZ_QUESTIONS: studentQuizText
             })
           }
-        });
+        }, (msg) => sendEvent("progress", { step: 0, message: msg }), "Submission Check");
         
         const mismatchCheckText = (mismatchCheckRes.text || "").toUpperCase();
         if (mismatchCheckText.includes("MISMATCH")) {
@@ -128,8 +128,7 @@ export async function POST(req: NextRequest) {
         sendEvent("progress", { step: 1, message: "Parallel Grading: Co-Prüfer 1 & 2 evaluating answers..." });
 
         const [res1, res2] = await Promise.all([
-          ai.models.generateContent({
-            model: modelName,
+          generateContentWithRetry(ai, modelName, {
             contents: [{ role: "user", parts: [...sourceMaterialParts, { text: "Hier sind die Dateien. Bitte führe deine System-Instruktionen aus." }] }],
             config: {
               systemInstruction: formatPrompt(GRADE_PROMPTS.co_pruefer_1, {
@@ -141,9 +140,8 @@ export async function POST(req: NextRequest) {
                 STUDENT_ANSWERS: studentAnswers
               })
             }
-          }),
-          ai.models.generateContent({
-            model: modelName,
+          }, (msg) => sendEvent("progress", { step: 1, message: msg }), "Co-Prüfer 1"),
+          generateContentWithRetry(ai, modelName, {
             contents: [{ role: "user", parts: [...sourceMaterialParts, { text: "Hier sind die Dateien. Bitte führe deine System-Instruktionen aus." }] }],
             config: {
               systemInstruction: formatPrompt(GRADE_PROMPTS.co_pruefer_2, {
@@ -155,7 +153,7 @@ export async function POST(req: NextRequest) {
                 STUDENT_ANSWERS: studentAnswers
               })
             }
-          })
+          }, (msg) => sendEvent("progress", { step: 1, message: msg }), "Co-Prüfer 2")
         ]);
 
         const part1Feedback = res1.text || "";
@@ -163,8 +161,7 @@ export async function POST(req: NextRequest) {
 
         // Step 2: Consolidate via Chief Assessor
         sendEvent("progress", { step: 2, message: "Chief Assessor: Consolidating final decision & generating brief..." });
-        const chefRes = await ai.models.generateContent({
-          model: modelName,
+        const chefRes = await generateContentWithRetry(ai, modelName, {
           contents: [{ role: "user", parts: [...sourceMaterialParts, { text: "Hier sind die Dateien. Bitte führe deine System-Instruktionen aus." }] }],
           config: {
             systemInstruction: formatPrompt(GRADE_PROMPTS.chef_pruefer, {
@@ -174,7 +171,7 @@ export async function POST(req: NextRequest) {
               PART_2_ASSESSMENT: part2Feedback
             })
           }
-        });
+        }, (msg) => sendEvent("progress", { step: 2, message: msg }), "Chief Assessor");
 
         const chefFeedback = chefRes.text || "";
 
@@ -188,8 +185,7 @@ export async function POST(req: NextRequest) {
 
         // Generate NotebookLM Prompts
         const lmInstruction = isPass ? GRADE_PROMPTS.video_pass : GRADE_PROMPTS.video_repeat;
-        const lmPromptCall = ai.models.generateContent({
-          model: modelName,
+        const lmPromptCall = generateContentWithRetry(ai, modelName, {
           contents: [{ role: "user", parts: [...sourceMaterialParts, { text: "Hier sind die Dateien. Bitte führe deine System-Instruktionen aus." }] }],
           config: {
             systemInstruction: formatPrompt(lmInstruction, {
@@ -199,7 +195,7 @@ export async function POST(req: NextRequest) {
               GRADER_OUTPUT: chefFeedback
             })
           }
-        });
+        }, (msg) => sendEvent("progress", { step: 3, message: msg }), "Video Prompts");
 
         // Generate dynamic Quiz only on REPEAT (decision is not PASS)
         let nextQuizText = "";
@@ -211,8 +207,7 @@ export async function POST(req: NextRequest) {
           const passQuizInstruction = isMastery ? GRADE_PROMPTS.mastery_quiz : GRADE_PROMPTS.next_quiz_pass;
           const nextIntervalStr = intervals[Math.min(srsItem.currentLevel + 1, 6)];
           
-          const nextQuizCall = ai.models.generateContent({
-            model: modelName,
+          const nextQuizCall = generateContentWithRetry(ai, modelName, {
             contents: [{ role: "user", parts: [...sourceMaterialParts, { text: "Hier sind die Dateien. Bitte führe deine System-Instruktionen aus." }] }],
             config: {
               systemInstruction: formatPrompt(passQuizInstruction, {
@@ -223,15 +218,14 @@ export async function POST(req: NextRequest) {
                 GRADER_OUTPUT: chefFeedback
               })
             }
-          });
+          }, (msg) => sendEvent("progress", { step: 3, message: msg }), "Next Quiz (PASS)");
 
           const [lmResult, nextQuizRes] = await Promise.all([lmPromptCall, nextQuizCall]);
           lmRes = lmResult;
           nextQuizText = nextQuizRes.text || "";
         } else {
           // On REPEAT, we generate both NotebookLM prompts and the custom remedial quiz
-          const nextQuizCall = ai.models.generateContent({
-            model: modelName,
+          const nextQuizCall = generateContentWithRetry(ai, modelName, {
             contents: [{ role: "user", parts: [...sourceMaterialParts, { text: "Hier sind die Dateien. Bitte führe deine System-Instruktionen aus." }] }],
             config: {
               systemInstruction: formatPrompt(GRADE_PROMPTS.retry_quiz_fail, {
@@ -241,7 +235,7 @@ export async function POST(req: NextRequest) {
                 GRADER_OUTPUT: chefFeedback
               })
             }
-          });
+          }, (msg) => sendEvent("progress", { step: 3, message: msg }), "Next Quiz (REPEAT)");
 
           const [lmResult, nextQuizRes] = await Promise.all([lmPromptCall, nextQuizCall]);
           lmRes = lmResult;

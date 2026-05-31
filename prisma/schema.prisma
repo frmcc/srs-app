@@ -21,7 +21,10 @@ model SRSItem {
   subjectSub       String   // Equivalent to Google Sheet Column B
   createdAt        DateTime @default(now()) // Column C
   
-  tutorPromptDocId String?  // Column D
+  tutorPromptDocId String?  // Column D - legacy, now stores item ID for URL
+  tutorPromptContent String? // Full tutor prompt text, served via /tutor/[id]
+  
+  semester         Int      @default(1) // Tracks which semester this module belongs to
   
   currentLevel     Int      @default(0) // Column E
   nextReviewDate   DateTime // Column F
@@ -39,6 +42,14 @@ model SRSItem {
   lastFeedback     String?
   lastVideoPrompt1 String?
   lastVideoPrompt2 String?
+  
+  // NotebookLM Podcast Integration
+  notebookId       String?
+  prePodcastPrompt String?
+  postPodcastPrompt String?
+  prePodcastUrl    String?
+  postPodcastUrl   String?
+  videoUrl         String?
   
   // Relationship to User for future multi-tenant support
   userId           String?
@@ -63,4 +74,11 @@ model BackgroundJob {
   error       String?
   createdAt   DateTime  @default(now())
   completedAt DateTime?
+}
+
+model AppConfig {
+  id              Int      @id @default(1)
+  currentSemester Int      @default(1)
+  modulePresets   String   @default("[]") // JSON string array
+  updatedAt       DateTime @updatedAt
 }

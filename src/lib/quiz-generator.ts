@@ -1,7 +1,9 @@
 import { prisma } from "@/lib/db";
 import { GoogleGenAI } from "@google/genai";
-import { PROMPTS } from "../app/api/quiz/prompts";
+import { PROMPTS, podcast_prompts } from "../app/api/quiz/prompts";
 import { sendPushNotification } from "./push";
+import { generatePodcastWorker } from "./notebooklm";
+import { generateContentWithRetry } from "./gemini-retry";
 import fs from "fs/promises";
 import path from "path";
 
@@ -27,7 +29,7 @@ export async function runQuizGeneration(params: {
   jobId?: string;
 }) {
   const { subjectMain, subjectSub, textContent, filePaths, onProgress, jobId } = params;
-  const modelName = "gemini-3.0-flash";
+  const modelName = "gemini-3.1-flash-lite";
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
   const progress = onProgress || (() => {});
 
@@ -68,11 +70,10 @@ export async function runQuizGeneration(params: {
 
     // Step 1: Blueprint
     progress(1, "Analyzing material & Generating Blueprint...");
-    const blueprintRes = await ai.models.generateContent({
-      model: modelName,
+    const blueprintRes = await generateContentWithRetry(ai, modelName, {
       contents: [{ role: "user", parts: [...masterContextParts, { text: "Hier sind die Materialien. Bitte führe deine System-Instruktionen aus." }] }],
       config: { systemInstruction: PROMPTS.blueprint + `\n\nModul/Vorlesungsthema:\n${subjectMain} - ${subjectSub}` },
-    });
+    }, (msg) => progress(1, msg), "Blueprint");
     const blueprint = blueprintRes.text;
 
     // Steps 2-6: Quiz 1-5
@@ -83,11 +84,10 @@ export async function runQuizGeneration(params: {
 
     for (let i = 0; i < quizPrompts.length; i++) {
       progress(2 + i, `Generating Quiz ${i + 1}...`);
-      const res = await ai.models.generateContent({
-        model: modelName,
+      const res = await generateContentWithRetry(ai, modelName, {
         contents: [{ role: "user", parts: [...masterContextParts, { text: "Hier sind die Materialien. Bitte führe deine System-Instruktionen aus." }] }],
         config: { systemInstruction: quizPrompts[i] + `\n\nModul/Vorlesungsthema:\n${subjectMain}\n\nBlueprint:\n${blueprint}\n\nVorheriger Quiz-Agent-Output:\n${lastQuiz}\n\nBisheriges Coverage Ledger:\n${lastLedger}` },
-      });
+      }, (msg) => progress(2 + i, msg), `Quiz ${i + 1}`);
       const text = res.text;
       quizResults.push(text || "");
       lastQuiz = extractSection(text, "===STUDENT_QUIZ_START===", "===STUDENT_QUIZ_END===");
@@ -96,15 +96,24 @@ export async function runQuizGeneration(params: {
 
     // Step 7: Tutor Prompt
     progress(7, "Generating Tutor Prompt System...");
-    const tutorRes = await ai.models.generateContent({
-      model: modelName,
-      contents: [{ role: "user", parts: [...masterContextParts, { text: "Hier sind die Materialien. Bitte führe deine System-Instruktionen aus." }] }],
+    const tutorRes = await generateContentWithRetry(ai, modelName, {
+      contents: [{ role: "user", parts: [...masterContextParts, { text: "Bitte generiere den Tutor-Prompt basierend auf dem bereitgestellten Blueprint." }] }],
       config: { systemInstruction: PROMPTS.tutor_prompt + `\n\nModul/Vorlesungsthema:\n${subjectMain}\n\nBlueprint:\n${blueprint}` },
-    });
+    }, (msg) => progress(7, msg), "Tutor Prompt");
     const tutorPrompt = tutorRes.text;
 
-    // Step 8: Save to DB
-    progress(8, "Saving records to database...");
+    // Step 8: Podcast Prompts
+    progress(8, "Generating Podcast Prompts...");
+    const podcastRes = await generateContentWithRetry(ai, modelName, {
+      contents: [{ role: "user", parts: [...masterContextParts, { text: "Bitte generiere die zwei Regieanweisungen basierend auf dem bereitgestellten Blueprint." }] }],
+      config: { systemInstruction: podcast_prompts + `\n\nModul/Vorlesungsthema:\n${subjectMain}\n\nBlueprint:\n${blueprint}` },
+    }, (msg) => progress(8, msg), "Podcast Prompts");
+    const podcastOutput = podcastRes.text;
+    const prePodcastPrompt = extractSection(podcastOutput, "===PRE_PODCAST_START===", "===PRE_PODCAST_END===");
+    const postPodcastPrompt = extractSection(podcastOutput, "===POST_PODCAST_START===", "===POST_PODCAST_END===");
+
+    // Step 9: Save to DB
+    progress(9, "Saving records to database...");
     const createdItem = await prisma.sRSItem.create({
       data: {
         subjectMain,
@@ -116,9 +125,18 @@ export async function runQuizGeneration(params: {
         quiz3DocId: quizResults[2],
         quiz4DocId: quizResults[3],
         quiz5DocId: quizResults[4],
-        tutorPromptDocId: tutorPrompt,
+        tutorPromptContent: tutorPrompt,
+        tutorPromptDocId: "pending",
+        prePodcastPrompt: prePodcastPrompt || null,
+        postPodcastPrompt: postPodcastPrompt || null,
         sourceMaterialContent: sourceMaterialContentPayload,
       },
+    });
+
+    // Set tutorPromptDocId to the item's own ID
+    await prisma.sRSItem.update({
+      where: { id: createdItem.id },
+      data: { tutorPromptDocId: createdItem.id }
     });
 
     // Mark job done
@@ -136,6 +154,10 @@ export async function runQuizGeneration(params: {
       tag: `quiz-done-${createdItem.id}`,
       url: "/",
     }).catch((e) => console.error("Push notification failed:", e));
+
+    // Automatically trigger podcast generation in the background
+    generatePodcastWorker(createdItem.id, "pre").catch(console.error);
+    generatePodcastWorker(createdItem.id, "post").catch(console.error);
 
     return createdItem;
   } catch (error: any) {

@@ -1,12 +1,14 @@
 import { prisma } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
-import { PROMPTS } from "./prompts";
+import { PROMPTS, podcast_prompts } from "./prompts";
 import { sendPushNotification } from "@/lib/push";
+import { generatePodcastWorker } from "@/lib/notebooklm";
+import { generateContentWithRetry } from "@/lib/gemini-retry";
 import fs from "fs/promises";
 import path from "path";
 
-const modelName = "gemini-3.0-flash";
+const modelName = "gemini-3.1-flash-lite";
 
 const extractSection = (text: string | undefined, startMarker: string, endMarker: string) => {
   if (!text) return "";
@@ -94,11 +96,10 @@ export async function POST(req: NextRequest) {
 
       try {
         sendEvent("progress", { step: 1, message: "Analyzing material & Generating Blueprint..." });
-        const blueprintRes = await ai.models.generateContent({
-          model: modelName,
+        const blueprintRes = await generateContentWithRetry(ai, modelName, {
           contents: [{ role: "user", parts: [...masterContextParts, { text: "Hier sind die Materialien. Bitte führe deine System-Instruktionen aus." }] }],
           config: { systemInstruction: PROMPTS.blueprint + `\n\nModul/Vorlesungsthema:\n${subjectMain} - ${subjectSub}` }
-        });
+        }, (msg) => sendEvent("progress", { step: 1, message: msg }), "Blueprint");
         const blueprint = blueprintRes.text;
 
         const quizPrompts = [PROMPTS.quiz_tag_1, PROMPTS.quiz_tag_3, PROMPTS.quiz_tag_7, PROMPTS.quiz_tag_21, PROMPTS.quiz_tag_60];
@@ -108,11 +109,10 @@ export async function POST(req: NextRequest) {
 
         for (let i = 0; i < quizPrompts.length; i++) {
           sendEvent("progress", { step: 2 + i, message: `Generating Quiz ${i + 1}...` });
-          const res = await ai.models.generateContent({
-            model: modelName,
+          const res = await generateContentWithRetry(ai, modelName, {
             contents: [{ role: "user", parts: [...masterContextParts, { text: "Hier sind die Materialien. Bitte führe deine System-Instruktionen aus." }] }],
             config: { systemInstruction: quizPrompts[i] + `\n\nModul/Vorlesungsthema:\n${subjectMain}\n\nBlueprint:\n${blueprint}\n\nVorheriger Quiz-Agent-Output:\n${lastQuiz}\n\nBisheriges Coverage Ledger:\n${lastLedger}` }
-          });
+          }, (msg) => sendEvent("progress", { step: 2 + i, message: msg }), `Quiz ${i + 1}`);
           const text = res.text;
           quizResults.push(text);
           lastQuiz = extractSection(text, "===STUDENT_QUIZ_START===", "===STUDENT_QUIZ_END===");
@@ -120,19 +120,31 @@ export async function POST(req: NextRequest) {
         }
 
         sendEvent("progress", { step: 7, message: "Generating Tutor Prompt System..." });
-        const tutorRes = await ai.models.generateContent({
-          model: modelName,
-          contents: [{ role: "user", parts: [...masterContextParts, { text: "Hier sind die Materialien. Bitte führe deine System-Instruktionen aus." }] }],
+        const tutorRes = await generateContentWithRetry(ai, modelName, {
+          contents: [{ role: "user", parts: [...masterContextParts, { text: "Bitte generiere den Tutor-Prompt basierend auf dem bereitgestellten Blueprint." }] }],
           config: { systemInstruction: PROMPTS.tutor_prompt + `\n\nModul/Vorlesungsthema:\n${subjectMain}\n\nBlueprint:\n${blueprint}` }
-        });
+        }, (msg) => sendEvent("progress", { step: 7, message: msg }), "Tutor Prompt");
         const tutorPrompt = tutorRes.text;
 
-        sendEvent("progress", { step: 8, message: "Saving records to database..." });
+        sendEvent("progress", { step: 8, message: "Generating Podcast Prompts..." });
+        const podcastRes = await generateContentWithRetry(ai, modelName, {
+          contents: [{ role: "user", parts: [...masterContextParts, { text: "Bitte generiere die zwei Regieanweisungen basierend auf dem bereitgestellten Blueprint." }] }],
+          config: { systemInstruction: podcast_prompts + `\n\nModul/Vorlesungsthema:\n${subjectMain}\n\nBlueprint:\n${blueprint}` }
+        }, (msg) => sendEvent("progress", { step: 8, message: msg }), "Podcast Prompts");
+        const podcastOutput = podcastRes.text;
+        const prePodcastPrompt = extractSection(podcastOutput, "===PRE_PODCAST_START===", "===PRE_PODCAST_END===");
+        const postPodcastPrompt = extractSection(podcastOutput, "===POST_PODCAST_START===", "===POST_PODCAST_END===");
+
+        sendEvent("progress", { step: 9, message: "Saving records to database..." });
+
+        const appConfig = await prisma.appConfig.findUnique({ where: { id: 1 } });
+        const currentSemester = appConfig?.currentSemester || 1;
 
         const createdItem = await prisma.sRSItem.create({
           data: {
             subjectMain: subjectMain,
             subjectSub: subjectSub,
+            semester: currentSemester,
             currentLevel: 0,
             nextReviewDate: new Date(Date.now() + 24 * 60 * 60 * 1000), // Tag 1
             quiz1DocId: quizResults[0],
@@ -140,9 +152,18 @@ export async function POST(req: NextRequest) {
             quiz3DocId: quizResults[2],
             quiz4DocId: quizResults[3],
             quiz5DocId: quizResults[4],
-            tutorPromptDocId: tutorPrompt,
+            tutorPromptContent: tutorPrompt,
+            tutorPromptDocId: "pending", // Will be set to item ID after creation
+            prePodcastPrompt: prePodcastPrompt || null,
+            postPodcastPrompt: postPodcastPrompt || null,
             sourceMaterialContent: sourceMaterialContentPayload
           }
+        });
+
+        // Set tutorPromptDocId to the item's own ID (used for /tutor/[id] URL)
+        await prisma.sRSItem.update({
+          where: { id: createdItem.id },
+          data: { tutorPromptDocId: createdItem.id }
         });
 
         sendEvent("done", { success: true, srsItem: createdItem });
@@ -154,6 +175,10 @@ export async function POST(req: NextRequest) {
           tag: `quiz-done-${createdItem.id}`,
           url: "/",
         }).catch((e) => console.error("Push notification failed:", e));
+
+        // Automatically trigger podcast generation in the background
+        generatePodcastWorker(createdItem.id, "pre").catch(console.error);
+        generatePodcastWorker(createdItem.id, "post").catch(console.error);
 
         controller.close();
       } catch (error: any) {

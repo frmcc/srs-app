@@ -1,0 +1,1431 @@
+
+> srs-app@0.1.0 dev
+> next dev
+
+▲ Next.js 16.2.6 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.1.100:3000
+- Environments: .env
+✓ Ready in 301ms
+
+ GET / 200 in 226ms (next.js: 106ms, application-code: 120ms)
+ GET / 200 in 39ms (next.js: 5ms, application-code: 34ms)
+ GET /api/reviews 200 in 213ms (next.js: 164ms, application-code: 49ms)
+ GET /api/reviews 200 in 15ms (next.js: 6ms, application-code: 9ms)
+✓ Compiled in 810ms
+ GET / 200 in 211ms (next.js: 89ms, application-code: 122ms)
+ GET / 200 in 214ms (next.js: 117ms, application-code: 97ms)
+ GET / 200 in 182ms (next.js: 146ms, application-code: 36ms)
+ GET / 200 in 80ms (next.js: 60ms, application-code: 20ms)
+ GET / 200 in 121ms (next.js: 3ms, application-code: 118ms)
+ GET /api/reviews 200 in 23ms (next.js: 19ms, application-code: 4ms)
+⨯ ./src/app/page.tsx:617:25
+Expected '</', got 'jsx text'
+  [90m615 |[0m                       [33mManage[0m [33mSync[0m [33mFeed[0m
+  [90m616 |[0m                     </button>
+[31m[1m>[0m [90m617 |[0m                   </div>
+  [90m    |[0m                         [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m618 |[0m                 </div>
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^[0m
+  [90m619 |[0m               </div>
+  [90m620 |[0m             </motion.div>
+  [90m621 |[0m           )}
+
+Parsing ecmascript source code failed
+
+
+⨯ ./src/app/page.tsx:617:25
+Expected '</', got 'jsx text'
+  [90m615 |[0m                       [33mManage[0m [33mSync[0m [33mFeed[0m
+  [90m616 |[0m                     </button>
+[31m[1m>[0m [90m617 |[0m                   </div>
+  [90m    |[0m                         [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m618 |[0m                 </div>
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^[0m
+  [90m619 |[0m               </div>
+  [90m620 |[0m             </motion.div>
+  [90m621 |[0m           )}
+
+Parsing ecmascript source code failed
+
+
+⨯ ./src/app/page.tsx:617:25
+Expected '</', got 'jsx text'
+  [90m615 |[0m                       [33mManage[0m [33mSync[0m [33mFeed[0m
+  [90m616 |[0m                     </button>
+[31m[1m>[0m [90m617 |[0m                   </div>
+  [90m    |[0m                         [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m618 |[0m                 </div>
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^[0m
+  [90m619 |[0m               </div>
+  [90m620 |[0m             </motion.div>
+  [90m621 |[0m           )}
+
+Parsing ecmascript source code failed
+
+
+⨯ ./src/app/page.tsx:617:25
+Expected '</', got 'jsx text'
+  [90m615 |[0m                       [33mManage[0m [33mSync[0m [33mFeed[0m
+  [90m616 |[0m                     </button>
+[31m[1m>[0m [90m617 |[0m                   </div>
+  [90m    |[0m                         [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m618 |[0m                 </div>
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^[0m
+  [90m619 |[0m               </div>
+  [90m620 |[0m             </motion.div>
+  [90m621 |[0m           )}
+
+Parsing ecmascript source code failed
+
+
+⨯ ./src/app/page.tsx:617:25
+Expected '</', got 'jsx text'
+  [90m615 |[0m                       [33mManage[0m [33mSync[0m [33mFeed[0m
+  [90m616 |[0m                     </button>
+[31m[1m>[0m [90m617 |[0m                   </div>
+  [90m    |[0m                         [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m618 |[0m                 </div>
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^[0m
+  [90m619 |[0m               </div>
+  [90m620 |[0m             </motion.div>
+  [90m621 |[0m           )}
+
+Parsing ecmascript source code failed
+
+
+✓ Compiled in 268ms
+[browser] ./src/app/page.tsx:617:25
+Expected '</', got 'jsx text'
+  615 |                       Manage Sync Feed
+  616 |                     </button>
+> 617 |                   </div>
+      |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 618 |                 </div>
+      | ^^^^^^^^^^^^^^^^
+  619 |               </div>
+  620 |             </motion.div>
+  621 |           )}
+
+Parsing ecmascript source code failed 
+[browser] ./src/app/page.tsx:617:25
+Expected '</', got 'jsx text'
+  615 |                       Manage Sync Feed
+  616 |                     </button>
+> 617 |                   </div>
+      |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 618 |                 </div>
+      | ^^^^^^^^^^^^^^^^
+  619 |               </div>
+  620 |             </motion.div>
+  621 |           )}
+
+Parsing ecmascript source code failed 
+ GET / 500 in 656ms (next.js: 563ms, application-code: 93ms)
+ GET / 500 in 656ms (next.js: 564ms, application-code: 92ms)
+ GET / 500 in 666ms (next.js: 574ms, application-code: 92ms)
+ GET / 500 in 667ms (next.js: 576ms, application-code: 91ms)
+ GET / 500 in 667ms (next.js: 576ms, application-code: 91ms)
+⨯ ./src/app/page.tsx:617:25
+Expected '</', got 'jsx text'
+  [90m615 |[0m                       [33mManage[0m [33mSync[0m [33mFeed[0m
+  [90m616 |[0m                     </button>
+[31m[1m>[0m [90m617 |[0m                   </div>
+  [90m    |[0m                         [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m618 |[0m                 </div>
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^[0m
+  [90m619 |[0m               </div>
+  [90m620 |[0m             </motion.div>
+  [90m621 |[0m           )}
+
+Parsing ecmascript source code failed
+
+
+ GET / 500 in 10ms (next.js: 6ms, application-code: 4ms)
+[browser] Uncaught Error: ./src/app/page.tsx:617:25
+Expected '</', got 'jsx text'
+  615 |                       Manage Sync Feed
+  616 |                     </button>
+> 617 |                   </div>
+      |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 618 |                 </div>
+      | ^^^^^^^^^^^^^^^^
+  619 |               </div>
+  620 |             </motion.div>
+  621 |           )}
+
+Parsing ecmascript source code failed
+
+
+    at <unknown> (Error: ./src/app/page.tsx:617:25)
+    at <unknown> (Error: (./src/app/page.tsx:617:25)
+[browser] ./src/app/page.tsx:617:25
+Expected '</', got 'jsx text'
+  615 |                       Manage Sync Feed
+  616 |                     </button>
+> 617 |                   </div>
+      |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 618 |                 </div>
+      | ^^^^^^^^^^^^^^^^
+  619 |               </div>
+  620 |             </motion.div>
+  621 |           )}
+
+Parsing ecmascript source code failed 
+[browser] ./src/app/page.tsx:617:25
+Expected '</', got 'jsx text'
+  615 |                       Manage Sync Feed
+  616 |                     </button>
+> 617 |                   </div>
+      |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 618 |                 </div>
+      | ^^^^^^^^^^^^^^^^
+  619 |               </div>
+  620 |             </motion.div>
+  621 |           )}
+
+Parsing ecmascript source code failed 
+ GET / 200 in 167ms (next.js: 60ms, application-code: 107ms)
+ GET /api/reviews 200 in 47ms (next.js: 37ms, application-code: 10ms)
+✓ Compiled in 61ms
+⨯ ./src/app/page.tsx:1012:25
+Expected '</', got ')'
+  [90m1010 |[0m                             />
+  [90m1011 |[0m                           </div>
+[31m[1m>[0m [90m1012 |[0m                         );
+  [90m     |[0m                         [31m[1m^[0m
+  [90m1013 |[0m                       })}
+  [90m1014 |[0m                     </div>
+  [90m1015 |[0m                   ) : (
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component]
+
+
+⨯ ./src/app/page.tsx:1012:25
+Expected '</', got ')'
+  [90m1010 |[0m                             />
+  [90m1011 |[0m                           </div>
+[31m[1m>[0m [90m1012 |[0m                         );
+  [90m     |[0m                         [31m[1m^[0m
+  [90m1013 |[0m                       })}
+  [90m1014 |[0m                     </div>
+  [90m1015 |[0m                   ) : (
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component]
+
+
+⨯ ./src/app/page.tsx:1012:25
+Expected '</', got ')'
+  [90m1010 |[0m                             />
+  [90m1011 |[0m                           </div>
+[31m[1m>[0m [90m1012 |[0m                         );
+  [90m     |[0m                         [31m[1m^[0m
+  [90m1013 |[0m                       })}
+  [90m1014 |[0m                     </div>
+  [90m1015 |[0m                   ) : (
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component]
+
+
+ GET / 500 in 31ms (next.js: 12ms, application-code: 19ms)
+ GET / 500 in 32ms (next.js: 18ms, application-code: 14ms)
+ GET / 500 in 32ms (next.js: 23ms, application-code: 9ms)
+⨯ ./src/app/page.tsx:1012:25
+Expected '</', got ')'
+  [90m1010 |[0m                             />
+  [90m1011 |[0m                           </div>
+[31m[1m>[0m [90m1012 |[0m                         );
+  [90m     |[0m                         [31m[1m^[0m
+  [90m1013 |[0m                       })}
+  [90m1014 |[0m                     </div>
+  [90m1015 |[0m                   ) : (
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component]
+
+
+ GET / 500 in 10ms (next.js: 3ms, application-code: 6ms)
+✓ Compiled in 63ms
+[browser] Uncaught Error: ./src/app/page.tsx:1012:25
+Expected '</', got ')'
+  1010 |                             />
+  1011 |                           </div>
+> 1012 |                         );
+       |                         ^
+  1013 |                       })}
+  1014 |                     </div>
+  1015 |                   ) : (
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component]
+
+
+    at <unknown> (Error: ./src/app/page.tsx:1012:25)
+    at <unknown> (Error: (./src/app/page.tsx:1012:25)
+[browser] ./src/app/page.tsx:1012:25
+Expected '</', got ')'
+  1010 |                             />
+  1011 |                           </div>
+> 1012 |                         );
+       |                         ^
+  1013 |                       })}
+  1014 |                     </div>
+  1015 |                   ) : (
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component] 
+[browser] ./src/app/page.tsx:1012:25
+Expected '</', got ')'
+  1010 |                             />
+  1011 |                           </div>
+> 1012 |                         );
+       |                         ^
+  1013 |                       })}
+  1014 |                     </div>
+  1015 |                   ) : (
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component] 
+ GET / 200 in 156ms (next.js: 60ms, application-code: 96ms)
+ GET /api/reviews 200 in 46ms (next.js: 40ms, application-code: 6ms)
+ GET / 200 in 27ms (next.js: 1369µs, application-code: 26ms)
+Quiz generation error: Error [ApiError]: {"error":{"code":404,"message":"models/gemini-3.0-flash is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.","status":"NOT_FOUND"}}
+    at async Object.start (src/app/api/quiz/route.ts:97:30)
+   95 |       try {
+   96 |         sendEvent("progress", { step: 1, message: "Analyzing material & Generating Bluepr...
+>  97 |         const blueprintRes = await ai.models.generateContent({
+      |                              ^
+   98 |           model: modelName,
+   99 |           contents: [{ role: "user", parts: [...masterContextParts, { text: "Hier sind di...
+  100 |           config: { systemInstruction: PROMPTS.blueprint + `\n\nModul/Vorlesungsthema:\n$... {
+  status: 404
+}
+ POST /api/quiz 200 in 3.7s (next.js: 121ms, application-code: 3.6s)
+ GET /api/reviews 200 in 26ms (next.js: 13ms, application-code: 13ms)
+✓ Compiled in 150ms
+ GET /api/reviews 200 in 7ms (next.js: 2ms, application-code: 4ms)
+Quiz generation error: Error [ApiError]: {"error":{"code":404,"message":"models/gemini-3.0-flash is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.","status":"NOT_FOUND"}}
+    at async Object.start (src/app/api/quiz/route.ts:97:30)
+   95 |       try {
+   96 |         sendEvent("progress", { step: 1, message: "Analyzing material & Generating Bluepr...
+>  97 |         const blueprintRes = await ai.models.generateContent({
+      |                              ^
+   98 |           model: modelName,
+   99 |           contents: [{ role: "user", parts: [...masterContextParts, { text: "Hier sind di...
+  100 |           config: { systemInstruction: PROMPTS.blueprint + `\n\nModul/Vorlesungsthema:\n$... {
+  status: 404
+}
+ POST /api/quiz 200 in 5.9s (next.js: 10ms, application-code: 5.9s)
+Quiz generation error: Error [ApiError]: {"error":{"code":503,"message":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.","status":"UNAVAILABLE"}}
+    at async Object.start (src/app/api/quiz/route.ts:97:30)
+   95 |       try {
+   96 |         sendEvent("progress", { step: 1, message: "Analyzing material & Generating Bluepr...
+>  97 |         const blueprintRes = await ai.models.generateContent({
+      |                              ^
+   98 |           model: modelName,
+   99 |           contents: [{ role: "user", parts: [...masterContextParts, { text: "Hier sind di...
+  100 |           config: { systemInstruction: PROMPTS.blueprint + `\n\nModul/Vorlesungsthema:\n$... {
+  status: 503
+}
+ POST /api/quiz 200 in 8.3s (next.js: 15ms, application-code: 8.3s)
+ POST /api/quiz 200 in 5.9min (next.js: 7ms, application-code: 5.9min)
+ GET /api/reviews 200 in 20ms (next.js: 5ms, application-code: 15ms)
+ GET /api/calendar 200 in 106ms (next.js: 60ms, application-code: 46ms)
+✓ Compiled in 339ms
+ GET / 200 in 135ms (next.js: 77ms, application-code: 58ms)
+ GET / 200 in 134ms (next.js: 109ms, application-code: 25ms)
+ GET / 200 in 27ms (next.js: 11ms, application-code: 15ms)
+✓ Compiled in 61ms
+ GET / 200 in 112ms (next.js: 8ms, application-code: 105ms)
+ GET /api/reviews 200 in 75ms (next.js: 40ms, application-code: 35ms)
+ GET / 200 in 50ms (next.js: 7ms, application-code: 44ms)
+ GET /api/reviews 200 in 8ms (next.js: 2ms, application-code: 6ms)
+ GET / 200 in 81ms (next.js: 24ms, application-code: 57ms)
+ GET /api/reviews 200 in 36ms (next.js: 3ms, application-code: 33ms)
+✓ Compiled in 61ms
+ GET / 200 in 67ms (next.js: 13ms, application-code: 54ms)
+ GET /api/reviews 200 in 9ms (next.js: 3ms, application-code: 6ms)
+ GET / 200 in 76ms (next.js: 18ms, application-code: 58ms)
+ GET /api/reviews 200 in 10ms (next.js: 2ms, application-code: 7ms)
+✓ Compiled in 41ms
+ GET / 200 in 59ms (next.js: 10ms, application-code: 49ms)
+ GET /api/reviews 200 in 12ms (next.js: 6ms, application-code: 6ms)
+✓ Compiled in 139ms
+[browser] Uncaught Error: Internal Next.js error: Router action dispatched before initialization.
+[browser] Uncaught Error: Internal Next.js error: Router action dispatched before initialization.
+[browser] ./src/app/page.tsx:494:17
+Unexpected token. Did you mean `{'}'}` or `&rbrace;`?
+  492 |                   </div>
+  493 |                 );
+> 494 |               })}
+      |                 ^
+  495 |             </div>
+  496 |           </div>
+  497 |         </div>
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component] 
+[browser] ./src/app/page.tsx:494:17
+Unexpected token. Did you mean `{'}'}` or `&rbrace;`?
+  492 |                   </div>
+  493 |                 );
+> 494 |               })}
+      |                 ^
+  495 |             </div>
+  496 |           </div>
+  497 |         </div>
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component] 
+[browser] Uncaught Error: Internal Next.js error: Router action dispatched before initialization.
+[browser] Uncaught Error: Internal Next.js error: Router action dispatched before initialization.
+[browser] Uncaught Error: Internal Next.js error: Router action dispatched before initialization.
+[browser] Uncaught Error: Internal Next.js error: Router action dispatched before initialization.
+[browser] Uncaught Error: Internal Next.js error: Router action dispatched before initialization.
+✓ Compiled in 81ms
+[browser] Uncaught Error: Internal Next.js error: Router action dispatched before initialization.
+[browser] Uncaught Error: Internal Next.js error: Router action dispatched before initialization.
+[browser] Uncaught Error: Internal Next.js error: Router action dispatched before initialization.
+✓ Compiled in 103ms
+ GET / 200 in 204ms (next.js: 112ms, application-code: 92ms)
+ GET /api/reviews 200 in 54ms (next.js: 45ms, application-code: 9ms)
+[browser] Encountered a script tag while rendering React component. Scripts inside React components are never executed when rendering on the client. Consider using template tag instead (https://developer.mozilla.org/en-US/docs/Web/HTML/Element/template). 
+ GET /api/reviews 200 in 11ms (next.js: 1713µs, application-code: 10ms)
+[browser] Uncaught Error: Hydration failed because the server rendered HTML didn't match the client. As a result this tree will be regenerated on the client. This can happen if a SSR-ed Client Component used:
+
+- A server/client branch `if (typeof window !== 'undefined')`.
+- Variable input such as `Date.now()` or `Math.random()` which changes each time it's called.
+- Date formatting in a user's locale which doesn't match the server.
+- External changing data without sending a snapshot of it along with the HTML.
+- Invalid HTML tag nesting.
+
+It can also happen if the client has a browser extension installed which messes with the HTML before React loaded.
+
+https://react.dev/link/hydration-mismatch
+
+  ...
+    <RenderFromTemplateContext>
+      <ScrollAndMaybeFocusHandler cacheNode={{rsc:{...}, ...}}>
+        <InnerScrollAndFocusHandlerOld focusAndScrollRef={{scrollRef:null, ...}} cacheNode={{rsc:{...}, ...}}>
+          <ErrorBoundary errorComponent={undefined} errorStyles={undefined} errorScripts={undefined}>
+            <LoadingBoundary name="/" loading={null}>
+              <HTTPAccessFallbackBoundary notFound={{...}} forbidden={undefined} unauthorized={undefined}>
+                <HTTPAccessFallbackErrorBoundary pathname="/" notFound={{...}} forbidden={undefined} ...>
+                  <RedirectBoundary>
+                    <RedirectErrorBoundary router={{...}}>
+                      <InnerLayoutRouter url="/" tree={[...]} params={{}} cacheNode={{rsc:{...}, ...}} ...>
+                        <SegmentViewNode type="page" pagePath="page.tsx">
+                          <SegmentTrieNode>
+                          <ClientPageRoot Component={function Dashboard} serverProvidedParams={{...}}>
+                            <Dashboard params={Promise} searchParams={Promise}>
+                              <div
++                               className="min-h-screen flex w-full bg-[#faf9f6]"
+-                               className="min-h-screen bg-zinc-50 flex font-sans selection:bg-indigo-100 selection:te..."
+                              >
+                                <motion.aside initial={{x:-280,opacity:0}} animate={{x:0,opacity:1}} ...>
++                                 <aside
++                                   className="w-64 bg-white border-r border-zinc-200/85 flex flex-col p-6 sticky top-..."
++                                   style={{opacity:0,transform:"translateX..."}}
++                                   ref={function useMotionRef.useCallback}
++                                 >
+-                                 <div className="flex w-full print:hidden">
+                                ...
+                        ...
+                      ...
+          ...
+
+    at aside (unknown)
+    at Dashboard (src/app/page.tsx:411:22)
+  409 |
+  410 |       {/* Main App (Hidden in Print) */}
+> 411 |       <div className="flex w-full print:hidden">
+      |                      ^
+  412 |
+  413 |       {/* Sidebar */}
+  414 |       <motion.aside 
+ GET / 200 in 53ms (next.js: 8ms, application-code: 44ms)
+[browser] Encountered a script tag while rendering React component. Scripts inside React components are never executed when rendering on the client. Consider using template tag instead (https://developer.mozilla.org/en-US/docs/Web/HTML/Element/template). 
+[browser] Uncaught Error: Hydration failed because the server rendered HTML didn't match the client. As a result this tree will be regenerated on the client. This can happen if a SSR-ed Client Component used:
+
+- A server/client branch `if (typeof window !== 'undefined')`.
+- Variable input such as `Date.now()` or `Math.random()` which changes each time it's called.
+- Date formatting in a user's locale which doesn't match the server.
+- External changing data without sending a snapshot of it along with the HTML.
+- Invalid HTML tag nesting.
+
+It can also happen if the client has a browser extension installed which messes with the HTML before React loaded.
+
+https://react.dev/link/hydration-mismatch
+
+  ...
+    <RenderFromTemplateContext>
+      <ScrollAndMaybeFocusHandler cacheNode={{rsc:{...}, ...}}>
+        <InnerScrollAndFocusHandlerOld focusAndScrollRef={{scrollRef:null, ...}} cacheNode={{rsc:{...}, ...}}>
+          <ErrorBoundary errorComponent={undefined} errorStyles={undefined} errorScripts={undefined}>
+            <LoadingBoundary name="/" loading={null}>
+              <HTTPAccessFallbackBoundary notFound={{...}} forbidden={undefined} unauthorized={undefined}>
+                <HTTPAccessFallbackErrorBoundary pathname="/" notFound={{...}} forbidden={undefined} ...>
+                  <RedirectBoundary>
+                    <RedirectErrorBoundary router={{...}}>
+                      <InnerLayoutRouter url="/" tree={[...]} params={{}} cacheNode={{rsc:{...}, ...}} ...>
+                        <SegmentViewNode type="page" pagePath="page.tsx">
+                          <SegmentTrieNode>
+                          <ClientPageRoot Component={function Dashboard} serverProvidedParams={{...}}>
+                            <Dashboard params={Promise} searchParams={Promise}>
+                              <div
++                               className="min-h-screen flex w-full bg-[#faf9f6]"
+-                               className="min-h-screen bg-zinc-50 flex font-sans selection:bg-indigo-100 selection:te..."
+                              >
+                                <motion.aside initial={{x:-280,opacity:0}} animate={{x:0,opacity:1}} ...>
++                                 <aside
++                                   className="w-64 bg-white border-r border-zinc-200/85 flex flex-col p-6 sticky top-..."
++                                   style={{opacity:0,transform:"translateX..."}}
++                                   ref={function useMotionRef.useCallback}
++                                 >
+-                                 <div className="flex w-full print:hidden">
+                                ...
+                        ...
+                      ...
+          ...
+
+    at aside (unknown)
+    at Dashboard (src/app/page.tsx:411:22)
+  409 |
+  410 |       {/* Main App (Hidden in Print) */}
+> 411 |       <div className="flex w-full print:hidden">
+      |                      ^
+  412 |
+  413 |       {/* Sidebar */}
+  414 |       <motion.aside 
+ GET /api/reviews 200 in 14ms (next.js: 4ms, application-code: 11ms)
+ GET /api/reviews 200 in 8ms (next.js: 3ms, application-code: 5ms)
+✓ Compiled in 34ms
+ GET /api/reviews 200 in 15ms (next.js: 6ms, application-code: 10ms)
+ GET / 200 in 39ms (next.js: 8ms, application-code: 31ms)
+ GET /api/reviews 200 in 9ms (next.js: 1324µs, application-code: 8ms)
+ GET /api/reviews 200 in 28ms (next.js: 10ms, application-code: 17ms)
+✓ Compiled in 88ms
+✓ Compiled in 77ms
+⨯ ./src/app/page.tsx:883:22
+Expected '</', got 'ident'
+  [90m881 |[0m                 </div>
+  [90m882 |[0m                 [90m// Quiz taking UI[0m
+[31m[1m>[0m [90m883 |[0m                 <div className=[32m"max-w-4xl mx-auto flex flex-col gap-6 pb-20"[0m>
+  [90m    |[0m                      [31m[1m^^^^^^^^^[0m
+  [90m884 |[0m                   <div className=[32m"flex items-center justify-between mb-2"[0m>
+  [90m885 |[0m                     <h3 className=[32m"text-xl font-bold text-zinc-900 flex items-center gap-2"[0m>
+  [90m886 |[0m                       <[33mGraduationCap[0m className=[32m"w-6 h-6 text-indigo-600"[0m />
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component]
+
+
+⨯ ./src/app/page.tsx:883:22
+Expected '</', got 'ident'
+  [90m881 |[0m                 </div>
+  [90m882 |[0m                 [90m// Quiz taking UI[0m
+[31m[1m>[0m [90m883 |[0m                 <div className=[32m"max-w-4xl mx-auto flex flex-col gap-6 pb-20"[0m>
+  [90m    |[0m                      [31m[1m^^^^^^^^^[0m
+  [90m884 |[0m                   <div className=[32m"flex items-center justify-between mb-2"[0m>
+  [90m885 |[0m                     <h3 className=[32m"text-xl font-bold text-zinc-900 flex items-center gap-2"[0m>
+  [90m886 |[0m                       <[33mGraduationCap[0m className=[32m"w-6 h-6 text-indigo-600"[0m />
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component]
+
+
+[browser] ./src/app/page.tsx:883:22
+Expected '</', got 'ident'
+  881 |                 </div>
+  882 |                 // Quiz taking UI
+> 883 |                 <div className="max-w-4xl mx-auto flex flex-col gap-6 pb-20">
+      |                      ^^^^^^^^^
+  884 |                   <div className="flex items-center justify-between mb-2">
+  885 |                     <h3 className="text-xl font-bold text-zinc-900 flex items-center gap-2">
+  886 |                       <GraduationCap className="w-6 h-6 text-indigo-600" />
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component] 
+ GET / 500 in 29ms (next.js: 14ms, application-code: 15ms)
+ GET / 500 in 31ms (next.js: 25ms, application-code: 6ms)
+⨯ ./src/app/page.tsx:883:22
+Expected '</', got 'ident'
+  [90m881 |[0m                 </div>
+  [90m882 |[0m                 [90m// Quiz taking UI[0m
+[31m[1m>[0m [90m883 |[0m                 <div className=[32m"max-w-4xl mx-auto flex flex-col gap-6 pb-20"[0m>
+  [90m    |[0m                      [31m[1m^^^^^^^^^[0m
+  [90m884 |[0m                   <div className=[32m"flex items-center justify-between mb-2"[0m>
+  [90m885 |[0m                     <h3 className=[32m"text-xl font-bold text-zinc-900 flex items-center gap-2"[0m>
+  [90m886 |[0m                       <[33mGraduationCap[0m className=[32m"w-6 h-6 text-indigo-600"[0m />
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component]
+
+
+ GET / 500 in 14ms (next.js: 6ms, application-code: 7ms)
+[browser] ./src/app/page.tsx:883:22
+Expected '</', got 'ident'
+  881 |                 </div>
+  882 |                 // Quiz taking UI
+> 883 |                 <div className="max-w-4xl mx-auto flex flex-col gap-6 pb-20">
+      |                      ^^^^^^^^^
+  884 |                   <div className="flex items-center justify-between mb-2">
+  885 |                     <h3 className="text-xl font-bold text-zinc-900 flex items-center gap-2">
+  886 |                       <GraduationCap className="w-6 h-6 text-indigo-600" />
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component] 
+[browser] Uncaught Error: ./src/app/page.tsx:883:22
+Expected '</', got 'ident'
+  881 |                 </div>
+  882 |                 // Quiz taking UI
+> 883 |                 <div className="max-w-4xl mx-auto flex flex-col gap-6 pb-20">
+      |                      ^^^^^^^^^
+  884 |                   <div className="flex items-center justify-between mb-2">
+  885 |                     <h3 className="text-xl font-bold text-zinc-900 flex items-center gap-2">
+  886 |                       <GraduationCap className="w-6 h-6 text-indigo-600" />
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component]
+
+
+    at <unknown> (Error: ./src/app/page.tsx:883:22)
+    at <unknown> (Error: (./src/app/page.tsx:883:22)
+[browser] ./src/app/page.tsx:883:22
+Expected '</', got 'ident'
+  881 |                 </div>
+  882 |                 // Quiz taking UI
+> 883 |                 <div className="max-w-4xl mx-auto flex flex-col gap-6 pb-20">
+      |                      ^^^^^^^^^
+  884 |                   <div className="flex items-center justify-between mb-2">
+  885 |                     <h3 className="text-xl font-bold text-zinc-900 flex items-center gap-2">
+  886 |                       <GraduationCap className="w-6 h-6 text-indigo-600" />
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component] 
+⨯ ./src/app/page.tsx:883:22
+Expected '</', got 'ident'
+  [90m881 |[0m                 </div>
+  [90m882 |[0m                 [90m// Quiz taking UI[0m
+[31m[1m>[0m [90m883 |[0m                 <div className=[32m"max-w-4xl mx-auto flex flex-col gap-6 pb-20"[0m>
+  [90m    |[0m                      [31m[1m^^^^^^^^^[0m
+  [90m884 |[0m                   <div className=[32m"flex items-center justify-between mb-2"[0m>
+  [90m885 |[0m                     <h3 className=[32m"text-xl font-bold text-zinc-900 flex items-center gap-2"[0m>
+  [90m886 |[0m                       <[33mGraduationCap[0m className=[32m"w-6 h-6 text-indigo-600"[0m />
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component]
+
+
+ GET / 500 in 23ms (next.js: 11ms, application-code: 12ms)
+[browser] Uncaught Error: ./src/app/page.tsx:883:22
+Expected '</', got 'ident'
+  881 |                 </div>
+  882 |                 // Quiz taking UI
+> 883 |                 <div className="max-w-4xl mx-auto flex flex-col gap-6 pb-20">
+      |                      ^^^^^^^^^
+  884 |                   <div className="flex items-center justify-between mb-2">
+  885 |                     <h3 className="text-xl font-bold text-zinc-900 flex items-center gap-2">
+  886 |                       <GraduationCap className="w-6 h-6 text-indigo-600" />
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component]
+
+
+    at <unknown> (Error: ./src/app/page.tsx:883:22)
+    at <unknown> (Error: (./src/app/page.tsx:883:22)
+[browser] ./src/app/page.tsx:883:22
+Expected '</', got 'ident'
+  881 |                 </div>
+  882 |                 // Quiz taking UI
+> 883 |                 <div className="max-w-4xl mx-auto flex flex-col gap-6 pb-20">
+      |                      ^^^^^^^^^
+  884 |                   <div className="flex items-center justify-between mb-2">
+  885 |                     <h3 className="text-xl font-bold text-zinc-900 flex items-center gap-2">
+  886 |                       <GraduationCap className="w-6 h-6 text-indigo-600" />
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component] 
+[browser] ./src/app/page.tsx:883:22
+Expected '</', got 'ident'
+  881 |                 </div>
+  882 |                 // Quiz taking UI
+> 883 |                 <div className="max-w-4xl mx-auto flex flex-col gap-6 pb-20">
+      |                      ^^^^^^^^^
+  884 |                   <div className="flex items-center justify-between mb-2">
+  885 |                     <h3 className="text-xl font-bold text-zinc-900 flex items-center gap-2">
+  886 |                       <GraduationCap className="w-6 h-6 text-indigo-600" />
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component] 
+⨯ ./src/app/page.tsx:883:22
+Expected '</', got 'ident'
+  [90m881 |[0m                 </div>
+  [90m882 |[0m                 [90m// Quiz taking UI[0m
+[31m[1m>[0m [90m883 |[0m                 <div className=[32m"max-w-4xl mx-auto flex flex-col gap-6 pb-20"[0m>
+  [90m    |[0m                      [31m[1m^^^^^^^^^[0m
+  [90m884 |[0m                   <div className=[32m"flex items-center justify-between mb-2"[0m>
+  [90m885 |[0m                     <h3 className=[32m"text-xl font-bold text-zinc-900 flex items-center gap-2"[0m>
+  [90m886 |[0m                       <[33mGraduationCap[0m className=[32m"w-6 h-6 text-indigo-600"[0m />
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component]
+
+
+ GET / 500 in 22ms (next.js: 9ms, application-code: 13ms)
+[browser] Uncaught Error: ./src/app/page.tsx:883:22
+Expected '</', got 'ident'
+  881 |                 </div>
+  882 |                 // Quiz taking UI
+> 883 |                 <div className="max-w-4xl mx-auto flex flex-col gap-6 pb-20">
+      |                      ^^^^^^^^^
+  884 |                   <div className="flex items-center justify-between mb-2">
+  885 |                     <h3 className="text-xl font-bold text-zinc-900 flex items-center gap-2">
+  886 |                       <GraduationCap className="w-6 h-6 text-indigo-600" />
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component]
+
+
+    at <unknown> (Error: ./src/app/page.tsx:883:22)
+    at <unknown> (Error: (./src/app/page.tsx:883:22)
+[browser] ./src/app/page.tsx:883:22
+Expected '</', got 'ident'
+  881 |                 </div>
+  882 |                 // Quiz taking UI
+> 883 |                 <div className="max-w-4xl mx-auto flex flex-col gap-6 pb-20">
+      |                      ^^^^^^^^^
+  884 |                   <div className="flex items-center justify-between mb-2">
+  885 |                     <h3 className="text-xl font-bold text-zinc-900 flex items-center gap-2">
+  886 |                       <GraduationCap className="w-6 h-6 text-indigo-600" />
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component] 
+[browser] ./src/app/page.tsx:883:22
+Expected '</', got 'ident'
+  881 |                 </div>
+  882 |                 // Quiz taking UI
+> 883 |                 <div className="max-w-4xl mx-auto flex flex-col gap-6 pb-20">
+      |                      ^^^^^^^^^
+  884 |                   <div className="flex items-center justify-between mb-2">
+  885 |                     <h3 className="text-xl font-bold text-zinc-900 flex items-center gap-2">
+  886 |                       <GraduationCap className="w-6 h-6 text-indigo-600" />
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component] 
+ GET / 200 in 187ms (next.js: 94ms, application-code: 93ms)
+ GET / 200 in 24ms (next.js: 1216µs, application-code: 23ms)
+ GET /api/reviews 200 in 47ms (next.js: 40ms, application-code: 8ms)
+✓ Compiled in 58ms
+ GET / 200 in 72ms (next.js: 12ms, application-code: 60ms)
+ GET /api/reviews 200 in 14ms (next.js: 7ms, application-code: 7ms)
+ GET /api/reviews 200 in 20ms (next.js: 7ms, application-code: 12ms)
+ GET /api/reviews 200 in 22ms (next.js: 5ms, application-code: 17ms)
+✓ Compiled in 66ms
+ GET / 200 in 67ms (next.js: 11ms, application-code: 55ms)
+ GET /api/reviews 200 in 14ms (next.js: 5ms, application-code: 9ms)
+ GET /api/calendar 200 in 66ms (next.js: 51ms, application-code: 15ms)
+ GET /api/reviews 200 in 15ms (next.js: 4ms, application-code: 11ms)
+✓ Compiled in 54ms
+ GET / 200 in 180ms (next.js: 91ms, application-code: 89ms)
+ GET / 200 in 50ms (next.js: 3ms, application-code: 47ms)
+ GET / 200 in 49ms (next.js: 17ms, application-code: 32ms)
+ GET / 200 in 23ms (next.js: 1638µs, application-code: 21ms)
+  Reload env: .env
+ GET / 200 in 142ms (next.js: 101ms, application-code: 42ms)
+ GET / 200 in 233ms (next.js: 35ms, application-code: 198ms)
+ GET /api/reviews 200 in 95ms (next.js: 51ms, application-code: 44ms)
+  Reload env: .env
+ GET / 200 in 97ms (next.js: 72ms, application-code: 24ms)
+  Reload env: .env
+ GET / 200 in 110ms (next.js: 83ms, application-code: 27ms)
+ GET / 200 in 264ms (next.js: 28ms, application-code: 236ms)
+ GET /api/reviews 200 in 101ms (next.js: 56ms, application-code: 44ms)
+  Reload env: .env
+ GET / 200 in 183ms (next.js: 151ms, application-code: 31ms)
+✓ Compiled in 300ms
+ GET / 200 in 164ms (next.js: 91ms, application-code: 73ms)
+ GET / 200 in 46ms (next.js: 1502µs, application-code: 44ms)
+ GET / 200 in 46ms (next.js: 10ms, application-code: 36ms)
+ GET / 200 in 46ms (next.js: 18ms, application-code: 28ms)
+ GET / 200 in 29ms (next.js: 8ms, application-code: 20ms)
+ GET / 200 in 22ms (next.js: 12ms, application-code: 10ms)
+ GET / 200 in 51ms (next.js: 1099µs, application-code: 50ms)
+ GET / 200 in 42ms (next.js: 1428µs, application-code: 41ms)
+ GET / 200 in 42ms (next.js: 26ms, application-code: 16ms)
+ GET / 200 in 43ms (next.js: 17ms, application-code: 26ms)
+ GET / 200 in 43ms (next.js: 9ms, application-code: 34ms)
+ GET / 200 in 45ms (next.js: 33ms, application-code: 11ms)
+ GET / 200 in 42ms (next.js: 1036µs, application-code: 41ms)
+ GET / 200 in 42ms (next.js: 8ms, application-code: 34ms)
+ GET / 200 in 28ms (next.js: 1471µs, application-code: 27ms)
+ GET / 200 in 28ms (next.js: 17ms, application-code: 11ms)
+ GET / 200 in 29ms (next.js: 10ms, application-code: 19ms)
+ GET / 200 in 22ms (next.js: 1139µs, application-code: 21ms)
+ GET / 200 in 15ms (next.js: 834µs, application-code: 14ms)
+ GET / 200 in 9ms (next.js: 862µs, application-code: 8ms)
+ GET / 200 in 174ms (next.js: 112ms, application-code: 62ms)
+ GET / 200 in 178ms (next.js: 70ms, application-code: 107ms)
+ GET / 200 in 52ms (next.js: 15ms, application-code: 37ms)
+ GET / 200 in 180ms (next.js: 128ms, application-code: 51ms)
+ GET / 200 in 41ms (next.js: 10ms, application-code: 31ms)
+ GET / 200 in 36ms (next.js: 9ms, application-code: 26ms)
+ GET / 200 in 91ms (next.js: 4ms, application-code: 86ms)
+ GET / 200 in 90ms (next.js: 21ms, application-code: 69ms)
+ GET / 200 in 39ms (next.js: 11ms, application-code: 28ms)
+ GET / 200 in 40ms (next.js: 2ms, application-code: 38ms)
+ GET / 200 in 40ms (next.js: 19ms, application-code: 21ms)
+ GET / 200 in 51ms (next.js: 28ms, application-code: 23ms)
+ GET / 200 in 61ms (next.js: 1956µs, application-code: 59ms)
+ GET / 200 in 51ms (next.js: 3ms, application-code: 49ms)
+ GET / 200 in 51ms (next.js: 9ms, application-code: 41ms)
+ GET / 200 in 52ms (next.js: 12ms, application-code: 40ms)
+ GET / 200 in 43ms (next.js: 16ms, application-code: 26ms)
+ GET / 200 in 53ms (next.js: 10ms, application-code: 43ms)
+ GET / 200 in 59ms (next.js: 1615µs, application-code: 58ms)
+ GET / 200 in 49ms (next.js: 2ms, application-code: 47ms)
+ GET / 200 in 49ms (next.js: 11ms, application-code: 38ms)
+ GET / 200 in 41ms (next.js: 1901µs, application-code: 39ms)
+ GET / 200 in 42ms (next.js: 10ms, application-code: 32ms)
+ GET / 200 in 32ms (next.js: 1044µs, application-code: 31ms)
+ GET / 200 in 59ms (next.js: 1332µs, application-code: 57ms)
+ GET / 200 in 50ms (next.js: 4ms, application-code: 46ms)
+ GET / 200 in 40ms (next.js: 1822µs, application-code: 38ms)
+ GET / 200 in 29ms (next.js: 1772µs, application-code: 28ms)
+ GET / 200 in 48ms (next.js: 9ms, application-code: 39ms)
+ GET / 200 in 33ms (next.js: 1545µs, application-code: 31ms)
+ GET / 200 in 55ms (next.js: 1752µs, application-code: 53ms)
+ GET / 200 in 54ms (next.js: 9ms, application-code: 45ms)
+ GET / 200 in 34ms (next.js: 10ms, application-code: 24ms)
+ GET / 200 in 35ms (next.js: 2ms, application-code: 32ms)
+ GET / 200 in 17ms (next.js: 947µs, application-code: 16ms)
+ GET / 200 in 10ms (next.js: 1193µs, application-code: 9ms)
+ GET / 200 in 62ms (next.js: 1122µs, application-code: 61ms)
+ GET / 200 in 52ms (next.js: 9ms, application-code: 42ms)
+ GET / 200 in 52ms (next.js: 1511µs, application-code: 51ms)
+ GET / 200 in 52ms (next.js: 29ms, application-code: 24ms)
+ GET / 200 in 62ms (next.js: 20ms, application-code: 42ms)
+ GET / 200 in 46ms (next.js: 20ms, application-code: 26ms)
+ GET / 200 in 80ms (next.js: 2ms, application-code: 77ms)
+ GET / 200 in 67ms (next.js: 19ms, application-code: 48ms)
+ GET / 200 in 69ms (next.js: 2ms, application-code: 66ms)
+ GET / 200 in 68ms (next.js: 10ms, application-code: 58ms)
+ GET / 200 in 40ms (next.js: 4ms, application-code: 36ms)
+ GET / 200 in 50ms (next.js: 24ms, application-code: 26ms)
+ GET / 200 in 62ms (next.js: 4ms, application-code: 58ms)
+ GET / 200 in 50ms (next.js: 2ms, application-code: 48ms)
+ GET / 200 in 50ms (next.js: 11ms, application-code: 39ms)
+ GET / 200 in 51ms (next.js: 18ms, application-code: 32ms)
+ GET / 200 in 43ms (next.js: 22ms, application-code: 21ms)
+ GET / 200 in 25ms (next.js: 1056µs, application-code: 24ms)
+ GET / 200 in 60ms (next.js: 4ms, application-code: 57ms)
+ GET / 200 in 59ms (next.js: 12ms, application-code: 47ms)
+ GET / 200 in 50ms (next.js: 12ms, application-code: 38ms)
+ GET / 200 in 41ms (next.js: 13ms, application-code: 28ms)
+ GET / 200 in 41ms (next.js: 20ms, application-code: 20ms)
+ GET / 200 in 33ms (next.js: 1077µs, application-code: 32ms)
+ GET / 200 in 58ms (next.js: 1920µs, application-code: 56ms)
+ GET / 200 in 58ms (next.js: 9ms, application-code: 49ms)
+ GET / 200 in 58ms (next.js: 22ms, application-code: 36ms)
+ GET / 200 in 41ms (next.js: 1494µs, application-code: 39ms)
+ GET / 200 in 41ms (next.js: 9ms, application-code: 32ms)
+ GET / 200 in 43ms (next.js: 1053µs, application-code: 42ms)
+ GET / 200 in 67ms (next.js: 1542µs, application-code: 65ms)
+ GET / 200 in 67ms (next.js: 13ms, application-code: 54ms)
+ GET / 200 in 56ms (next.js: 10ms, application-code: 45ms)
+ GET / 200 in 56ms (next.js: 9ms, application-code: 47ms)
+ GET / 200 in 57ms (next.js: 1600µs, application-code: 56ms)
+ GET / 200 in 49ms (next.js: 1199µs, application-code: 48ms)
+ GET / 200 in 68ms (next.js: 1584µs, application-code: 66ms)
+ GET / 200 in 68ms (next.js: 9ms, application-code: 59ms)
+ GET / 200 in 69ms (next.js: 21ms, application-code: 48ms)
+ GET / 200 in 74ms (next.js: 9ms, application-code: 64ms)
+ GET / 200 in 120ms (next.js: 24ms, application-code: 96ms)
+ GET / 200 in 121ms (next.js: 1576µs, application-code: 119ms)
+ GET / 200 in 113ms (next.js: 3ms, application-code: 110ms)
+ GET / 200 in 112ms (next.js: 15ms, application-code: 98ms)
+ GET / 200 in 85ms (next.js: 5ms, application-code: 80ms)
+ GET / 200 in 54ms (next.js: 1490µs, application-code: 52ms)
+ GET / 200 in 64ms (next.js: 13ms, application-code: 52ms)
+ GET / 200 in 65ms (next.js: 21ms, application-code: 44ms)
+ GET / 200 in 60ms (next.js: 10ms, application-code: 50ms)
+ GET / 200 in 61ms (next.js: 1235µs, application-code: 59ms)
+ GET / 200 in 43ms (next.js: 1628µs, application-code: 41ms)
+ GET / 200 in 65ms (next.js: 1345µs, application-code: 63ms)
+ GET / 200 in 65ms (next.js: 9ms, application-code: 56ms)
+ GET / 200 in 66ms (next.js: 18ms, application-code: 48ms)
+ GET / 200 in 49ms (next.js: 10ms, application-code: 39ms)
+ GET / 200 in 50ms (next.js: 1046µs, application-code: 49ms)
+ GET / 200 in 26ms (next.js: 1120µs, application-code: 25ms)
+ GET / 200 in 14ms (next.js: 1018µs, application-code: 13ms)
+ GET / 200 in 92ms (next.js: 74ms, application-code: 18ms)
+✓ Compiled in 95ms
+ GET /api/calendar 200 in 117ms (next.js: 62ms, application-code: 55ms)
+ GET /tutor/cmpq0vej30000vtj282fp0x12 404 in 1650ms (next.js: 1567ms, application-code: 83ms)
+ GET /tutor/cmpq0vej30000vtj282fp0x12 404 in 78ms (next.js: 13ms, application-code: 65ms)
+ GET /tutor/cmpq0vej30000vtj282fp0x12 404 in 63ms (next.js: 10ms, application-code: 52ms)
+ GET /tutor/invalid-id-123 404 in 61ms (next.js: 15ms, application-code: 46ms)
+ GET /api/reviews 200 in 77ms (next.js: 62ms, application-code: 15ms)
+ GET /api/reviews 200 in 46ms (next.js: 27ms, application-code: 19ms)
+✓ Compiled in 273ms
+✓ Compiled in 107ms
+ GET / 200 in 76ms (next.js: 25ms, application-code: 51ms)
+ GET / 200 in 17ms (next.js: 1833µs, application-code: 15ms)
+ GET / 200 in 210ms (next.js: 37ms, application-code: 173ms)
+ GET /api/reviews 200 in 40ms (next.js: 2ms, application-code: 38ms)
+✓ Compiled in 135ms
+✓ Compiled in 76ms
+✓ Compiled in 118ms
+✓ Compiled in 76ms
+✓ Compiled in 99ms
+✓ Compiled in 110ms
+ GET / 200 in 112ms (next.js: 52ms, application-code: 60ms)
+ GET /api/reviews 200 in 43ms (next.js: 1690µs, application-code: 41ms)
+ GET /api/reviews 200 in 16ms (next.js: 2ms, application-code: 14ms)
+ GET /api/reviews 200 in 36ms (next.js: 13ms, application-code: 23ms)
+✓ Compiled in 115ms
+ GET /api/reviews 200 in 24ms (next.js: 11ms, application-code: 13ms)
+ GET / 200 in 128ms (next.js: 47ms, application-code: 81ms)
+ GET /api/reviews 200 in 49ms (next.js: 1806µs, application-code: 47ms)
+ GET /api/reviews 200 in 61ms (next.js: 40ms, application-code: 21ms)
+ GET / 200 in 103ms (next.js: 16ms, application-code: 86ms)
+ GET /api/reviews 200 in 16ms (next.js: 2ms, application-code: 14ms)
+✓ Compiled in 136ms
+✓ Compiled in 34ms
+ GET / 200 in 66ms (next.js: 9ms, application-code: 56ms)
+ GET / 200 in 19ms (next.js: 1411µs, application-code: 18ms)
+✓ Compiled in 85ms
+ GET / 200 in 76ms (next.js: 21ms, application-code: 55ms)
+ GET /api/reviews 200 in 32ms (next.js: 2ms, application-code: 30ms)
+ GET /api/reviews 200 in 11ms (next.js: 2ms, application-code: 9ms)
+ GET / 200 in 81ms (next.js: 17ms, application-code: 65ms)
+ GET /api/reviews 200 in 50ms (next.js: 3ms, application-code: 47ms)
+ GET / 200 in 74ms (next.js: 20ms, application-code: 55ms)
+ GET /api/reviews 200 in 50ms (next.js: 2ms, application-code: 48ms)
+ GET / 200 in 42ms (next.js: 5ms, application-code: 37ms)
+ GET /api/reviews 200 in 8ms (next.js: 1859µs, application-code: 6ms)
+ GET / 200 in 35ms (next.js: 2ms, application-code: 33ms)
+ GET /api/reviews 200 in 13ms (next.js: 4ms, application-code: 9ms)
+ GET / 200 in 26ms (next.js: 2ms, application-code: 24ms)
+ GET /api/reviews 200 in 10ms (next.js: 3ms, application-code: 8ms)
+ GET / 200 in 31ms (next.js: 1724µs, application-code: 29ms)
+ GET /api/reviews 200 in 12ms (next.js: 4ms, application-code: 8ms)
+ GET / 200 in 30ms (next.js: 3ms, application-code: 27ms)
+ GET /api/reviews 200 in 14ms (next.js: 4ms, application-code: 10ms)
+ GET / 200 in 36ms (next.js: 3ms, application-code: 34ms)
+ GET /api/reviews 200 in 18ms (next.js: 6ms, application-code: 12ms)
+ GET / 200 in 27ms (next.js: 2ms, application-code: 25ms)
+ GET /api/reviews 200 in 25ms (next.js: 2ms, application-code: 23ms)
+ GET / 200 in 25ms (next.js: 932µs, application-code: 24ms)
+ GET / 200 in 34ms (next.js: 1830µs, application-code: 32ms)
+ GET /api/reviews 200 in 13ms (next.js: 7ms, application-code: 6ms)
+ GET /api/reviews 200 in 18ms (next.js: 2ms, application-code: 16ms)
+✓ Compiled in 152ms
+ GET / 200 in 58ms (next.js: 18ms, application-code: 40ms)
+ GET /api/reviews 200 in 25ms (next.js: 5ms, application-code: 19ms)
+ GET /api/reviews 200 in 16ms (next.js: 6ms, application-code: 11ms)
+ GET /api/reviews 200 in 43ms (next.js: 6ms, application-code: 36ms)
+ GET / 200 in 57ms (next.js: 12ms, application-code: 45ms)
+ GET /api/reviews 200 in 10ms (next.js: 3ms, application-code: 7ms)
+ GET /api/reviews 200 in 16ms (next.js: 5ms, application-code: 10ms)
+✓ Compiled in 107ms
+ GET / 200 in 75ms (next.js: 19ms, application-code: 56ms)
+ GET /api/reviews 200 in 23ms (next.js: 3ms, application-code: 19ms)
+ GET / 200 in 54ms (next.js: 4ms, application-code: 50ms)
+ GET /api/reviews 200 in 14ms (next.js: 4ms, application-code: 10ms)
+ GET /api/reviews 200 in 27ms (next.js: 11ms, application-code: 16ms)
+ GET /api/reviews 200 in 19ms (next.js: 5ms, application-code: 14ms)
+ GET / 200 in 74ms (next.js: 23ms, application-code: 51ms)
+ GET /api/reviews 200 in 14ms (next.js: 3ms, application-code: 11ms)
+ GET / 200 in 38ms (next.js: 3ms, application-code: 36ms)
+ GET /api/reviews 200 in 7ms (next.js: 1656µs, application-code: 5ms)
+✓ Compiled in 140ms
+ GET / 200 in 47ms (next.js: 11ms, application-code: 36ms)
+ GET / 200 in 12ms (next.js: 1028µs, application-code: 10ms)
+ GET / 200 in 80ms (next.js: 22ms, application-code: 57ms)
+ GET /api/reviews 200 in 39ms (next.js: 3ms, application-code: 36ms)
+ GET / 200 in 64ms (next.js: 5ms, application-code: 59ms)
+ GET /api/reviews 200 in 10ms (next.js: 4ms, application-code: 5ms)
+ GET / 200 in 69ms (next.js: 3ms, application-code: 66ms)
+ GET /api/reviews 200 in 13ms (next.js: 5ms, application-code: 8ms)
+✓ Compiled in 116ms
+ GET / 200 in 87ms (next.js: 32ms, application-code: 55ms)
+ GET /api/reviews 200 in 13ms (next.js: 3ms, application-code: 10ms)
+ GET / 200 in 58ms (next.js: 5ms, application-code: 53ms)
+ GET /api/reviews 200 in 17ms (next.js: 1386µs, application-code: 16ms)
+✓ Compiled in 78ms
+ GET / 200 in 73ms (next.js: 17ms, application-code: 56ms)
+ GET /api/reviews 200 in 12ms (next.js: 3ms, application-code: 9ms)
+ GET /api/reviews 200 in 19ms (next.js: 5ms, application-code: 14ms)
+ GET / 200 in 81ms (next.js: 18ms, application-code: 63ms)
+ GET /api/reviews 200 in 10ms (next.js: 3ms, application-code: 7ms)
+Grading execution error: Error: Falsches Quiz hochgeladen. Bitte überprüfe deine Antworten.
+    at Object.start (src/app/api/grade/route.ts:124:17)
+  122 |         const mismatchCheckText = (mismatchCheckRes.text || "").toUpperCase();
+  123 |         if (mismatchCheckText.includes("MISMATCH")) {
+> 124 |           throw new Error("Falsches Quiz hochgeladen. Bitte überprüfe deine Antworten.");
+      |                 ^
+  125 |         }
+  126 |
+  127 |         // Step 1: Run grading halves in parallel
+ POST /api/grade 200 in 6.8s (next.js: 227ms, application-code: 6.6s)
+ POST /api/grade 200 in 3.0min (next.js: 34ms, application-code: 3.0min)
+ GET /api/reviews 200 in 56ms (next.js: 24ms, application-code: 32ms)
+ GET /api/reviews 200 in 39ms (next.js: 12ms, application-code: 27ms)
+ GET /api/reviews 200 in 48ms (next.js: 21ms, application-code: 27ms)
+ GET / 200 in 177ms (next.js: 105ms, application-code: 72ms)
+ GET / 200 in 57ms (next.js: 2ms, application-code: 55ms)
+ GET / 200 in 57ms (next.js: 11ms, application-code: 45ms)
+ GET / 200 in 47ms (next.js: 10ms, application-code: 37ms)
+ GET / 200 in 47ms (next.js: 19ms, application-code: 29ms)
+ GET / 200 in 39ms (next.js: 19ms, application-code: 20ms)
+ GET / 200 in 58ms (next.js: 1008µs, application-code: 57ms)
+ GET / 200 in 56ms (next.js: 1390µs, application-code: 55ms)
+ GET / 200 in 56ms (next.js: 11ms, application-code: 45ms)
+ GET / 200 in 47ms (next.js: 19ms, application-code: 28ms)
+ GET / 200 in 47ms (next.js: 12ms, application-code: 36ms)
+ GET / 200 in 37ms (next.js: 17ms, application-code: 20ms)
+ GET / 200 in 36ms (next.js: 954µs, application-code: 36ms)
+ GET / 200 in 52ms (next.js: 973µs, application-code: 51ms)
+ GET / 200 in 44ms (next.js: 1170µs, application-code: 42ms)
+ GET / 200 in 44ms (next.js: 9ms, application-code: 35ms)
+ GET / 200 in 52ms (next.js: 9ms, application-code: 43ms)
+ GET / 200 in 44ms (next.js: 18ms, application-code: 26ms)
+ GET / 200 in 30ms (next.js: 954µs, application-code: 29ms)
+ GET / 200 in 31ms (next.js: 1080µs, application-code: 30ms)
+ GET / 200 in 23ms (next.js: 1594µs, application-code: 21ms)
+ GET / 200 in 14ms (next.js: 2ms, application-code: 12ms)
+✓ Compiled in 179ms
+ GET /api/reviews 200 in 144ms (next.js: 79ms, application-code: 65ms)
+ GET /api/settings 500 in 563ms (next.js: 560ms, application-code: 3ms)
+✓ Compiled in 156ms
+✓ Compiled in 214ms
+⨯ ./src/app/page.tsx:1208:9
+Expected corresponding JSX closing tag for <div>
+  [90m1206 |[0m       </[33mAnimatePresence[0m>
+  [90m1207 |[0m       </div>
+[31m[1m>[0m [90m1208 |[0m       </[33mAnimatePresence[0m>
+  [90m     |[0m         [31m[1m^^^^^^^^^^^^^^^[0m
+  [90m1209 |[0m
+  [90m1210 |[0m       {[90m/* Settings / Semester Modal */[0m}
+  [90m1211 |[0m       <[33mAnimatePresence[0m>
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component]
+
+
+ GET / 500 in 39ms (next.js: 20ms, application-code: 19ms)
+⨯ ./src/app/page.tsx:1208:9
+Expected corresponding JSX closing tag for <div>
+  [90m1206 |[0m       </[33mAnimatePresence[0m>
+  [90m1207 |[0m       </div>
+[31m[1m>[0m [90m1208 |[0m       </[33mAnimatePresence[0m>
+  [90m     |[0m         [31m[1m^^^^^^^^^^^^^^^[0m
+  [90m1209 |[0m
+  [90m1210 |[0m       {[90m/* Settings / Semester Modal */[0m}
+  [90m1211 |[0m       <[33mAnimatePresence[0m>
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component]
+
+
+ GET / 500 in 9ms (next.js: 4ms, application-code: 5ms)
+⨯ ./src/app/page.tsx:1208:9
+Expected corresponding JSX closing tag for <div>
+  [90m1206 |[0m       </[33mAnimatePresence[0m>
+  [90m1207 |[0m       </div>
+[31m[1m>[0m [90m1208 |[0m       </[33mAnimatePresence[0m>
+  [90m     |[0m         [31m[1m^^^^^^^^^^^^^^^[0m
+  [90m1209 |[0m
+  [90m1210 |[0m       {[90m/* Settings / Semester Modal */[0m}
+  [90m1211 |[0m       <[33mAnimatePresence[0m>
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component]
+
+
+ GET / 500 in 19ms (next.js: 9ms, application-code: 10ms)
+[browser] Uncaught Error: ./src/app/page.tsx:1208:9
+Expected corresponding JSX closing tag for <div>
+  1206 |       </AnimatePresence>
+  1207 |       </div>
+> 1208 |       </AnimatePresence>
+       |         ^^^^^^^^^^^^^^^
+  1209 |
+  1210 |       {/* Settings / Semester Modal */}
+  1211 |       <AnimatePresence>
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component]
+
+
+    at <unknown> (Error: ./src/app/page.tsx:1208:9)
+    at <unknown> (Error: (./src/app/page.tsx:1208:9)
+[browser] ./src/app/page.tsx:1208:9
+Expected corresponding JSX closing tag for <div>
+  1206 |       </AnimatePresence>
+  1207 |       </div>
+> 1208 |       </AnimatePresence>
+       |         ^^^^^^^^^^^^^^^
+  1209 |
+  1210 |       {/* Settings / Semester Modal */}
+  1211 |       <AnimatePresence>
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component] 
+[browser] ./src/app/page.tsx:1208:9
+Expected corresponding JSX closing tag for <div>
+  1206 |       </AnimatePresence>
+  1207 |       </div>
+> 1208 |       </AnimatePresence>
+       |         ^^^^^^^^^^^^^^^
+  1209 |
+  1210 |       {/* Settings / Semester Modal */}
+  1211 |       <AnimatePresence>
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component] 
+[browser] ./src/app/page.tsx:1213:9
+Expected corresponding JSX closing tag for <div>
+  1211 |       </AnimatePresence>
+  1212 |       </div>
+> 1213 |       </AnimatePresence>
+       |         ^^^^^^^^^^^^^^^
+  1214 |
+  1215 |       {/* Settings / Semester Modal */}
+  1216 |       <AnimatePresence>
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component] 
+[browser] ./src/app/page.tsx:1208:9
+Expected corresponding JSX closing tag for <div>
+  1206 |       </AnimatePresence>
+  1207 |       </div>
+> 1208 |       </AnimatePresence>
+       |         ^^^^^^^^^^^^^^^
+  1209 |
+  1210 |       {/* Settings / Semester Modal */}
+  1211 |       <AnimatePresence>
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component] 
+[browser] ./src/app/page.tsx:1213:9
+Expected corresponding JSX closing tag for <div>
+  1211 |       </AnimatePresence>
+  1212 |       </div>
+> 1213 |       </AnimatePresence>
+       |         ^^^^^^^^^^^^^^^
+  1214 |
+  1215 |       {/* Settings / Semester Modal */}
+  1216 |       <AnimatePresence>
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component] 
+[browser] ./src/app/page.tsx:1217:9
+Expected corresponding JSX closing tag for <div>
+  1215 |       </AnimatePresence>
+  1216 |       </div>
+> 1217 |       </AnimatePresence>
+       |         ^^^^^^^^^^^^^^^
+  1218 |
+  1219 |       {/* Settings / Semester Modal */}
+  1220 |       <AnimatePresence>
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component] 
+✓ Compiled in 94ms
+ GET / 200 in 372ms (next.js: 131ms, application-code: 241ms)
+ GET /api/settings 500 in 55ms (next.js: 45ms, application-code: 9ms)
+ GET /api/reviews 200 in 65ms (next.js: 26ms, application-code: 40ms)
+ GET /api/reviews 200 in 21ms (next.js: 3ms, application-code: 18ms)
+ POST /api/settings 500 in 75ms (next.js: 38ms, application-code: 38ms)
+[browser] Uncaught TypeError: undefined is not an object (evaluating 'modulePresets.length')
+    at Dashboard (src/app/page.tsx:653:24)
+  651 |                         <button onClick={() => setShowSettingsModal(true)} className="tex...
+  652 |                       </div>
+> 653 |                       {modulePresets.length > 0 ? (
+      |                        ^
+  654 |                         <select 
+  655 |                           value={subjectInput}
+  656 |                           onChange={e => setSubjectInput(e.target.value)}
+ POST /api/settings 500 in 23ms (next.js: 12ms, application-code: 11ms)
+✓ Compiled in 128ms
+⚠ Fast Refresh had to perform a full reload due to a runtime error.
+ GET / 200 in 58ms (next.js: 8ms, application-code: 50ms)
+ GET /api/settings 500 in 10ms (next.js: 4ms, application-code: 7ms)
+ GET /api/reviews 200 in 43ms (next.js: 3ms, application-code: 40ms)
