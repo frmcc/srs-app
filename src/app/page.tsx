@@ -1311,6 +1311,21 @@ export default function Dashboard() {
                 </p>
               </div>
 
+              {/* Done Calendar */}
+              <div className="mb-4">
+                <h3 className="text-sm font-semibold mb-2 flex items-center gap-2 text-white">🟢 Done Calendar (Optional)</h3>
+                <a
+                  href={`webcal://${typeof window !== 'undefined' ? window.location.host : 'localhost:3000'}/api/calendar/done`}
+                  className="flex items-center justify-center gap-2 w-full py-2.5 bg-emerald-500/10 hover:bg-emerald-500/20 rounded-xl text-xs font-medium text-emerald-400 transition-all border border-emerald-500/20"
+                >
+                  <CalendarDays className="w-3.5 h-3.5" />
+                  Subscribe to Log History
+                </a>
+                <p className="text-[10px] text-white/30 mt-1.5 ml-1">
+                  Track your daily progress by subscribing to your completed reviews.
+                </p>
+              </div>
+
               {/* One-time download fallback */}
               <div className="pt-4 border-t border-white/[0.06]">
                 <a
