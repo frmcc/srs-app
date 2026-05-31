@@ -49,7 +49,10 @@ export async function GET(req: NextRequest) {
       "📝 Dein Quiz für heute:",
       `${baseUrl}/`,
       "",
-      "🤖 Tutor Prompt:",
+      "🤖 Tutor Doc ID (Nicht löschen):",
+      item.tutorPromptDocId || "Keine",
+      "",
+      "🔗 Link zum Prompt:",
       tutorUrl,
     ].join("\n");
 
