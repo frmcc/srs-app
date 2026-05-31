@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
+import Link from "next/link";
 import { CopyButton } from "./copy-button";
 
 type Params = Promise<{ id: string }>;
@@ -36,12 +37,12 @@ export default async function TutorPage({ params }: { params: Params }) {
               {item.subjectMain} – {item.subjectSub}
             </p>
           </div>
-          <a
+          <Link
             href="/"
             className="rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-sm font-medium text-stone-600 shadow-sm transition hover:bg-stone-50 hover:text-stone-900"
           >
             ← Zurück
-          </a>
+          </Link>
         </div>
       </header>
 

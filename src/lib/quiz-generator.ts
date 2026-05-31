@@ -160,21 +160,30 @@ export async function runQuizGeneration(params: {
     generatePodcastWorker(createdItem.id, "post").catch(console.error);
 
     return createdItem;
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errObj = error instanceof Error ? error : new Error(String(error));
     if (jobId) {
       await prisma.backgroundJob.update({
         where: { id: jobId },
-        data: { status: "error", error: error.message, completedAt: new Date() },
+        data: { status: "error", error: errObj.message, completedAt: new Date() },
       });
     }
 
     // Send error push notification
     await sendPushNotification({
       title: "❌ Quiz-Generierung fehlgeschlagen",
-      body: `${subjectMain}: ${error.message}`,
+      body: `${subjectMain}: ${errObj.message}`,
       tag: `quiz-error-${jobId}`,
     }).catch(() => {});
 
-    throw error;
+    throw errObj;
+  } finally {
+    for (const fileInfo of filePaths) {
+      try {
+        await fs.unlink(fileInfo.path);
+      } catch (e) {
+        console.error("Failed to delete temp file:", fileInfo.path, e);
+      }
+    }
   }
 }

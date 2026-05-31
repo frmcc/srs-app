@@ -186,6 +186,14 @@ export async function POST(req: NextRequest) {
         console.error("Quiz generation error:", error);
         sendEvent("error", { message: error.message });
         controller.close();
+      } finally {
+        for (const fileInfo of uploadedFilesData) {
+          try {
+            await fs.unlink(fileInfo.path);
+          } catch (e) {
+            console.error("Failed to delete temp file:", fileInfo.path, e);
+          }
+        }
       }
     }
   });
