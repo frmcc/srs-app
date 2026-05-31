@@ -6,6 +6,7 @@ import { PROMPTS, podcast_prompts } from "./prompts";
 import { sendPushNotification } from "@/lib/push";
 import { generatePodcastWorker } from "@/lib/notebooklm";
 import { generateContentWithRetry } from "@/lib/gemini-retry";
+import { createDriveFolder, uploadToDrive, createGoogleDoc } from "@/lib/google-drive";
 import fs from "fs/promises";
 import path from "path";
 
@@ -146,7 +147,39 @@ export async function POST(req: NextRequest) {
         const prePodcastPrompt = extractSection(podcastOutput, "===PRE_PODCAST_START===", "===PRE_PODCAST_END===");
         const postPodcastPrompt = extractSection(podcastOutput, "===POST_PODCAST_START===", "===POST_PODCAST_END===");
 
-        sendEvent("progress", { step: 9, message: "Saving records to database..." });
+        sendEvent("progress", { step: 9, message: "Uploading to Google Drive..." });
+
+        let folderId = "";
+        let mainPdfId = "";
+        try {
+          const folderName = `${subjectMain} - ${subjectSub}`;
+          folderId = await createDriveFolder(folderName);
+          
+          if (dbFilesData.length > 0) {
+            const firstFile = dbFilesData[0];
+            mainPdfId = await uploadToDrive(
+              firstFile.name || "Vorlesungsmaterial.pdf",
+              firstFile.mimeType,
+              firstFile.base64 ? Buffer.from(firstFile.base64, "base64") : Buffer.from(""),
+              folderId
+            );
+          } else if (textContent) {
+            mainPdfId = await createGoogleDoc("Vorlesungsmaterial", textContent, folderId);
+          }
+
+          await Promise.allSettled([
+            createGoogleDoc("Quiz 1 (Tag 1)", quizResults[0] || "", folderId),
+            createGoogleDoc("Quiz 2 (Tag 3)", quizResults[1] || "", folderId),
+            createGoogleDoc("Quiz 3 (Tag 7)", quizResults[2] || "", folderId),
+            createGoogleDoc("Quiz 4 (Tag 21)", quizResults[3] || "", folderId),
+            createGoogleDoc("Quiz 5 (Tag 60)", quizResults[4] || "", folderId),
+            createGoogleDoc("Tutor Prompt", tutorPrompt || "", folderId)
+          ]);
+        } catch (e) {
+          console.error("Google Drive upload failed:", e);
+        }
+
+        sendEvent("progress", { step: 10, message: "Saving records to database..." });
 
         const appConfig = await prisma.appConfig.findUnique({ where: { id: 1 } });
         const currentSemester = appConfig?.currentSemester || 1;
@@ -167,7 +200,7 @@ export async function POST(req: NextRequest) {
             tutorPromptDocId: "pending", // Will be set to item ID after creation
             prePodcastPrompt: prePodcastPrompt || null,
             postPodcastPrompt: postPodcastPrompt || null,
-            sourceMaterialContent: sourceMaterialContentPayload
+            sourceMaterialContent: JSON.stringify({ driveFileId: mainPdfId, driveFolderId: folderId })
           }
         });
 

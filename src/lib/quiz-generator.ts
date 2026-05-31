@@ -144,7 +144,7 @@ export async function runQuizGeneration(params: {
         createGoogleDoc("Quiz 3 (Tag 7)", quizResults[2] || "", folderId),
         createGoogleDoc("Quiz 4 (Tag 21)", quizResults[3] || "", folderId),
         createGoogleDoc("Quiz 5 (Tag 60)", quizResults[4] || "", folderId),
-        createGoogleDoc("Tutor Prompt", tutorPrompt, folderId)
+        createGoogleDoc("Tutor Prompt", tutorPrompt || "", folderId)
       ]);
     } catch (e) {
       console.error("Google Drive upload failed:", e);
