@@ -47,12 +47,9 @@ export async function GET(req: NextRequest) {
       `Dein Review für ${interval} (Level ${levelNum})`,
       "",
       "📝 Dein Quiz für heute:",
-      `${baseUrl}/`,
+      `${baseUrl}/?quizId=${item.id}`,
       "",
       `🤖 Tutor Doc ID (Nicht löschen): ${item.tutorPromptDocId || "Keine"}`,
-      "",
-      "🔗 Link zum Prompt:",
-      tutorUrl,
     ].join("\n");
 
     ics.push(

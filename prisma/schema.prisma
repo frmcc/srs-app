@@ -1,5 +1,6 @@
 generator client {
   provider = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
 }
 
 datasource db {
@@ -35,9 +36,15 @@ model SRSItem {
   quiz3DocId       String?  // Column I
   quiz4DocId       String?  // Column J
   quiz5DocId       String?  // Column K
+  quiz6DocId       String?  // Mastery Stage 1 (Tag 180)
+  quiz7DocId       String?  // Mastery Stage 2 (Tag 365)
   
   sourceMaterialId String?  // Column L
   sourceMaterialContent String?
+  
+  // Didactic Context (Added to give Grader context)
+  blueprint        String?
+  coverageLedger   String?
   
   // Grading History and Explainer Prompts (Phase 2 additions)
   lastFeedback     String?
@@ -81,6 +88,7 @@ model AppConfig {
   id              Int      @id @default(1)
   currentSemester Int      @default(1)
   modulePresets   String   @default("[]") // JSON string array
+  language        String   @default("german") // german or english
   updatedAt       DateTime @updatedAt
 }
 

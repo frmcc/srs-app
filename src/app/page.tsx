@@ -2,28 +2,33 @@
 
 import { motion, AnimatePresence } from "framer-motion";
 import { 
-  BrainCircuit, 
-  BookOpen, 
-  CalendarDays, 
-  ChevronRight,
-  Sparkles,
-  CheckCircle2,
-  Clock,
-  Loader2,
-  FileText,
-  Copy,
-  Check,
-  ArrowLeft,
-  X,
-  GraduationCap,
-  ChevronDown,
-  UploadCloud,
-  AlertTriangle,
-  Printer,
-  Trash2
-} from "lucide-react";
+  CpuChipIcon,
+  BookOpenIcon,
+  CalendarDaysIcon,
+  ChevronRightIcon,
+  SparklesIcon,
+  CheckCircleIcon,
+  ClockIcon,
+  ArrowPathIcon,
+  DocumentTextIcon,
+  DocumentDuplicateIcon,
+  CheckIcon,
+  ArrowLeftIcon,
+  XMarkIcon,
+  Bars3Icon,
+  AcademicCapIcon,
+  ChevronDownIcon,
+  CloudArrowUpIcon,
+  ExclamationTriangleIcon,
+  PrinterIcon,
+  TrashIcon,
+  Cog8ToothIcon,
+  BellIcon,
+  BellSlashIcon
+} from "@heroicons/react/24/outline";
+
 import { useState, useEffect, useCallback } from "react";
-import { Bell, BellOff } from "lucide-react";
+
 
 const extractStudentQuiz = (rawQuizText: string) => {
   if (!rawQuizText) return "";
@@ -76,7 +81,9 @@ export default function Dashboard() {
   // Semester & Settings State
   const [currentSemester, setCurrentSemester] = useState<number>(1);
   const [modulePresets, setModulePresets] = useState<string[]>([]);
+  const [language, setLanguage] = useState<string>("german");
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [newPresetInput, setNewPresetInput] = useState("");
   
   useEffect(() => {
@@ -86,6 +93,7 @@ export default function Dashboard() {
         if (!data.error) {
           setCurrentSemester(data.currentSemester);
           setModulePresets(data.modulePresets || []);
+          if (data.language) setLanguage(data.language);
           if (data.modulePresets && data.modulePresets.length > 0) {
             setSubjectInput(data.modulePresets[0]);
           }
@@ -112,6 +120,7 @@ export default function Dashboard() {
   const [resultTab, setResultTab] = useState("brief");
   const [showCalendarModal, setShowCalendarModal] = useState(false);
   const [calendarUrlCopied, setCalendarUrlCopied] = useState(false);
+  const [archiveModalData, setArchiveModalData] = useState<{level: number, url: string, date?: string}[] | null>(null);
   
   // Podcast State
   const [generatingPodcasts, setGeneratingPodcasts] = useState<Record<string, boolean>>({});
@@ -156,6 +165,29 @@ export default function Dashboard() {
       console.error("Push subscribe error:", err);
     }
   }, []);
+
+  const togglePush = useCallback(async () => {
+    if (pushSubscribed) {
+      try {
+        const reg = await navigator.serviceWorker.ready;
+        const sub = await reg.pushManager.getSubscription();
+        if (sub) {
+          const endpoint = sub.endpoint;
+          await sub.unsubscribe();
+          await fetch("/api/push/subscribe", {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ endpoint }),
+          });
+        }
+        setPushSubscribed(false);
+      } catch (err) {
+        console.error("Push unsubscribe error:", err);
+      }
+    } else {
+      subscribeToPush();
+    }
+  }, [pushSubscribed, subscribeToPush]);
 
   const fetchReviews = useCallback(() => {
     fetch('/api/reviews')
@@ -254,9 +286,12 @@ export default function Dashboard() {
       review.raw.quiz2DocId,
       review.raw.quiz3DocId,
       review.raw.quiz4DocId,
-      review.raw.quiz5DocId
+      review.raw.quiz5DocId,
+      review.raw.quiz6DocId,
+      review.raw.quiz7DocId
     ];
-    const quizText = quizFields[level] || review.raw.quiz1DocId || "";
+    // For levels 6 and beyond, we keep rolling over the quiz7DocId slot
+    const quizText = (level >= 6 ? review.raw.quiz7DocId : quizFields[level]) || review.raw.quiz1DocId || "";
     
     // Only display/process student questions
     const studentQuizOnly = extractStudentQuiz(quizText);
@@ -288,6 +323,21 @@ export default function Dashboard() {
     setActiveTab("quiz");
   };
 
+  useEffect(() => {
+    if (upcomingReviews.length > 0 && typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const quizId = params.get("quizId");
+      if (quizId) {
+        const review = upcomingReviews.find(r => r.id === quizId);
+        if (review) {
+          window.history.replaceState({}, document.title, window.location.pathname);
+          startQuiz(review);
+        }
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [upcomingReviews]);
+
   const exportQuizForPrint = () => {
     if (!selectedReview || parsedTasks.length === 0) return;
     window.print();
@@ -303,6 +353,7 @@ export default function Dashboard() {
       const formData = new FormData();
       formData.append("subjectMain", subjectInput);
       formData.append("subjectSub", topicInput || "Module");
+      formData.append("language", language);
       if (textInput) formData.append("content", textInput);
       uploadedFiles.forEach(file => formData.append("files", file));
 
@@ -387,7 +438,8 @@ export default function Dashboard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           itemId: selectedReview.id,
-          studentAnswers: payloadAnswers
+          studentAnswers: payloadAnswers,
+          language: language
         })
       });
 
@@ -445,12 +497,12 @@ export default function Dashboard() {
       
       {/* Print-Only Wrapper */}
       {activeTab === "quiz" && selectedReview && parsedTasks.length > 0 && (
-        <div className="hidden print:block p-8 w-full bg-white text-black">
+        <div className="hidden print:block p-4 md:p-8 w-full bg-white text-black">
           <div className="max-w-3xl mx-auto">
-            <div className="border-b-2 border-zinc-200 pb-5 mb-8">
-              <h1 className="text-2xl font-bold font-sans text-zinc-900 mb-1">{selectedReview.topic}</h1>
+            <div className="border-b-2 border-zinc-200 pb-6 mb-8">
+              <h1 className="text-2xl font-bold font-sans text-zinc-900 mb-2">{selectedReview.topic}</h1>
               <p className="text-xs text-zinc-500 font-medium">
-                <span className="bg-zinc-900 text-zinc-300 px-2 py-0.5 rounded mr-2 font-bold uppercase tracking-wider">Level {selectedReview.level}</span>
+                <span className="bg-zinc-900 text-zinc-300 px-2 py-0 rounded mr-2 font-bold uppercase tracking-wider">Level {selectedReview.level}</span>
                 {selectedReview.subject}
               </p>
               <div className="flex justify-between mt-4 pt-4 border-t border-zinc-200 text-xs text-zinc-500">
@@ -482,9 +534,9 @@ export default function Dashboard() {
                       {task.questionText}
                     </div>
                     <div>
-                      <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-1">Antwort:</p>
+                      <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-2">Antwort:</p>
                       {Array.from({ length: lineCount }).map((_, i) => (
-                        <div key={i} className="border-b border-zinc-300 h-7 w-full"></div>
+                        <div key={i} className="border-b border-zinc-300 h-8 w-full"></div>
                       ))}
                     </div>
                   </div>
@@ -496,80 +548,97 @@ export default function Dashboard() {
       )}
 
       {/* Main App (Hidden in Print) */}
-      <div className="flex w-full print:hidden">
+      <div className="flex flex-col md:flex-row w-full print:hidden">
+
+      {/* Mobile Top Bar */}
+      <div className="md:hidden flex items-center justify-between p-4 border-b border-white/[0.06] bg-zinc-950 sticky top-0 z-50">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center shadow-lg shadow-black">
+            <CpuChipIcon className="text-white w-4 h-4" />
+          </div>
+          <h1 className="text-lg font-bold tracking-tight">SRS<span className="text-gradient">Master</span></h1>
+        </div>
+        <button onClick={() => setShowMobileMenu(!showMobileMenu)} className="p-2 text-zinc-400 hover:text-white">
+          {showMobileMenu ? <XMarkIcon className="w-6 h-6" /> : <Bars3Icon className="w-6 h-6" />}
+        </button>
+      </div>
 
       {/* Sidebar */}
       <motion.aside 
         initial={{ x: -300, opacity: 0 }}
         animate={{ x: 0, opacity: 1 }}
         transition={{ duration: 0.5, ease: "easeOut" }}
-        className="w-64 sidebar-gradient border-r border-white/[0.06] flex flex-col p-6 sticky top-0 h-screen"
+        className={`${showMobileMenu ? 'flex' : 'hidden'} md:flex w-full md:w-64 sidebar-gradient border-r border-white/[0.06] flex-col p-6 sticky md:top-0 h-[calc(100vh-73px)] md:h-screen z-40 overflow-y-auto`}
       >
-        <div className="flex items-center gap-3 mb-12">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-zinc-9000 to-violet-600 flex items-center justify-center shadow-lg shadow-white/[0.12]">
-            <BrainCircuit className="text-white w-5 h-5" />
+        <div className="hidden md:flex items-center gap-4 mb-6 md:mb-12">
+          <div className="w-12 h-12 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-center shadow-lg shadow-black">
+            <CpuChipIcon className="text-white w-6 h-6" />
           </div>
           <div className="flex flex-col">
             <h1 className="text-xl font-bold tracking-tight">SRS<span className="text-gradient">Master</span></h1>
-            <div className="mt-1 text-[10px] font-bold text-accent-1 bg-accent-1/10 px-2 py-0.5 rounded-full border border-accent-1/20 self-start">
+            <div className="mt-2 text-[10px] font-bold text-zinc-400 bg-zinc-900 px-2 py-0 rounded-full border border-zinc-800 self-start">
               Semester {currentSemester}
             </div>
           </div>
         </div>
 
         <nav className="flex flex-col gap-2">
-          <button onClick={() => setActiveTab("dashboard")} className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${activeTab === 'dashboard' ? 'nav-item-active' : 'nav-item-idle'}`}>
-            <CalendarDays className="w-5 h-5" />
-            <span className="font-medium">Dashboard</span>
+          <button onClick={() => { setActiveTab("dashboard"); setShowMobileMenu(false); }} className={`flex items-center gap-4 px-4 py-4 rounded-xl transition-all duration-200 ${activeTab === 'dashboard' ? 'nav-item-active' : 'nav-item-idle'}`}>
+            <CalendarDaysIcon className="w-6 h-6 shrink-0" />
+            <span className="font-medium whitespace-nowrap">Dashboard</span>
           </button>
-          <button onClick={() => setActiveTab("upload")} className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${activeTab === 'upload' ? 'nav-item-active' : 'nav-item-idle'}`}>
-            <UploadCloud className="w-5 h-5" />
-            <span className="font-medium">Upload Material</span>
+          <button onClick={() => { setActiveTab("upload"); setShowMobileMenu(false); }} className={`flex items-center gap-4 px-4 py-4 rounded-xl transition-all duration-200 ${activeTab === 'upload' ? 'nav-item-active' : 'nav-item-idle'}`}>
+            <CloudArrowUpIcon className="w-6 h-6 shrink-0" />
+            <span className="font-medium whitespace-nowrap">{language === 'german' ? 'Material hochladen' : 'Upload Material'}</span>
           </button>
-          <button onClick={() => setActiveTab("library")} className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${activeTab === 'library' ? 'nav-item-active' : 'nav-item-idle'}`}>
-            <BookOpen className="w-5 h-5" />
-            <span className="font-medium">Library</span>
+          <button onClick={() => { setActiveTab("library"); setShowMobileMenu(false); }} className={`flex items-center gap-4 px-4 py-4 rounded-xl transition-all duration-200 ${activeTab === 'library' ? 'nav-item-active' : 'nav-item-idle'}`}>
+            <BookOpenIcon className="w-6 h-6 shrink-0" />
+            <span className="font-medium whitespace-nowrap">{language === 'german' ? 'Bibliothek' : 'Library'}</span>
+          </button>
+          <button onClick={() => { setShowSettingsModal(true); setShowMobileMenu(false); }} className={`flex items-center gap-4 px-4 py-4 rounded-xl transition-all duration-200 nav-item-idle`}>
+            <Cog8ToothIcon className="w-6 h-6 shrink-0" />
+            <span className="font-medium whitespace-nowrap">{language === 'german' ? 'Einstellungen' : 'Settings'}</span>
           </button>
         </nav>
 
-        <div className="mt-auto flex flex-col gap-3">
+        <div className="mt-auto flex flex-col gap-4">
           {/* Push Notification Toggle */}
           <button
-            onClick={subscribeToPush}
-            className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${
+            onClick={togglePush}
+            className={`flex items-center gap-4 px-4 py-4 rounded-xl transition-all duration-200 ${
               pushPermission === "granted" && pushSubscribed
                 ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
                 : "nav-item-idle"
             }`}
           >
             {pushPermission === "granted" && pushSubscribed ? (
-              <Bell className="w-5 h-5" />
+              <BellIcon className="w-6 h-6 shrink-0" />
             ) : (
-              <BellOff className="w-5 h-5" />
+              <BellSlashIcon className="w-6 h-6 shrink-0" />
             )}
-            <span className="font-medium text-sm">
+            <span className="font-medium text-sm whitespace-nowrap">
               {pushPermission === "granted" && pushSubscribed
-                ? "Notifications On"
+                ? language === "german" ? "Mitteilungen an" : "Notifications On"
                 : pushPermission === "denied"
-                ? "Notifications Blocked"
-                : "Enable Notifications"}
+                ? language === "german" ? "Blockiert" : "Notifications Blocked"
+                : language === "german" ? "Mitteilungen erlauben" : "Enable Notifications"}
             </span>
           </button>
 
           <div className="card-surface p-4 relative overflow-hidden">
             <div className="absolute -top-10 -right-10 w-24 h-24 hidden"></div>
-            <Sparkles className="w-6 h-6 text-amber-400 mb-2" />
-            <h3 className="font-medium text-white/90 text-sm mb-1">Live Tutor Pro</h3>
-            <p className="text-xs text-white/40 mb-3">Upgrade your learning with voice AI.</p>
+            <SparklesIcon className="w-6 h-6 text-zinc-400 mb-2" />
+            <h3 className="font-medium text-white/90 text-sm mb-2">Live Tutor Pro</h3>
+            <p className="text-xs text-white/40 mb-4">{language === "german" ? "Optimiere dein Lernen mit Sprach-KI." : "Upgrade your learning with voice AI."}</p>
             <button className="w-full py-2 bg-white/[0.04] hover:bg-white/[0.06] rounded-lg text-xs font-medium border border-white/[0.08] text-white/30 cursor-not-allowed transition-colors">
-              Unlock (Phase 2)
+              {language === "german" ? "Freischalten (Phase 2)" : "Unlock (Phase 2)"}
             </button>
           </div>
         </div>
       </motion.aside>
 
       {/* Main Content */}
-      <main className="flex-1 p-10 overflow-y-auto relative h-screen">
+      <main className={`${showMobileMenu ? "hidden" : "block"} md:block flex-1 p-4 md:p-12 overflow-y-auto relative h-[calc(100vh-73px)] md:h-screen`}>
         <AnimatePresence mode="wait">
           {activeTab === "dashboard" && (
             <motion.div 
@@ -579,54 +648,54 @@ export default function Dashboard() {
               exit={{ opacity: 0, y: -10 }}
               className="max-w-5xl mx-auto"
             >
-              <header className="mb-12 flex justify-between items-end">
+              <header className="mb-6 md:mb-12 flex justify-between items-end">
                 <div>
-                  <h2 className="text-sm font-medium text-white mb-1 uppercase tracking-wider">Welcome back</h2>
-                  <h1 className="text-4xl font-bold tracking-tight text-white mb-2">Ready to level up?</h1>
-                  <p className="text-white/50">You have {upcomingReviews.filter(r => r.isDue).length} reviews due today.</p>
+                  <h2 className="text-sm font-medium text-white mb-2 uppercase tracking-wider">{language === 'german' ? 'Willkommen zurück' : 'Welcome back'}</h2>
+                  <h1 className="text-4xl font-bold tracking-tight text-white mb-2">{language === 'german' ? 'Bereit für das nächste Level?' : 'Ready to level up?'}</h1>
+                  <p className="text-white/50">{language === 'german' ? `Du hast ${upcomingReviews.filter(r => r.isDue).length} Wiederholungen heute.` : `You have ${upcomingReviews.filter(r => r.isDue).length} reviews due today.`}</p>
                 </div>
               </header>
 
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-8">
                 {/* Reviews List */}
                 <div className="lg:col-span-2 flex flex-col gap-4">
                   <div className="flex items-center justify-between mb-2">
                     <h3 className="text-xl font-semibold flex items-center gap-2">
-                      <Clock className="w-5 h-5 text-white" />
-                      Upcoming Reviews
+                      <ClockIcon className="w-6 h-6 text-white" />
+                      {language === 'german' ? 'Anstehende Wiederholungen' : 'Upcoming Reviews'}
                     </h3>
                     <button
                       onClick={() => setShowCalendarModal(true)}
-                      className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.12] text-white hover:text-indigo-300 transition-all"
+                      className="flex items-center gap-2 px-4 py-2 text-xs font-medium rounded-lg bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.12] text-white hover:text-zinc-300 transition-all"
                     >
-                      <CalendarDays className="w-3.5 h-3.5" />
-                      Sync to Calendar
+                      <CalendarDaysIcon className="w-4 h-4" />
+                      {language === 'german' ? 'Kalender synchronisieren' : 'Sync to Calendar'}
                     </button>
                   </div>
 
                   {upcomingReviews.length === 0 ? (
-                    <div className="card-surface p-10 text-center text-white/40">
-                      No reviews found. Upload lecture material to generate your first quiz!
+                    <div className="card-surface p-4 md:p-12 text-center text-white/40">
+                      {language === 'german' ? 'Keine Wiederholungen gefunden. Lade Vorlesungsmaterial hoch, um dein erstes Quiz zu erstellen!' : 'No reviews found. Upload lecture material to generate your first quiz!'}
                     </div>
                   ) : (
                     upcomingReviews.map((review, i) => (
                       <motion.div 
                         key={review.id} 
                         onClick={() => startQuiz(review)}
-                        className={`card-surface-elevated p-5 transition-all duration-300 group cursor-pointer hover:border-white/[0.2] relative overflow-hidden ${review.isDue ? 'border-white/[0.12] glow-primary' : ''}`}
+                        className={`card-surface-elevated p-6 transition-all duration-300 group cursor-pointer hover:border-white/[0.2] relative overflow-hidden ${review.isDue ? 'border-white/[0.12] glow-primary' : ''}`}
                       >
                         <div className="accent-bar"></div>
-                        <div className="flex justify-between items-center pl-2">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-3 mb-1">
-                              <span className={`text-xs font-semibold px-2.5 py-1 rounded-md ${review.isDue ? 'badge-due' : 'badge-level'}`}>Level {review.level}</span>
-                              <span className="text-[10px] font-bold text-white/50 bg-white/[0.04] px-2 py-0.5 rounded-full border border-white/[0.08]">
+                        <div className="flex justify-between items-start pl-2">
+                          <div className="flex-1 min-w-0 pr-4">
+                            <div className="flex items-center gap-4 mb-2">
+                              <span className={`text-xs font-semibold px-2 py-2 rounded-md ${review.isDue ? 'badge-due' : 'badge-level'}`}>Level {review.level}</span>
+                              <span className="text-[10px] font-bold text-white/50 bg-white/[0.04] px-2 py-0 rounded-full border border-white/[0.08]">
                                 Sem {review.semester}
                               </span>
                               <span className="text-xs text-white/40">{review.isDue ? "Due Now" : `Scheduled: ${review.dueDate}`}</span>
                             </div>
-                            <h4 className="text-lg font-medium text-white">{review.subject}</h4>
-                            <p className="text-sm text-white/40">{review.topic}</p>
+                            <h4 className="text-lg font-medium text-white truncate">{review.subject}</h4>
+                            <p className="text-sm text-white/40 truncate">{review.topic}</p>
 
                             {review.raw.lastFeedback && (
                               <button 
@@ -635,67 +704,121 @@ export default function Dashboard() {
                                   setActiveFeedbackItem(review.raw);
                                   setFeedbackTab("brief");
                                 }}
-                                className="mt-3 text-xs bg-white/[0.04] hover:bg-white/[0.06] border border-white/[0.08] text-white/50 px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all cursor-pointer"
+                                className="mt-4 text-xs bg-white/[0.04] hover:bg-white/[0.06] border border-white/[0.08] text-white/50 px-4 py-2 rounded-lg flex items-center gap-2 transition-all cursor-pointer"
                               >
-                                <FileText className="w-3.5 h-3.5 text-white" />
-                                View Last Feedback & Video Prompts
+                                <DocumentTextIcon className="w-4 h-4 text-white" />
+                                {language === "german" ? "Feedback ansehen" : "View Remediation Brief"}
                               </button>
                             )}
 
-                            <div className="flex gap-2 w-full mt-4" onClick={(e) => e.stopPropagation()}>
+                            {(() => {
+                              let latestVideoUrl = review.raw.videoUrl;
+                              let videoHistory: any[] = [];
+                              if (latestVideoUrl && latestVideoUrl.startsWith("[")) {
+                                try {
+                                  videoHistory = JSON.parse(latestVideoUrl);
+                                  if (videoHistory.length > 0) {
+                                    latestVideoUrl = videoHistory[videoHistory.length - 1].url;
+                                  } else {
+                                    latestVideoUrl = null;
+                                  }
+                                } catch(e) { }
+                              } else if (latestVideoUrl && latestVideoUrl.startsWith("http")) {
+                                videoHistory = [{ level: review.level, url: latestVideoUrl }];
+                              }
+
+                              return (
+                                <>
+                                  {videoHistory.length > 1 && (
+                                    <button 
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setArchiveModalData(videoHistory);
+                                      }}
+                                      className="mt-2 text-xs bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 text-indigo-400 px-4 py-2 rounded-lg flex items-center gap-2 transition-all cursor-pointer"
+                                    >
+                                      <ClockIcon className="w-4 h-4" />
+                                      View Video Archive ({videoHistory.length})
+                                    </button>
+                                  )}
+
+                             <div className="flex flex-wrap sm:flex-nowrap gap-4 lg:gap-4 mt-6 p-4 bg-black/40 rounded-xl border border-white/5 relative overflow-hidden">
                               {/* PRE-PODCAST */}
-                              <div className="flex-1">
-                                <h5 className="text-[10px] font-bold text-stone-500 uppercase mb-1">Pre-Lecture Teaser</h5>
+                              <div className="flex-1 min-w-0">
+                                <h5 className="text-[10px] font-bold text-stone-500 uppercase mb-2 truncate">{language === "german" ? "Vorbereitung" : "Pre-Lecture"}</h5>
                                 {review.raw.prePodcastUrl && review.raw.prePodcastUrl.startsWith("http") ? (
                                   <a 
                                     href={review.raw.prePodcastUrl} 
                                     target="_blank" 
                                     rel="noopener noreferrer" 
-                                    className="text-xs bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 px-2 py-1.5 rounded-md flex items-center justify-center gap-1.5 transition-all w-full font-medium"
+                                    className="text-xs bg-zinc-100 hover:bg-white border border-zinc-200 text-black px-2 py-2 rounded-md flex items-center justify-center gap-2 transition-all w-full font-medium truncate"
                                   >
-                                    <Sparkles className="w-3 h-3" />
-                                    Notebook öffnen
+                                    <SparklesIcon className="w-4 h-4 shrink-0" />
+                                    Audio 1
                                   </a>
                                 ) : (
-                                  <div className="text-xs bg-amber-50 border border-amber-200 text-amber-600 px-2 py-1.5 rounded-md flex items-center gap-1.5 w-full justify-center">
-                                    <Loader2 className="w-3 h-3 animate-spin" />
-                                    Wird konfiguriert...
+                                  <div className="text-xs bg-zinc-900 border border-zinc-800 text-zinc-400 px-2 py-2 rounded-md flex items-center gap-2 w-full justify-center">
+                                    <ArrowPathIcon className="w-4 h-4 animate-spin shrink-0" />
                                   </div>
                                 )}
                               </div>
 
                               {/* POST-PODCAST */}
-                              <div className="flex-1">
-                                <h5 className="text-[10px] font-bold text-stone-500 uppercase mb-1">Post-Lecture Deep Dive</h5>
+                              <div className="flex-1 min-w-0">
+                                <h5 className="text-[10px] font-bold text-stone-500 uppercase mb-2 truncate">{language === "german" ? "Nachbereitung" : "Post-Lecture"}</h5>
                                 {review.raw.postPodcastUrl && review.raw.postPodcastUrl.startsWith("http") ? (
                                   <a 
                                     href={review.raw.postPodcastUrl} 
                                     target="_blank" 
                                     rel="noopener noreferrer" 
-                                    className="text-xs bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 px-2 py-1.5 rounded-md flex items-center justify-center gap-1.5 transition-all w-full font-medium"
+                                    className="text-xs bg-zinc-100 hover:bg-white border border-zinc-200 text-black px-2 py-2 rounded-md flex items-center justify-center gap-2 transition-all w-full font-medium truncate"
                                   >
-                                    <Sparkles className="w-3 h-3" />
-                                    Notebook öffnen
+                                    <SparklesIcon className="w-4 h-4 shrink-0" />
+                                    Audio 2
                                   </a>
                                 ) : (
-                                  <div className="text-xs bg-amber-50 border border-amber-200 text-amber-600 px-2 py-1.5 rounded-md flex items-center gap-1.5 w-full justify-center">
-                                    <Loader2 className="w-3 h-3 animate-spin" />
-                                    Wird konfiguriert...
+                                  <div className="text-xs bg-zinc-900 border border-zinc-800 text-zinc-400 px-2 py-2 rounded-md flex items-center gap-2 w-full justify-center">
+                                    <ArrowPathIcon className="w-4 h-4 animate-spin shrink-0" />
+                                  </div>
+                                )}
+                              </div>
+                              
+                              {/* VIDEO STUDIO */}
+                              <div className="flex-1 min-w-0">
+                                <h5 className="text-[10px] font-bold text-stone-500 uppercase mb-2 truncate">{language === "german" ? "Videostudio" : "Video Studio"}</h5>
+                                {latestVideoUrl && latestVideoUrl.startsWith("http") ? (
+                                  <a 
+                                    href={latestVideoUrl} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer" 
+                                    className="text-xs bg-emerald-100 hover:bg-emerald-50 border border-emerald-200 text-emerald-900 px-2 py-2 rounded-md flex items-center justify-center gap-2 transition-all w-full font-medium truncate"
+                                  >
+                                    <SparklesIcon className="w-4 h-4 shrink-0" />
+                                    Video
+                                  </a>
+                                ) : (
+                                  <div className="text-[10px] bg-zinc-900 border border-zinc-800 text-zinc-500 px-2 py-2 rounded-md flex items-center gap-2 w-full justify-center text-center">
+                                    Nach Grading
                                   </div>
                                 )}
                               </div>
                             </div>
+                                </>
+                              );
+                            })()}
+
+
                           </div>
-                          <div className="flex flex-col items-center gap-2">
+                          <div className="flex flex-col items-center gap-2 shrink-0">
                             <button className="w-12 h-12 rounded-full flex items-center justify-center transition-all bg-white/[0.04] text-white/40 group-hover:bg-white/[0.08] group-hover:text-white group-hover:scale-110 cursor-pointer">
-                              <ChevronRight className="w-6 h-6 ml-1" />
+                              <ChevronRightIcon className="w-6 h-6 ml-2" />
                             </button>
                             <button 
                               onClick={(e) => handleDeleteModule(e, review.id)}
-                              className="w-10 h-10 rounded-full flex items-center justify-center transition-all bg-white/[0.04] text-white/40 hover:bg-red-500/20 hover:text-red-400 cursor-pointer"
+                              className="w-12 h-12 rounded-full flex items-center justify-center transition-all bg-white/[0.04] text-white/40 hover:bg-red-500/20 hover:text-red-400 cursor-pointer"
                               title="Delete Module"
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <TrashIcon className="w-4 h-4" />
                             </button>
                           </div>
                         </div>
@@ -706,12 +829,12 @@ export default function Dashboard() {
 
                 {/* Quick Actions */}
                 <div className="flex flex-col gap-6">
-                  <motion.div className="card-surface-elevated p-6 gradient-border cursor-pointer transition-colors" onClick={() => setActiveTab("upload")}>
-                    <h3 className="text-lg font-semibold mb-2 text-white">Upload Material</h3>
-                    <p className="text-sm text-white/40 mb-4">Feed the engine a new module to start the 6-stage generative AI pipeline.</p>
-                    <button className="btn-primary w-full py-3 px-4 flex items-center justify-center gap-2 cursor-pointer">
-                      <UploadCloud className="w-5 h-5" />
-                      Upload Now
+                  <motion.div className="card-surface-elevated p-6 gradient-border cursor-pointer transition-colors" onClick={() => { setActiveTab("upload"); setShowMobileMenu(false); }}>
+                    <h3 className="text-lg font-semibold mb-2 text-white">{language === 'german' ? 'Material hochladen' : 'Upload Material'}</h3>
+                    <p className="text-sm text-white/40 mb-4">{language === 'german' ? 'Füttere die KI mit einem neuen Modul, um den generativen 6-Stufen-Prozess zu starten.' : 'Feed the engine a new module to start the 6-stage generative AI pipeline.'}</p>
+                    <button className="btn-primary w-full py-4 px-4 flex items-center justify-center gap-2 cursor-pointer">
+                      <CloudArrowUpIcon className="w-6 h-6" />
+                      {language === 'german' ? 'Jetzt hochladen' : 'Upload Now'}
                     </button>
                   </motion.div>
                 </div>
@@ -729,16 +852,16 @@ export default function Dashboard() {
             >
               <header className="mb-8">
                 <h1 className="text-3xl font-bold tracking-tight text-white mb-2">Ironclad Generator</h1>
-                <p className="text-white/50">Paste your lecture material below to run the full 6-stage Didactic AI chain.</p>
+                <p className="text-white/50">{language === 'german' ? 'Füge dein Vorlesungsmaterial hier ein, um den kompletten didaktischen KI-Prozess zu starten.' : 'Paste your lecture material below to run the full 6-stage Didactic AI chain.'}</p>
               </header>
 
               {isGenerating ? (
-                <div className="card-surface-elevated p-10 flex flex-col items-center justify-center text-center">
-                  <Loader2 className="w-12 h-12 text-white animate-spin mb-6" />
+                <div className="card-surface-elevated p-4 md:p-12 flex flex-col items-center justify-center text-center">
+                  <ArrowPathIcon className="w-12 h-12 text-white animate-spin mb-6" />
                   <h3 className="text-2xl font-bold text-white mb-2">Processing Module...</h3>
                   <p className="text-white/50 mb-8 text-lg">{progressMsg}</p>
                   
-                  <div className="progress-track w-full max-w-md h-3">
+                  <div className="progress-track w-full max-w-md h-4">
                     <motion.div 
                       className="progress-fill h-full"
                       initial={{ width: 0 }}
@@ -748,53 +871,53 @@ export default function Dashboard() {
                   </div>
                   <div className="w-full max-w-md mt-4 text-left space-y-3">
                      {[1,2,3,4,5,6,7].map(step => (
-                        <div key={step} className={`flex items-center gap-3 text-sm ${progressStep > step ? 'text-emerald-400' : progressStep === step ? 'text-white font-medium' : 'text-white/20'}`}>
-                           {progressStep > step ? <CheckCircle2 className="w-4 h-4" /> : <div className="w-4 h-4 rounded-full border-2 border-current" />}
+                        <div key={step} className={`flex items-center gap-4 text-sm ${progressStep > step ? 'text-emerald-400' : progressStep === step ? 'text-white font-medium' : 'text-white/20'}`}>
+                           {progressStep > step ? <CheckCircleIcon className="w-4 h-4" /> : <div className="w-4 h-4 rounded-full border-2 border-current" />}
                            {step === 1 ? "Blueprint Engine" : step === 7 ? "Tutor Prompt Engine" : `Quiz Agent (Level ${step-1})`}
                         </div>
                      ))}
                   </div>
                 </div>
               ) : (
-                <div className="card-surface-elevated p-8 flex flex-col gap-6">
+                <div className="card-surface-elevated p-4 md:p-8 flex flex-col gap-6">
                   <div className="flex gap-4">
-                    <div className="flex-1">
-                      <div className="flex items-center justify-between mb-2">
-                        <label className="text-sm font-medium text-white/50">Module (Semester {currentSemester})</label>
-                        <button onClick={() => setShowSettingsModal(true)} className="text-xs text-accent-1 hover:text-white transition-colors">Manage Presets</button>
+                    <div className="flex-1 flex flex-col justify-end">
+                      <div className="flex items-start justify-between mb-2 gap-2">
+                        <label className="text-sm font-medium text-white/50 leading-tight">{language === "german" ? `Modul (Semester ${currentSemester})` : `Module (Semester ${currentSemester})`}</label>
+                        <button onClick={() => { setShowSettingsModal(true); setShowMobileMenu(false); }} className="text-xs text-zinc-400 hover:text-white transition-colors shrink-0">{language === "german" ? "Verwalten" : "Manage Presets"}</button>
                       </div>
                       {modulePresets.length > 0 ? (
                         <select 
                           value={subjectInput}
                           onChange={e => setSubjectInput(e.target.value)}
-                          className="input-dark w-full px-4 py-3 appearance-none bg-zinc-900"
+                          className="input-dark w-full px-4 py-4 appearance-none bg-zinc-900"
                         >
                           {modulePresets.map(preset => (
                             <option key={preset} value={preset}>{preset}</option>
                           ))}
                         </select>
                       ) : (
-                        <div className="input-dark w-full px-4 py-3 text-white/50 text-sm flex items-center justify-between">
-                          No modules defined for Semester {currentSemester}
-                          <button onClick={() => setShowSettingsModal(true)} className="text-accent-1 hover:text-white font-medium">Add Presets</button>
+                        <div className="input-dark w-full px-4 py-4 text-white/50 text-sm flex items-center justify-between">
+                          {language === "german" ? `Keine Module für Semester ${currentSemester} definiert` : `No modules defined for Semester ${currentSemester}`}
+                          <button onClick={() => { setShowSettingsModal(true); setShowMobileMenu(false); }} className="text-zinc-400 hover:text-white font-medium">{language === "german" ? "Hinzufügen" : "Add Presets"}</button>
                         </div>
                       )}
                     </div>
-                    <div className="flex-1">
-                      <label className="block text-sm font-medium text-white/50 mb-2">Topic / Thema</label>
+                    <div className="flex-1 flex flex-col justify-end">
+                      <label className="block text-sm font-medium text-white/50 mb-2">{language === "german" ? "Thema" : "Topic"}</label>
                       <input 
                         type="text" 
                         value={topicInput}
                         onChange={e => setTopicInput(e.target.value)}
                         placeholder="e.g. Memory & Motivation"
-                        className="input-dark w-full px-4 py-3"
+                        className="input-dark w-full px-4 py-4"
                       />
                     </div>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-white/50 mb-2">Lecture Material (Files or Text)</label>
+                    <label className="block text-sm font-medium text-white/50 mb-2">{language === "german" ? "Vorlesungsmaterial (Dateien oder Text)" : "Lecture Material (Files or Text)"}</label>
                     <div 
-                      className={`w-full border-2 border-dashed rounded-xl p-8 mb-4 flex flex-col items-center justify-center transition-colors ${isDragging ? 'border-zinc-9000 bg-white/[0.04]' : 'border-white/[0.08] bg-white/[0.02]'}`}
+                      className={`w-full border-2 border-dashed rounded-xl p-4 md:p-8 mb-4 flex flex-col items-center justify-center transition-colors ${isDragging ? 'border-zinc-9000 bg-white/[0.04]' : 'border-white/[0.08] bg-white/[0.02]'}`}
                       onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
                       onDragLeave={() => setIsDragging(false)}
                       onDrop={(e) => {
@@ -805,9 +928,9 @@ export default function Dashboard() {
                         }
                       }}
                     >
-                      <UploadCloud className="w-8 h-8 text-white/30 mb-3" />
+                      <CloudArrowUpIcon className="w-8 h-8 text-white/30 mb-4" />
                       <p className="text-white/40 text-sm text-center mb-4">
-                        Drag and drop your PDFs, Excel, or Word files here
+                        {language === "german" ? "Ziehe deine PDFs, Excel- oder Word-Dateien hierher" : "Drag and drop your PDFs, Excel, or Word files here"}
                       </p>
                       <input 
                         type="file" 
@@ -822,18 +945,18 @@ export default function Dashboard() {
                         }}
                       />
                       <label htmlFor="file-upload" className="px-4 py-2 bg-white/[0.06] hover:bg-white/[0.1] rounded-lg text-sm text-white/60 cursor-pointer border border-white/[0.1] transition-colors">
-                        Browse Files
+                        {language === "german" ? "Dateien durchsuchen" : "Browse Files"}
                       </label>
                     </div>
 
                     {uploadedFiles.length > 0 && (
                       <div className="flex flex-wrap gap-2 mb-4">
                         {uploadedFiles.map((file, idx) => (
-                          <div key={idx} className="flex items-center gap-2 bg-white/[0.08] text-indigo-300 px-3 py-1.5 rounded-lg text-xs font-medium border border-white/[0.12]">
-                            <FileText className="w-3.5 h-3.5" />
+                          <div key={idx} className="flex items-center gap-2 bg-white/[0.08] text-zinc-300 px-4 py-2 rounded-lg text-xs font-medium border border-white/[0.12]">
+                            <DocumentTextIcon className="w-4 h-4" />
                             {file.name}
-                            <button onClick={() => setUploadedFiles(prev => prev.filter((_, i) => i !== idx))} className="ml-1 hover:text-white cursor-pointer">
-                              <X className="w-3.5 h-3.5" />
+                            <button onClick={() => setUploadedFiles(prev => prev.filter((_, i) => i !== idx))} className="ml-2 hover:text-white cursor-pointer">
+                              <XMarkIcon className="w-4 h-4" />
                             </button>
                           </div>
                         ))}
@@ -843,8 +966,8 @@ export default function Dashboard() {
                     <textarea 
                       value={textInput}
                       onChange={e => setTextInput(e.target.value)}
-                      placeholder="...or paste your lecture notes, transcript, or raw text here..."
-                      className="input-dark w-full px-4 py-3 h-32 resize-none"
+                      placeholder={language === "german" ? "...oder füge deine Vorlesungsskripte, Transkripte oder rohen Text hier ein..." : "...or paste your lecture notes, transcript, or raw text here..."}
+                      className="input-dark w-full px-4 py-4 h-32 resize-none"
                     />
                   </div>
                   <button 
@@ -852,8 +975,8 @@ export default function Dashboard() {
                     disabled={(!textInput && uploadedFiles.length === 0) || !subjectInput}
                     className="btn-primary w-full py-4 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40"
                   >
-                    <BrainCircuit className="w-5 h-5" />
-                    Start 6-Stage AI Generation
+                    <CpuChipIcon className="w-6 h-6" />
+                    {language === "german" ? "6-Stufen KI-Generierung starten" : "Start 6-Stage AI Generation"}
                   </button>
                 </div>
               )}
@@ -868,12 +991,12 @@ export default function Dashboard() {
               exit={{ opacity: 0, y: -10 }}
               className="max-w-5xl mx-auto"
             >
-              <header className="mb-12">
-                <h1 className="text-4xl font-bold tracking-tight text-white mb-2">My Library</h1>
-                <p className="text-white/50">Review your stored modules, tutor prompts, and generating schedules.</p>
+              <header className="mb-6 md:mb-12">
+                <h1 className="text-4xl font-bold tracking-tight text-white mb-2">{language === "german" ? "Meine Bibliothek" : "My Library"}</h1>
+                <p className="text-white/50">{language === "german" ? "Überprüfe deine gespeicherten Module, Tutor-Prompts und Lernpläne." : "Review your stored modules, tutor prompts, and generating schedules."}</p>
               </header>
-              <div className="card-surface p-10 text-center text-white/40">
-                All generated courses and details will reflect here as we build custom features!
+              <div className="card-surface p-4 md:p-12 text-center text-white/40">
+                {language === "german" ? "Alle generierten Kurse und Details werden hier angezeigt." : "All generated courses and details will reflect here as we build custom features!"}
               </div>
             </motion.div>
           )}
@@ -894,28 +1017,28 @@ export default function Dashboard() {
                 }} 
                 className="flex items-center gap-2 text-sm text-white/40 hover:text-white mb-6 transition-colors cursor-pointer"
               >
-                <ArrowLeft className="w-4 h-4" />
-                Back to Dashboard
+                <ArrowLeftIcon className="w-4 h-4" />
+                {language === "german" ? "Zurück zum Dashboard" : "Back to Dashboard"}
               </button>
 
               <header className="mb-8">
-                <div className="flex items-center gap-3 mb-2">
-                  <span className="text-xs font-semibold px-2.5 py-1 rounded-md badge-level">Level {selectedReview.level}</span>
-                  <span className="text-xs text-white/40">Active Quiz</span>
+                <div className="flex items-center gap-4 mb-2">
+                  <span className="text-xs font-semibold px-2 py-2 rounded-md badge-level">Level {selectedReview.level}</span>
+                  <span className="text-xs text-white/40">{language === "german" ? "Aktives Quiz" : "Active Quiz"}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <div>
                     <h1 className="text-2xl font-bold tracking-tight text-white">{selectedReview.subject}</h1>
-                    <p className="text-xs text-white/40 mt-1 font-medium">{selectedReview.topic}</p>
+                    <p className="text-xs text-white/40 mt-2 font-medium">{selectedReview.topic}</p>
                   </div>
                   {parsedTasks.length > 0 && (
                     <motion.button
                       whileHover={{ scale: 1.04 }}
                       whileTap={{ scale: 0.96 }}
                       onClick={exportQuizForPrint}
-                      className="flex items-center gap-2 px-4 py-2.5 btn-secondary text-xs font-bold rounded-xl cursor-pointer"
+                      className="flex items-center gap-2 px-4 py-2 btn-secondary text-xs font-bold rounded-xl cursor-pointer"
                     >
-                      <Printer className="w-4 h-4" />
+                      <PrinterIcon className="w-4 h-4" />
                       Exportieren
                     </motion.button>
                   )}
@@ -923,9 +1046,9 @@ export default function Dashboard() {
               </header>
 
               {gradingError && !isGrading && (
-                <div className="mb-6 p-5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-300 text-sm flex flex-col gap-2">
+                <div className="mb-6 p-6 rounded-xl bg-red-500/10 border border-red-500/20 text-red-300 text-sm flex flex-col gap-2">
                   <div className="flex items-center gap-2 text-red-400 font-semibold">
-                    <AlertTriangle className="w-5 h-5" />
+                    <ExclamationTriangleIcon className="w-6 h-6" />
                     <span>Grading Failed</span>
                   </div>
                   <pre className="text-xs font-mono bg-white/[0.03] p-4 rounded-xl border border-white/[0.06] whitespace-pre-wrap overflow-x-auto max-h-40 overflow-y-auto leading-relaxed text-left text-red-300/70">
@@ -938,12 +1061,12 @@ export default function Dashboard() {
               )}
 
               {isGrading ? (
-                <div className="card-surface-elevated p-10 flex flex-col items-center justify-center text-center">
-                  <Loader2 className="w-12 h-12 text-white animate-spin mb-6" />
+                <div className="card-surface-elevated p-4 md:p-12 flex flex-col items-center justify-center text-center">
+                  <ArrowPathIcon className="w-12 h-12 text-white animate-spin mb-6" />
                   <h3 className="text-2xl font-bold mb-2 text-white">Grading Submission...</h3>
                   <p className="text-white/50 mb-8 text-lg">{gradingMsg}</p>
                   
-                  <div className="progress-track w-full max-w-md h-3">
+                  <div className="progress-track w-full max-w-md h-4">
                     <motion.div 
                       className="progress-fill h-full"
                       initial={{ width: 0 }}
@@ -953,8 +1076,8 @@ export default function Dashboard() {
                   </div>
                   <div className="w-full max-w-md mt-4 text-left space-y-3">
                      {[1,2,3,4].map(step => (
-                        <div key={step} className={`flex items-center gap-3 text-sm ${gradingStep > step ? 'text-emerald-400' : gradingStep === step ? 'text-white font-medium' : 'text-white/20'}`}>
-                           {gradingStep > step ? <CheckCircle2 className="w-4 h-4" /> : <div className="w-4 h-4 rounded-full border-2 border-current" />}
+                        <div key={step} className={`flex items-center gap-4 text-sm ${gradingStep > step ? 'text-emerald-400' : gradingStep === step ? 'text-white font-medium' : 'text-white/20'}`}>
+                           {gradingStep > step ? <CheckCircleIcon className="w-4 h-4" /> : <div className="w-4 h-4 rounded-full border-2 border-current" />}
                            {step === 1 ? "Co-Prüfer 1 & 2 (Parallel Evaluation)" : 
                             step === 2 ? "Chef-Prüfer (Consolidation & Brief)" : 
                             step === 3 ? "Follow-Up Generation (Quiz & Video)" : "Saving Database Records"}
@@ -964,15 +1087,15 @@ export default function Dashboard() {
                 </div>
               ) : gradingResult ? (
                 <div className="space-y-6">
-                  <div className={`card-surface-elevated p-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 ${gradingResult.isPass ? 'border-emerald-500/20 glow-success' : 'border-red-500/20 glow-danger'}`}>
+                  <div className={`card-surface-elevated p-4 md:p-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 ${gradingResult.isPass ? 'border-emerald-500/20 glow-success' : 'border-red-500/20 glow-danger'}`}>
                     <div>
-                      <span className={`text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full ${gradingResult.isPass ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/15 text-red-400 border border-red-500/20'}`}>
+                      <span className={`text-xs font-bold uppercase tracking-wider px-4 py-2 rounded-full ${gradingResult.isPass ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/15 text-red-400 border border-red-500/20'}`}>
                         {gradingResult.isPass ? "PASS (Bestanden)" : "REPEAT (Wiederholen)"}
                       </span>
-                      <h2 className="text-3xl font-extrabold text-white mt-3">
+                      <h2 className="text-3xl font-extrabold text-white mt-4">
                         {gradingResult.isPass ? "Level Promoted!" : "Remediation Scheduled"}
                       </h2>
-                      <p className="text-white/50 mt-1 text-sm">
+                      <p className="text-white/50 mt-2 text-sm">
                         Next review set to: <strong className="text-white">{new Date(gradingResult.srsItem.nextReviewDate).toLocaleDateString()}</strong> (Level {gradingResult.srsItem.currentLevel})
                       </p>
                     </div>
@@ -982,70 +1105,21 @@ export default function Dashboard() {
                         setSelectedReview(null);
                         setGradingResult(null);
                       }}
-                      className="btn-secondary px-6 py-3 font-semibold rounded-xl cursor-pointer"
+                      className="btn-secondary px-6 py-4 font-semibold rounded-xl cursor-pointer"
                     >
-                      Back to Dashboard
+                      {language === "german" ? "Zurück zum Dashboard" : "Back to Dashboard"}
                     </button>
                   </div>
 
                   <div className="card-surface-elevated overflow-hidden">
-                    <div className="flex border-b border-white/[0.06] bg-white/[0.02]">
-                      <button 
-                        onClick={() => setResultTab("brief")} 
-                        className={`flex-1 sm:flex-none px-6 py-4 text-sm font-medium border-b-2 transition-all cursor-pointer ${resultTab === 'brief' ? 'border-zinc-9000 text-white bg-zinc-9000/5' : 'border-transparent text-white/40 hover:text-white/60'}`}
-                      >
-                        Remediation Brief
-                      </button>
-                      <button 
-                        onClick={() => setResultTab("prompts")} 
-                        className={`flex-1 sm:flex-none px-6 py-4 text-sm font-medium border-b-2 transition-all cursor-pointer ${resultTab === 'prompts' ? 'border-zinc-9000 text-white bg-zinc-9000/5' : 'border-transparent text-white/40 hover:text-white/60'}`}
-                      >
-                        NotebookLM Video Prompts
-                      </button>
+                    <div className="border-b border-white/[0.06] bg-white/[0.02] px-6 py-4">
+                      <h3 className="text-sm font-medium text-white">Remediation Brief</h3>
                     </div>
 
-                    <div className="p-8">
-                      {resultTab === "brief" && (
-                        <div className="whitespace-pre-wrap font-sans text-white/60 text-base leading-relaxed">
-                          {gradingResult.srsItem.lastFeedback}
-                        </div>
-                      )}
-
-                      {resultTab === "prompts" && (
-                        <div className="space-y-8">
-                          <div className="p-5 card-surface rounded-xl relative group">
-                            <div className="flex justify-between items-center mb-4">
-                              <h3 className="font-semibold text-white">Video Prompt 1 (Episode 1 - Polishing)</h3>
-                              <button 
-                                onClick={() => copyToClipboard(gradingResult.srsItem.lastVideoPrompt1, 'v1')}
-                                className="btn-secondary text-xs px-3 py-1.5 cursor-pointer flex items-center gap-1.5"
-                              >
-                                {copiedId === 'v1' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                                {copiedId === 'v1' ? 'Copied!' : 'Copy Prompt'}
-                              </button>
-                            </div>
-                            <pre className="text-xs text-white/40 whitespace-pre-wrap font-mono max-h-60 overflow-y-auto bg-white/[0.02] p-4 rounded-xl border border-white/[0.06] leading-relaxed">
-                              {gradingResult.srsItem.lastVideoPrompt1}
-                            </pre>
-                          </div>
-
-                          <div className="p-5 card-surface rounded-xl relative group">
-                            <div className="flex justify-between items-center mb-4">
-                              <h3 className="font-semibold text-white">Video Prompt 2 (Episode 2 - Synthesis)</h3>
-                              <button 
-                                onClick={() => copyToClipboard(gradingResult.srsItem.lastVideoPrompt2, 'v2')}
-                                className="btn-secondary text-xs px-3 py-1.5 cursor-pointer flex items-center gap-1.5"
-                              >
-                                {copiedId === 'v2' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                                {copiedId === 'v2' ? 'Copied!' : 'Copy Prompt'}
-                              </button>
-                            </div>
-                            <pre className="text-xs text-white/40 whitespace-pre-wrap font-mono max-h-60 overflow-y-auto bg-white/[0.02] p-4 rounded-xl border border-white/[0.06] leading-relaxed">
-                              {gradingResult.srsItem.lastVideoPrompt2}
-                            </pre>
-                          </div>
-                        </div>
-                      )}
+                    <div className="p-4 md:p-8">
+                      <div className="whitespace-pre-wrap font-sans text-white/60 text-base leading-relaxed">
+                        {gradingResult.srsItem.lastFeedback}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1054,8 +1128,8 @@ export default function Dashboard() {
                 <div className="max-w-4xl mx-auto flex flex-col gap-6 pb-20">
                   <div className="flex items-center justify-between mb-2">
                     <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                      <GraduationCap className="w-6 h-6 text-white" />
-                      Quiz Assignment
+                      <AcademicCapIcon className="w-6 h-6 text-white" />
+                      {language === "german" ? "Quiz-Aufgabe" : "Quiz Assignment"}
                     </h3>
                   </div>
 
@@ -1069,15 +1143,15 @@ export default function Dashboard() {
                             initial={{ opacity: 0, y: 15 }}
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ delay: idx * 0.05 }}
-                            className="card-surface-elevated p-8 rounded-3xl"
+                            className="card-surface-elevated p-4 md:p-8 rounded-3xl"
                           >
-                            <h3 className="text-sm font-bold text-white uppercase tracking-wider mb-3">{task.label}</h3>
+                            <h3 className="text-sm font-bold text-white uppercase tracking-wider mb-4">{task.label}</h3>
                             <div className="text-sm text-white/70 whitespace-pre-wrap leading-relaxed mb-6 font-medium">
                               {task.questionText}
                             </div>
                             
-                            <div className="border-t border-white/[0.06] pt-5">
-                              <span className="block text-xs font-bold text-white/30 uppercase tracking-wider mb-3">Your Answer:</span>
+                            <div className="border-t border-white/[0.06] pt-6">
+                              <span className="block text-xs font-bold text-white/30 uppercase tracking-wider mb-4">Your Answer:</span>
                               <textarea
                                 value={individualAnswers[task.id] || ""}
                                 onChange={e => {
@@ -1086,9 +1160,9 @@ export default function Dashboard() {
                                     [task.id]: e.target.value
                                   }));
                                 }}
-                                placeholder={isMC ? "Type A, B, C, or D..." : "Type your answer here..."}
+                                placeholder={language === "german" ? (isMC ? "Tippe A, B, C oder D..." : "Tippe deine Antwort hier ein...") : (isMC ? "Type A, B, C, or D..." : "Type your answer here...")}
                                 rows={isMC ? 2 : 4}
-                                className="input-dark w-full px-5 py-4 text-sm resize-none"
+                                className="input-dark w-full px-6 py-4 text-sm resize-none"
                               />
                             </div>
                           </motion.div>
@@ -1101,15 +1175,15 @@ export default function Dashboard() {
                           whileTap={{ scale: 0.98 }}
                           onClick={handleGrade}
                           disabled={!parsedTasks.some(task => (individualAnswers[task.id] || "").trim().length > 0)}
-                          className="btn-primary w-full py-5 text-sm font-bold uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40"
+                          className="btn-primary w-full py-6 text-sm font-bold uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40"
                         >
-                          <Sparkles className="w-5 h-5" />
-                          Submit All Answers for AI Grading
+                          <SparklesIcon className="w-6 h-6" />
+                          {language === "german" ? "ALLE ANTWORTEN ZUR KI-BEWERTUNG EINREICHEN" : "Submit All Answers for AI Grading"}
                         </motion.button>
                       </div>
                     </div>
                   ) : (
-                    <div className="card-surface-elevated p-8 rounded-3xl flex flex-col">
+                    <div className="card-surface-elevated p-4 md:p-8 rounded-3xl flex flex-col">
                       <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-6 font-sans whitespace-pre-wrap text-white/50 text-sm leading-relaxed mb-6">
                         {(() => {
                           const level = selectedReview.level;
@@ -1118,14 +1192,16 @@ export default function Dashboard() {
                             selectedReview.raw.quiz2DocId,
                             selectedReview.raw.quiz3DocId,
                             selectedReview.raw.quiz4DocId,
-                            selectedReview.raw.quiz5DocId
+                            selectedReview.raw.quiz5DocId,
+                            selectedReview.raw.quiz6DocId,
+                            selectedReview.raw.quiz7DocId
                           ];
-                          const rawQuiz = quizFields[level] || selectedReview.raw.quiz1DocId || "";
+                          const rawQuiz = (level >= 6 ? selectedReview.raw.quiz7DocId : quizFields[level]) || selectedReview.raw.quiz1DocId || "";
                           return extractStudentQuiz(rawQuiz);
                         })()}
                       </div>
                       
-                      <span className="block text-xs font-bold text-white/30 uppercase tracking-wider mb-3">Your Answer:</span>
+                      <span className="block text-xs font-bold text-white/30 uppercase tracking-wider mb-4">Your Answer:</span>
                       <textarea 
                         value={studentAnswers}
                         onChange={e => setStudentAnswers(e.target.value)}
@@ -1137,9 +1213,9 @@ export default function Dashboard() {
                         whileTap={{ scale: 0.98 }}
                         onClick={handleGrade}
                         disabled={!studentAnswers.trim()}
-                        className="btn-primary w-full py-5 text-sm font-bold uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40"
+                        className="btn-primary w-full py-6 text-sm font-bold uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40"
                       >
-                        <Sparkles className="w-5 h-5" />
+                        <SparklesIcon className="w-6 h-6" />
                         Submit Answer for AI Grading
                       </motion.button>
                     </div>
@@ -1149,6 +1225,49 @@ export default function Dashboard() {
             </motion.div>
           )}
         </AnimatePresence>
+        {/* Archive Modal */}
+        <AnimatePresence>
+          {archiveModalData && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+              <motion.div 
+                initial={{ scale: 0.95, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.95, opacity: 0 }}
+                className="card-glass w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl shadow-black/50 flex flex-col max-h-[85vh] border border-white/[0.1]"
+              >
+                <div className="p-6 border-b border-white/[0.06] flex justify-between items-center bg-white/[0.02]">
+                  <h3 className="text-xl font-bold text-white">Video Archive</h3>
+                  <button 
+                    onClick={() => setArchiveModalData(null)}
+                    className="w-8 h-8 rounded-full bg-white/[0.06] hover:bg-white/[0.1] flex items-center justify-center text-white/40 hover:text-white transition-colors cursor-pointer"
+                  >
+                    <XMarkIcon className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="p-6 space-y-4 overflow-y-auto">
+                  {archiveModalData.map((item, idx) => (
+                    <div key={idx} className="card-surface p-4 rounded-xl flex items-center justify-between">
+                      <div>
+                        <h4 className="text-white font-medium">Level {item.level} Video</h4>
+                        {item.date && <p className="text-xs text-white/40">{new Date(item.date).toLocaleDateString()}</p>}
+                      </div>
+                      <a 
+                        href={item.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="btn-secondary px-4 py-2 text-xs flex items-center gap-2"
+                      >
+                        <SparklesIcon className="w-4 h-4" />
+                        Watch
+                      </a>
+                    </div>
+                  ))}
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
       </main>
 
       {/* Historical Feedback Modal */}
@@ -1171,69 +1290,20 @@ export default function Dashboard() {
                   onClick={() => setActiveFeedbackItem(null)}
                   className="w-8 h-8 rounded-full bg-white/[0.06] hover:bg-white/[0.1] flex items-center justify-center text-white/40 hover:text-white transition-colors cursor-pointer"
                 >
-                  <X className="w-4 h-4" />
+                  <XMarkIcon className="w-4 h-4" />
                 </button>
               </div>
 
-              {/* Tabs */}
-              <div className="flex border-b border-white/[0.06] bg-white/[0.02]">
-                <button 
-                  onClick={() => setFeedbackTab("brief")} 
-                  className={`px-6 py-4 text-sm font-medium border-b-2 transition-all cursor-pointer ${feedbackTab === 'brief' ? 'border-zinc-9000 text-white bg-zinc-9000/5' : 'border-transparent text-white/40 hover:text-white/60'}`}
-                >
-                  Remediation Brief & Feedback
-                </button>
-                <button 
-                  onClick={() => setFeedbackTab("prompts")} 
-                  className={`px-6 py-4 text-sm font-medium border-b-2 transition-all cursor-pointer ${feedbackTab === 'prompts' ? 'border-zinc-9000 text-white bg-zinc-9000/5' : 'border-transparent text-white/40 hover:text-white/60'}`}
-                >
-                  NotebookLM Prompts
-                </button>
+              {/* Header/Title */}
+              <div className="border-b border-white/[0.06] bg-white/[0.02] px-6 py-4">
+                <h3 className="text-sm font-medium text-white">{language === "german" ? "Feedback & Auswertung" : "Remediation Brief & Feedback"}</h3>
               </div>
 
               {/* Body */}
               <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
-                {feedbackTab === "brief" && (
-                  <div className="whitespace-pre-wrap font-sans text-white/55 text-sm leading-relaxed">
-                    {activeFeedbackItem.lastFeedback}
-                  </div>
-                )}
-
-                {feedbackTab === "prompts" && (
-                  <div className="space-y-6">
-                    <div className="p-5 card-surface rounded-xl relative group">
-                      <div className="flex justify-between items-center mb-4">
-                        <h4 className="font-semibold text-white">Video Prompt 1 (Episode 1 - Polishing)</h4>
-                        <button 
-                          onClick={() => copyToClipboard(activeFeedbackItem.lastVideoPrompt1, 'fv1')}
-                          className="flex items-center gap-1.5 text-xs bg-white/[0.04] hover:bg-white/[0.08] text-white/50 px-3 py-1.5 rounded-lg transition-colors cursor-pointer border border-white/[0.06]"
-                        >
-                          {copiedId === 'fv1' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                          {copiedId === 'fv1' ? 'Copied!' : 'Copy Prompt'}
-                        </button>
-                      </div>
-                      <pre className="text-xs text-white/40 whitespace-pre-wrap font-mono max-h-60 overflow-y-auto bg-white/[0.02] p-4 rounded-xl border border-white/[0.06] leading-relaxed">
-                        {activeFeedbackItem.lastVideoPrompt1}
-                      </pre>
-                    </div>
-
-                    <div className="p-5 card-surface rounded-xl relative group">
-                      <div className="flex justify-between items-center mb-4">
-                        <h4 className="font-semibold text-white">Video Prompt 2 (Episode 2 - Synthesis)</h4>
-                        <button 
-                          onClick={() => copyToClipboard(activeFeedbackItem.lastVideoPrompt2, 'fv2')}
-                          className="flex items-center gap-1.5 text-xs bg-white/[0.04] hover:bg-white/[0.08] text-white/50 px-3 py-1.5 rounded-lg transition-colors cursor-pointer border border-white/[0.06]"
-                        >
-                          {copiedId === 'fv2' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                          {copiedId === 'fv2' ? 'Copied!' : 'Copy Prompt'}
-                        </button>
-                      </div>
-                      <pre className="text-xs text-white/40 whitespace-pre-wrap font-mono max-h-60 overflow-y-auto bg-white/[0.02] p-4 rounded-xl border border-white/[0.06] leading-relaxed">
-                        {activeFeedbackItem.lastVideoPrompt2}
-                      </pre>
-                    </div>
-                  </div>
-                )}
+                <div className="whitespace-pre-wrap font-sans text-white/55 text-sm leading-relaxed">
+                  {activeFeedbackItem.lastFeedback}
+                </div>
               </div>
             </motion.div>
           </div>
@@ -1258,11 +1328,11 @@ export default function Dashboard() {
             >
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-lg font-bold flex items-center gap-2 text-white">
-                  <CalendarDays className="w-5 h-5 text-white" />
+                  <CalendarDaysIcon className="w-6 h-6 text-white" />
                   Calendar Sync
                 </h2>
-                <button onClick={() => setShowCalendarModal(false)} className="text-white/40 hover:text-white p-1 transition-colors cursor-pointer">
-                  <X className="w-5 h-5" />
+                <button onClick={() => setShowCalendarModal(false)} className="text-white/40 hover:text-white p-2 transition-colors cursor-pointer">
+                  <XMarkIcon className="w-6 h-6" />
                 </button>
               </div>
 
@@ -1275,13 +1345,13 @@ export default function Dashboard() {
                 <h3 className="text-sm font-semibold mb-2 flex items-center gap-2 text-white">🍎 Apple Calendar (Mac/iPhone)</h3>
                 <a
                   href={`webcal://${typeof window !== 'undefined' ? window.location.host : 'localhost:3000'}/api/calendar`}
-                  className="flex items-center justify-center gap-2 w-full py-3 bg-white/[0.04] hover:bg-white/[0.08] rounded-xl text-sm font-medium text-white transition-all border border-white/[0.12]"
+                  className="flex items-center justify-center gap-2 w-full py-4 bg-white/[0.04] hover:bg-white/[0.08] rounded-xl text-sm font-medium text-white transition-all border border-white/[0.12]"
                 >
-                  <CalendarDays className="w-4 h-4" />
+                  <CalendarDaysIcon className="w-4 h-4" />
                   Subscribe in Apple Calendar
                 </a>
-                <p className="text-xs text-white/30 mt-1.5 ml-1">
-                  <strong className="text-white/50">Hinweis für lokales Testen:</strong> Apple blockiert 1-Click Abos ohne HTTPS. Für ein Live-Abo füge <code className="bg-white/[0.06] px-1 py-0.5 rounded text-white/40">http://localhost:3000/api/calendar</code> manuell in Apple Calendar ein. Im Live-Betrieb funktioniert der Button automatisch.
+                <p className="text-xs text-white/30 mt-2 ml-2">
+                  <strong className="text-white/50">Hinweis für lokales Testen:</strong> Apple blockiert 1-Click Abos ohne HTTPS. Für ein Live-Abo füge <code className="bg-white/[0.06] px-2 py-0 rounded text-white/40">http://localhost:3000/api/calendar</code> manuell in Apple Calendar ein. Im Live-Betrieb funktioniert der Button automatisch.
                 </p>
               </div>
 
@@ -1292,7 +1362,7 @@ export default function Dashboard() {
                   <input
                     readOnly
                     value={`${typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000'}/api/calendar`}
-                    className="input-dark flex-1 px-3 py-2.5 text-xs font-mono truncate"
+                    className="input-dark flex-1 px-4 py-2 text-xs font-mono truncate"
                   />
                   <button
                     onClick={() => {
@@ -1300,13 +1370,13 @@ export default function Dashboard() {
                       setCalendarUrlCopied(true);
                       setTimeout(() => setCalendarUrlCopied(false), 2000);
                     }}
-                    className="px-3 py-2.5 btn-secondary rounded-xl text-xs font-medium flex items-center gap-1.5"
+                    className="px-4 py-2 btn-secondary rounded-xl text-xs font-medium flex items-center gap-2"
                   >
-                    {calendarUrlCopied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                    {calendarUrlCopied ? <CheckIcon className="w-4 h-4 text-emerald-400" /> : <DocumentDuplicateIcon className="w-4 h-4" />}
                     {calendarUrlCopied ? "Copied!" : "Copy"}
                   </button>
                 </div>
-                <p className="text-xs text-white/30 mt-1.5 ml-1">
+                <p className="text-xs text-white/30 mt-2 ml-2">
                   Google Calendar → Other calendars (+) → From URL → Paste the URL above.
                 </p>
               </div>
@@ -1316,12 +1386,12 @@ export default function Dashboard() {
                 <h3 className="text-sm font-semibold mb-2 flex items-center gap-2 text-white">🟢 Done Calendar (Optional)</h3>
                 <a
                   href={`webcal://${typeof window !== 'undefined' ? window.location.host : 'localhost:3000'}/api/calendar/done`}
-                  className="flex items-center justify-center gap-2 w-full py-2.5 bg-emerald-500/10 hover:bg-emerald-500/20 rounded-xl text-xs font-medium text-emerald-400 transition-all border border-emerald-500/20"
+                  className="flex items-center justify-center gap-2 w-full py-2 bg-emerald-500/10 hover:bg-emerald-500/20 rounded-xl text-xs font-medium text-emerald-400 transition-all border border-emerald-500/20"
                 >
-                  <CalendarDays className="w-3.5 h-3.5" />
+                  <CalendarDaysIcon className="w-4 h-4" />
                   Subscribe to Log History
                 </a>
-                <p className="text-[10px] text-white/30 mt-1.5 ml-1">
+                <p className="text-[10px] text-white/30 mt-2 ml-2">
                   Track your daily progress by subscribing to your completed reviews.
                 </p>
               </div>
@@ -1331,9 +1401,9 @@ export default function Dashboard() {
                 <a
                   href="/api/calendar"
                   download="srs-reviews.ics"
-                  className="flex items-center justify-center gap-2 w-full py-2.5 bg-white/[0.04] hover:bg-white/[0.06] rounded-xl text-xs font-medium text-white/40 hover:text-white/60 transition-all border border-white/[0.06]"
+                  className="flex items-center justify-center gap-2 w-full py-2 bg-white/[0.04] hover:bg-white/[0.06] rounded-xl text-xs font-medium text-white/40 hover:text-white/60 transition-all border border-white/[0.06]"
                 >
-                  <FileText className="w-3.5 h-3.5" />
+                  <DocumentTextIcon className="w-4 h-4" />
                   Download .ics file (one-time import)
                 </a>
               </div>
@@ -1360,36 +1430,36 @@ export default function Dashboard() {
             >
               <div className="flex justify-between items-center mb-6">
                 <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                  <GraduationCap className="w-5 h-5 text-accent-1" />
-                  Semester Settings
+                  <AcademicCapIcon className="w-6 h-6 text-accent-1" />
+                  {language === "german" ? "Semester-Einstellungen" : "Semester Settings"}
                 </h3>
                 <button 
                   onClick={() => setShowSettingsModal(false)}
                   className="p-2 hover:bg-white/[0.06] rounded-full transition-colors text-white/50"
                 >
-                  <X className="w-5 h-5" />
+                  <XMarkIcon className="w-6 h-6" />
                 </button>
               </div>
 
               <div className="space-y-6">
                 <div>
-                  <h4 className="text-sm font-semibold text-white/50 uppercase tracking-wider mb-3">Current Status</h4>
+                  <h4 className="text-sm font-semibold text-white/50 uppercase tracking-wider mb-4">{language === "german" ? "Aktueller Status" : "Current Status"}</h4>
                   <div className="bg-white/[0.02] border border-white/[0.04] rounded-xl p-4 flex items-center justify-between">
                     <div>
                       <div className="text-2xl font-bold text-white">Semester {currentSemester}</div>
-                      <div className="text-sm text-white/40">Active study period</div>
+                      <div className="text-sm text-white/40">{language === "german" ? "Aktiver Studienzeitraum" : "Active study period"}</div>
                     </div>
                   </div>
                 </div>
 
                 <div>
-                  <h4 className="text-sm font-semibold text-white/50 uppercase tracking-wider mb-3">Module Presets</h4>
-                  <div className="space-y-2 mb-3">
+                  <h4 className="text-sm font-semibold text-white/50 uppercase tracking-wider mb-4">{language === "german" ? "Modul-Voreinstellungen" : "Module Presets"}</h4>
+                  <div className="space-y-2 mb-4">
                     {modulePresets.length === 0 ? (
                       <div className="text-white/30 text-sm italic py-2">No modules defined yet.</div>
                     ) : (
                       modulePresets.map((preset, idx) => (
-                        <div key={idx} className="flex items-center justify-between bg-white/[0.02] border border-white/[0.04] p-3 rounded-lg">
+                        <div key={idx} className="flex items-center justify-between bg-white/[0.02] border border-white/[0.04] p-4 rounded-lg">
                           <span className="text-white text-sm">{preset}</span>
                           <button 
                             onClick={() => {
@@ -1409,7 +1479,7 @@ export default function Dashboard() {
                             }}
                             className="text-white/30 hover:text-red-400 transition-colors"
                           >
-                            <X className="w-4 h-4" />
+                            <XMarkIcon className="w-4 h-4" />
                           </button>
                         </div>
                       ))
@@ -1438,7 +1508,7 @@ export default function Dashboard() {
                           });
                         }
                       }}
-                      placeholder="e.g. Linear Algebra"
+                      placeholder={language === "german" ? "z.B. Lineare Algebra" : "e.g. Linear Algebra"}
                       className="input-dark flex-1 px-4 py-2 text-sm"
                     />
                     <button 
@@ -1462,14 +1532,48 @@ export default function Dashboard() {
                       }}
                       className="bg-white/[0.06] hover:bg-white/[0.1] text-white px-4 py-2 rounded-lg text-sm transition-colors border border-white/[0.08]"
                     >
-                      Add
+                      {language === "german" ? "Hinzufügen" : "Add"}
                     </button>
                   </div>
                 </div>
 
                 <div className="pt-4 mt-6 border-t border-white/[0.08]">
-                  <h4 className="text-sm font-semibold text-red-400 uppercase tracking-wider mb-2">Danger Zone</h4>
-                  <p className="text-white/40 text-xs mb-4">Starting a new semester will increment your semester counter and wipe your current module presets so you can start fresh.</p>
+                  <h4 className="text-sm font-semibold text-white/50 uppercase tracking-wider mb-4">{language === "german" ? "Sprache" : "Language Setting"}</h4>
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={() => {
+                        fetch('/api/settings', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ action: 'update_language', language: 'german' })
+                        }).then(res => res.json()).then(data => {
+                          if (!data.error && data.language) setLanguage(data.language);
+                        });
+                      }}
+                      className={`flex-1 py-2 rounded-lg text-sm transition-colors border ${language === 'german' ? 'bg-white/[0.1] border-white/[0.2] text-white' : 'bg-transparent border-white/[0.08] text-white/50 hover:bg-white/[0.04]'}`}
+                    >
+                      German
+                    </button>
+                    <button 
+                      onClick={() => {
+                        fetch('/api/settings', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ action: 'update_language', language: 'english' })
+                        }).then(res => res.json()).then(data => {
+                          if (!data.error && data.language) setLanguage(data.language);
+                        });
+                      }}
+                      className={`flex-1 py-2 rounded-lg text-sm transition-colors border ${language === 'english' ? 'bg-white/[0.1] border-white/[0.2] text-white' : 'bg-transparent border-white/[0.08] text-white/50 hover:bg-white/[0.04]'}`}
+                    >
+                      English
+                    </button>
+                  </div>
+                </div>
+
+                <div className="pt-4 mt-6 border-t border-white/[0.08]">
+                  <h4 className="text-sm font-semibold text-red-400 uppercase tracking-wider mb-2">{language === "german" ? "Gefahrenzone" : "Danger Zone"}</h4>
+                  <p className="text-white/40 text-xs mb-4">{language === "german" ? "Der Start eines neuen Semesters erhöht den Semesterzähler und löscht deine aktuellen Modul-Voreinstellungen." : "Starting a new semester will increment your semester counter and wipe your current module presets so you can start fresh."}</p>
                   <button 
                     onClick={() => {
                       if (confirm("Are you sure you want to start a new semester? Your presets will be reset.")) {
@@ -1488,10 +1592,10 @@ export default function Dashboard() {
                         });
                       }
                     }}
-                    className="w-full py-3 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded-xl text-sm font-medium transition-colors flex items-center justify-center gap-2 mb-2"
+                    className="w-full py-4 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded-xl text-sm font-medium transition-colors flex items-center justify-center gap-2 mb-2"
                   >
-                    <AlertTriangle className="w-4 h-4" />
-                    Start New Semester (Semester {currentSemester + 1})
+                    <ExclamationTriangleIcon className="w-4 h-4" />
+                    {language === "german" ? `Neues Semester starten (Semester ${currentSemester + 1})` : `Start New Semester (Semester ${currentSemester + 1})`}
                   </button>
                   <button 
                     onClick={() => {
@@ -1513,7 +1617,7 @@ export default function Dashboard() {
                     }}
                     className="w-full py-2 bg-transparent hover:bg-red-500/10 text-white/40 hover:text-red-400 border border-transparent hover:border-red-500/20 rounded-xl text-xs font-medium transition-colors flex items-center justify-center gap-2"
                   >
-                    Reset to Semester 1
+                    {language === "german" ? "Auf Semester 1 zurücksetzen" : "Reset to Semester 1"}
                   </button>
                 </div>
               </div>

@@ -28,12 +28,13 @@ export async function sendPushNotification(payload: {
           },
           JSON.stringify(payload)
         );
-      } catch (err: any) {
+      } catch (err: unknown) {
+        const error = err as Error & { statusCode?: number };
         // Remove expired/invalid subscriptions
-        if (err.statusCode === 404 || err.statusCode === 410) {
+        if (error.statusCode === 404 || error.statusCode === 410) {
           await prisma.pushSubscription.delete({ where: { id: sub.id } });
         }
-        throw err;
+        throw error;
       }
     })
   );

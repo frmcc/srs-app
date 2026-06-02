@@ -24,6 +24,8 @@ CREATE TABLE "SRSItem" (
     "quiz5DocId" TEXT,
     "sourceMaterialId" TEXT,
     "sourceMaterialContent" TEXT,
+    "blueprint" TEXT,
+    "coverageLedger" TEXT,
     "lastFeedback" TEXT,
     "lastVideoPrompt1" TEXT,
     "lastVideoPrompt2" TEXT,

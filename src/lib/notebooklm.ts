@@ -11,6 +11,107 @@ const getApiUrl = () => {
   return url.replace(/\/$/, ""); // Remove trailing slash
 };
 
+/**
+ * Background worker that automates NotebookLM for Video Prompts.
+ * Creates a notebook, uploads the PDF, and automatically asks the two video prompts.
+ */
+export async function generateVideoPromptsWorker(
+  itemId: string,
+  isPass: boolean,
+  subjectMain: string,
+  prompt1: string,
+  prompt2: string
+) {
+  console.log(`[NotebookLM Video] Starting worker for item ${itemId} (Pass: ${isPass})`);
+  
+  try {
+    const item = await prisma.sRSItem.findUnique({ where: { id: itemId } });
+    if (!item) throw new Error("Item not found");
+
+    // 1. Create a new notebook
+    const title = `${isPass ? "Pass" : "Repeat"}: ${subjectMain}`;
+    console.log(`[NotebookLM Video] Creating notebook: ${title}`);
+    const notebookId = await createNotebook(title);
+
+    // 2. Upload the original PDF
+    const sourceMaterial = item.sourceMaterialContent ? JSON.parse(item.sourceMaterialContent as string) : null;
+    if (sourceMaterial && sourceMaterial.driveFileId) {
+      console.log(`[NotebookLM Video] Downloading file from Google Drive: ${sourceMaterial.driveFileId}`);
+      try {
+        const buffer = await downloadFromDrive(sourceMaterial.driveFileId);
+        await uploadFile(notebookId, "Vorlesungsmaterial.pdf", buffer.toString("base64"), "Vorlesungsmaterial.pdf");
+      } catch (e) {
+        console.error(`[NotebookLM Video] Failed to download/upload file from Drive ${sourceMaterial.driveFileId}`, e);
+      }
+    } else {
+      console.log(`[NotebookLM Video] No Drive File ID found, skipping PDF upload.`);
+    }
+
+    // 3. Wait 20 seconds
+    console.log(`[NotebookLM Video] Waiting 20 seconds for notebook to process file...`);
+    await new Promise(resolve => setTimeout(resolve, 20000));
+
+    // 4. Ask the first video prompt
+    if (prompt1) {
+      console.log(`[NotebookLM Video] Asking Prompt 1...`);
+      try {
+        await askChat(notebookId, prompt1);
+      } catch (e) {
+        console.error(`[NotebookLM Video] Failed to ask Prompt 1`, e);
+      }
+    }
+
+    // 5. Wait 45 seconds to ensure NotebookLM finishes generating the first response
+    console.log(`[NotebookLM Video] Waiting 45 seconds before second prompt...`);
+    await new Promise(resolve => setTimeout(resolve, 45000));
+
+    // 6. Ask the second video prompt
+    if (prompt2) {
+      console.log(`[NotebookLM Video] Asking Prompt 2...`);
+      try {
+        await askChat(notebookId, prompt2);
+      } catch (e) {
+        console.error(`[NotebookLM Video] Failed to ask Prompt 2`, e);
+      }
+    }
+
+    // 7. Save the notebook link to the database
+    const newVideoUrl = `https://notebooklm.google.com/notebook/${notebookId}`;
+    console.log(`[NotebookLM Video] Success! Saving videoUrl: ${newVideoUrl}`);
+    
+    // Parse existing history
+    let videoHistory: { level: number, url: string, date: string }[] = [];
+    if (item.videoUrl) {
+      try {
+        const parsed = JSON.parse(item.videoUrl);
+        if (Array.isArray(parsed)) {
+          videoHistory = parsed;
+        } else {
+          // Legacy string migration
+          videoHistory = [{ level: item.currentLevel - (isPass ? 1 : 0), url: item.videoUrl, date: new Date().toISOString() }];
+        }
+      } catch (e) {
+        // Legacy string migration
+        videoHistory = [{ level: item.currentLevel - (isPass ? 1 : 0), url: item.videoUrl, date: new Date().toISOString() }];
+      }
+    }
+
+    videoHistory.push({
+      level: item.currentLevel,
+      url: newVideoUrl,
+      date: new Date().toISOString()
+    });
+
+    await prisma.sRSItem.update({
+      where: { id: itemId },
+      data: { videoUrl: JSON.stringify(videoHistory) }
+    });
+
+  } catch (err) {
+    console.error(`[NotebookLM Video] Worker Error:`, err);
+  }
+}
+
 export async function createNotebook(title: string): Promise<string> {
   const res = await fetch(`${getApiUrl()}/v1/notebooks`, {
     method: "POST",
@@ -102,55 +203,46 @@ export async function downloadArtifact(notebookId: string, type: "audio" | "vide
  * Background worker that handles the full NotebookLM orchestration.
  * We run this detached from the main request because it takes 3-5 minutes.
  */
-export async function generatePodcastWorker(itemId: string, podcastType: "pre" | "post") {
-  console.log(`[NotebookLM] Starting worker for item ${itemId} (Type: ${podcastType})`);
+export async function generatePodcastWorker(
+  itemId: string, 
+  podcastType: "pre" | "post", 
+  notebookId: string,
+  textContent?: string,
+  memoryFiles?: {name?: string, base64?: string, mimeType: string, path?: string}[]
+) {
+  console.log(`[NotebookLM] Starting worker for item ${itemId} (Type: ${podcastType}, Notebook: ${notebookId})`);
   
   try {
     const item = await prisma.sRSItem.findUnique({ where: { id: itemId } });
     if (!item) throw new Error("Item not found");
     
-    // Parse source material
-    const sourceMaterial = item.sourceMaterialContent ? JSON.parse(item.sourceMaterialContent) : null;
-    if (!sourceMaterial) throw new Error("No source material found");
-
-    // Create the notebook first
-    console.log(`[NotebookLM] Creating notebook...`);
-    const notebookTitle = `${podcastType === "pre" ? "Pre" : "Post"} - ${item.subjectMain}`.substring(0, 50);
-    const notebookId = await createNotebook(notebookTitle);
-    
-    if (!notebookId) {
-      throw new Error("Failed to create NotebookLM notebook");
-    }
-    
-    // Save notebookId to DB
-    await prisma.sRSItem.update({
-      where: { id: itemId },
-      data: { notebookId }
-    });
-    
     // Upload texts
-    if (sourceMaterial.text) {
+    if (textContent) {
       console.log(`[NotebookLM] Uploading text material...`);
-      await uploadText(notebookId, "Vorlesungsskript", sourceMaterial.text);
+      await uploadText(notebookId, "Vorlesungsskript", textContent);
     }
     
-    // Upload files
-    if (sourceMaterial.driveFileId) {
-      console.log(`[NotebookLM] Downloading file from Google Drive: ${sourceMaterial.driveFileId}`);
-      try {
-        const buffer = await downloadFromDrive(sourceMaterial.driveFileId);
-        await uploadFile(notebookId, "Vorlesungsmaterial.pdf", buffer.toString("base64"), "Vorlesungsmaterial.pdf");
-      } catch (e) {
-        console.error(`[NotebookLM] Failed to download/upload file from Drive ${sourceMaterial.driveFileId}`, e);
-      }
-    } else if (sourceMaterial.files && sourceMaterial.files.length > 0) {
-      // Legacy fallback
-      for (const file of sourceMaterial.files) {
-        console.log(`[NotebookLM] Uploading file: ${file.name || file.path}`);
+    // Upload files from memory or Drive
+    if (memoryFiles && memoryFiles.length > 0) {
+      for (const file of memoryFiles) {
+        if (!file.base64) continue;
+        console.log(`[NotebookLM] Uploading in-memory file: ${file.name}`);
         try {
-          await uploadFile(notebookId, file.path || "fallback.pdf", file.base64, file.name);
+          await uploadFile(notebookId, file.path || file.name || "fallback.pdf", file.base64, file.name);
         } catch(e) {
-          console.error(`[NotebookLM] Failed to upload file ${file.name || file.path}`, e);
+          console.error(`[NotebookLM] Failed to upload file ${file.name}`, e);
+        }
+      }
+    } else {
+      // Fallback: If no memory files were passed, try to fetch from Drive!
+      const sourceMaterial = item.sourceMaterialContent ? JSON.parse(item.sourceMaterialContent as string) : null;
+      if (sourceMaterial && sourceMaterial.driveFileId) {
+        console.log(`[NotebookLM] Downloading file from Google Drive: ${sourceMaterial.driveFileId}`);
+        try {
+          const buffer = await downloadFromDrive(sourceMaterial.driveFileId);
+          await uploadFile(notebookId, "Vorlesungsmaterial.pdf", buffer.toString("base64"), "Vorlesungsmaterial.pdf");
+        } catch (e) {
+          console.error(`[NotebookLM] Failed to download/upload file from Drive ${sourceMaterial.driveFileId}`, e);
         }
       }
     }
@@ -200,7 +292,8 @@ export async function generatePodcastWorker(itemId: string, podcastType: "pre" |
       url: "/"
     }).catch(console.error);
 
-  } catch (error: any) {
+  } catch (err: unknown) {
+    const error = err instanceof Error ? err : new Error(String(err));
     console.error(`[NotebookLM] Worker error for item ${itemId}:`, error);
     
     // Attempt error push

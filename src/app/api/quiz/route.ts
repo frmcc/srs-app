@@ -4,9 +4,9 @@ import { NextRequest, NextResponse, after } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 import { PROMPTS, podcast_prompts } from "./prompts";
 import { sendPushNotification } from "@/lib/push";
-import { generatePodcastWorker } from "@/lib/notebooklm";
+import { generatePodcastWorker, createNotebook } from "@/lib/notebooklm";
 import { generateContentWithRetry } from "@/lib/gemini-retry";
-import { createDriveFolder, uploadToDrive, createGoogleDoc } from "@/lib/google-drive";
+import { createDriveFolder, getOrCreateDriveFolder, uploadToDrive, createGoogleDoc } from "@/lib/google-drive";
 import fs from "fs/promises";
 import path from "path";
 
@@ -35,6 +35,7 @@ export async function POST(req: NextRequest) {
     const subjectMain = formData.get("subjectMain") as string;
     const subjectSub = (formData.get("subjectSub") as string) || "Module";
     const textContent = (formData.get("content") as string) || "";
+    const language = (formData.get("language") as string) || "german";
     
     // Process uploaded files
     const files = formData.getAll("files") as File[];
@@ -45,7 +46,7 @@ export async function POST(req: NextRequest) {
 
     const uploadedFilesData: { path: string, mimeType: string }[] = [];
     const dbFilesData: { name: string, mimeType: string, base64: string }[] = [];
-    const geminiFileParts: any[] = [];
+    const geminiFileParts: { fileData: { fileUri: string, mimeType: string } }[] = [];
     
     // Ensure uploads directory exists
     const uploadsDir = path.join(process.cwd(), "uploads");
@@ -75,10 +76,7 @@ export async function POST(req: NextRequest) {
         });
         
         geminiFileParts.push({
-          fileData: {
-            fileUri: uploadResult.uri,
-            mimeType: uploadResult.mimeType
-          }
+          fileData: { fileUri: uploadResult.uri as string, mimeType: uploadResult.mimeType as string }
         });
       } catch (err: unknown) {
         const errObj = err instanceof Error ? err : new Error(String(err));
@@ -87,7 +85,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Build the master parts array for the prompt
-    const masterContextParts = [...geminiFileParts];
+    const masterContextParts: Array<{ text: string } | { fileData: { fileUri: string, mimeType: string } }> = [...geminiFileParts];
     if (textContent.trim()) {
       masterContextParts.push({ text: `\n\nZusätzliches Textmaterial:\n${textContent}` });
     }
@@ -102,15 +100,20 @@ export async function POST(req: NextRequest) {
 
     const stream = new ReadableStream({
       async start(controller) {
-      const sendEvent = (event: string, data: any) => {
-        controller.enqueue(new TextEncoder().encode(JSON.stringify({ event, data }) + "\n"));
+      const sendEvent = (event: string, data: Record<string, unknown> | unknown) => {
+        try {
+          controller.enqueue(new TextEncoder().encode(JSON.stringify({ event, data }) + "\n"));
+        } catch (e) {
+          // Ignore stream errors (e.g. client disconnected) so background task continues
+        }
       };
 
       try {
+        const languageInstruction = `\n\nCRITICAL: You must generate ALL text, output, and responses strictly in ${language.toUpperCase()}. This applies to every section of the generated content.`;
         sendEvent("progress", { step: 1, message: "Analyzing material & Generating Blueprint..." });
         const blueprintRes = await generateContentWithRetry(ai, modelName, {
           contents: [{ role: "user", parts: [...masterContextParts, { text: "Hier sind die Materialien. Bitte führe deine System-Instruktionen aus." }] }],
-          config: { systemInstruction: PROMPTS.blueprint + `\n\nModul/Vorlesungsthema:\n${subjectMain} - ${subjectSub}` }
+          config: { systemInstruction: PROMPTS.blueprint + `\n\nModul/Vorlesungsthema:\n${subjectMain} - ${subjectSub}` + languageInstruction }
         }, (msg) => sendEvent("progress", { step: 1, message: msg }), "Blueprint");
         const blueprint = blueprintRes.text;
 
@@ -123,7 +126,7 @@ export async function POST(req: NextRequest) {
           sendEvent("progress", { step: 2 + i, message: `Generating Quiz ${i + 1}...` });
           const res = await generateContentWithRetry(ai, modelName, {
             contents: [{ role: "user", parts: [...masterContextParts, { text: "Hier sind die Materialien. Bitte führe deine System-Instruktionen aus." }] }],
-            config: { systemInstruction: quizPrompts[i] + `\n\nModul/Vorlesungsthema:\n${subjectMain}\n\nBlueprint:\n${blueprint}\n\nVorheriger Quiz-Agent-Output:\n${lastQuiz}\n\nBisheriges Coverage Ledger:\n${lastLedger}` }
+            config: { systemInstruction: quizPrompts[i] + `\n\nModul/Vorlesungsthema:\n${subjectMain}\n\nBlueprint:\n${blueprint}\n\nVorheriger Quiz-Agent-Output:\n${lastQuiz}\n\nBisheriges Coverage Ledger:\n${lastLedger}` + languageInstruction }
           }, (msg) => sendEvent("progress", { step: 2 + i, message: msg }), `Quiz ${i + 1}`);
           const text = res.text;
           quizResults.push(text);
@@ -134,26 +137,51 @@ export async function POST(req: NextRequest) {
         sendEvent("progress", { step: 7, message: "Generating Tutor Prompt System..." });
         const tutorRes = await generateContentWithRetry(ai, modelName, {
           contents: [{ role: "user", parts: [...masterContextParts, { text: "Bitte generiere den Tutor-Prompt basierend auf dem bereitgestellten Blueprint." }] }],
-          config: { systemInstruction: PROMPTS.tutor_prompt + `\n\nModul/Vorlesungsthema:\n${subjectMain}\n\nBlueprint:\n${blueprint}` }
+          config: { systemInstruction: PROMPTS.tutor_prompt + `\n\nModul/Vorlesungsthema:\n${subjectMain}\n\nBlueprint:\n${blueprint}` + languageInstruction }
         }, (msg) => sendEvent("progress", { step: 7, message: msg }), "Tutor Prompt");
         const tutorPrompt = tutorRes.text;
 
         sendEvent("progress", { step: 8, message: "Generating Podcast Prompts..." });
         const podcastRes = await generateContentWithRetry(ai, modelName, {
           contents: [{ role: "user", parts: [...masterContextParts, { text: "Bitte generiere die zwei Regieanweisungen basierend auf dem bereitgestellten Blueprint." }] }],
-          config: { systemInstruction: podcast_prompts + `\n\nModul/Vorlesungsthema:\n${subjectMain}\n\nBlueprint:\n${blueprint}` }
+          config: { systemInstruction: podcast_prompts + `\n\nModul/Vorlesungsthema:\n${subjectMain}\n\nBlueprint:\n${blueprint}` + languageInstruction }
         }, (msg) => sendEvent("progress", { step: 8, message: msg }), "Podcast Prompts");
         const podcastOutput = podcastRes.text;
         const prePodcastPrompt = extractSection(podcastOutput, "===PRE_PODCAST_START===", "===PRE_PODCAST_END===");
         const postPodcastPrompt = extractSection(podcastOutput, "===POST_PODCAST_START===", "===POST_PODCAST_END===");
 
-        sendEvent("progress", { step: 9, message: "Uploading to Google Drive..." });
+        sendEvent("progress", { step: 9, message: "Creating NotebookLM Podcasts..." });
+
+        let preNotebookId = "";
+        let postNotebookId = "";
+        try {
+          const preTitle = `Pre - ${subjectMain}`.substring(0, 50);
+          const postTitle = `Post - ${subjectMain}`.substring(0, 50);
+          const [preId, postId] = await Promise.all([
+            createNotebook(preTitle),
+            createNotebook(postTitle)
+          ]);
+          if (preId) preNotebookId = preId;
+          if (postId) postNotebookId = postId;
+        } catch (e) {
+          console.error("NotebookLM creation failed:", e);
+        }
+
+        sendEvent("progress", { step: 10, message: "Uploading to Google Drive..." });
+
+        const appConfig = await prisma.appConfig.findUnique({ where: { id: 1 } });
+        const currentSemester = appConfig?.currentSemester || 1;
 
         let folderId = "";
         let mainPdfId = "";
         try {
-          const folderName = `${subjectMain} - ${subjectSub}`;
-          folderId = await createDriveFolder(folderName);
+          // Build the hierarchy: Root -> Semester X -> Module -> Topic
+          const semesterFolderName = `Semester ${currentSemester}`;
+          const semesterFolderId = await getOrCreateDriveFolder(semesterFolderName);
+          
+          const moduleFolderId = await getOrCreateDriveFolder(subjectMain, semesterFolderId);
+          
+          folderId = await getOrCreateDriveFolder(subjectSub, moduleFolderId);
           
           if (dbFilesData.length > 0) {
             const firstFile = dbFilesData[0];
@@ -179,10 +207,7 @@ export async function POST(req: NextRequest) {
           console.error("Google Drive upload failed:", e);
         }
 
-        sendEvent("progress", { step: 10, message: "Saving records to database..." });
-
-        const appConfig = await prisma.appConfig.findUnique({ where: { id: 1 } });
-        const currentSemester = appConfig?.currentSemester || 1;
+        sendEvent("progress", { step: 11, message: "Saving records to database..." });
 
         const createdItem = await prisma.sRSItem.create({
           data: {
@@ -198,9 +223,9 @@ export async function POST(req: NextRequest) {
             quiz5DocId: quizResults[4],
             tutorPromptContent: tutorPrompt,
             tutorPromptDocId: "pending", // Will be set to item ID after creation
-            prePodcastPrompt: prePodcastPrompt || null,
-            postPodcastPrompt: postPodcastPrompt || null,
-            sourceMaterialContent: JSON.stringify({ driveFileId: mainPdfId, driveFolderId: folderId })
+            prePodcastUrl: preNotebookId ? `https://notebooklm.google.com/notebook/${preNotebookId}` : null,
+            postPodcastUrl: postNotebookId ? `https://notebooklm.google.com/notebook/${postNotebookId}` : null,
+            sourceMaterialContent: JSON.stringify({ driveFileId: mainPdfId, driveFolderId: folderId }) 
           }
         });
 
@@ -221,13 +246,17 @@ export async function POST(req: NextRequest) {
           url: "/",
         }).catch((e) => console.error("Push notification failed:", e));
 
-        // Automatically trigger podcast generation in the background
+        // Automatically trigger podcast generation in the background with in-memory files
         after(async () => {
           try {
-            await Promise.allSettled([
-              generatePodcastWorker(createdItem.id, "pre"),
-              generatePodcastWorker(createdItem.id, "post")
-            ]);
+            const uploadTasks = [];
+            if (preNotebookId) {
+              uploadTasks.push(generatePodcastWorker(createdItem.id, "pre", preNotebookId, textContent, dbFilesData));
+            }
+            if (postNotebookId) {
+              uploadTasks.push(generatePodcastWorker(createdItem.id, "post", postNotebookId, textContent, dbFilesData));
+            }
+            await Promise.allSettled(uploadTasks);
           } catch (e) {
             console.error("Error in background podcast worker:", e);
           } finally {
@@ -242,11 +271,12 @@ export async function POST(req: NextRequest) {
           }
         });
 
-        controller.close();
-      } catch (error: any) {
+        try { controller.close(); } catch (e) {}
+      } catch (err: unknown) {
+        const error = err instanceof Error ? err : new Error(String(err));
         console.error("Quiz generation error:", error);
         sendEvent("error", { message: error.message });
-        controller.close();
+        try { controller.close(); } catch (e) {}
       } finally {
         if (!generationSuccess) {
           for (const fileInfo of uploadedFilesData) {
@@ -267,8 +297,9 @@ export async function POST(req: NextRequest) {
       "Cache-Control": "no-cache",
     }
   });
-  } catch (err: any) {
-    console.error("Form parsing error:", err);
+  } catch (err: unknown) {
+    const error = err instanceof Error ? err : new Error(String(err));
+    console.error("Form parsing error:", error);
     return NextResponse.json({ error: "Failed to parse form data." }, { status: 500 });
   }
 }

@@ -1,24 +1,26 @@
 import { google } from "googleapis";
 import { Readable } from "stream";
 
-// Initialize Google Drive API
+// Initialize Google Drive API with OAuth2
 function getDriveClient() {
-  const privateKey = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, "\n");
-  const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  const refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
   
-  if (!privateKey || !clientEmail) {
-    throw new Error("Missing Google Service Account credentials in .env");
+  if (!clientId || !clientSecret || !refreshToken) {
+    throw new Error("Missing Google OAuth2 credentials (GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN) in .env");
   }
 
-  const auth = new google.auth.GoogleAuth({
-    credentials: {
-      client_email: clientEmail,
-      private_key: privateKey,
-    },
-    scopes: ["https://www.googleapis.com/auth/drive"],
+  const oauth2Client = new google.auth.OAuth2(
+    clientId,
+    clientSecret
+  );
+
+  oauth2Client.setCredentials({
+    refresh_token: refreshToken
   });
 
-  return google.drive({ version: "v3", auth });
+  return google.drive({ version: "v3", auth: oauth2Client });
 }
 
 export async function createDriveFolder(name: string, parentFolderId?: string): Promise<string> {
@@ -41,6 +43,34 @@ export async function createDriveFolder(name: string, parentFolderId?: string): 
   });
 
   return file.data.id!;
+}
+
+export async function getOrCreateDriveFolder(name: string, parentFolderId?: string): Promise<string> {
+  const drive = getDriveClient();
+  const parentId = parentFolderId || process.env.GOOGLE_DRIVE_FOLDER_ID;
+  
+  if (!parentId) {
+    throw new Error("GOOGLE_DRIVE_FOLDER_ID is missing in .env");
+  }
+
+  // 1. Search if the folder already exists
+  const escapedName = name.replace(/'/g, "\\'");
+  const query = `name='${escapedName}' and '${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+  const response = await drive.files.list({
+    q: query,
+    fields: 'files(id, name)',
+    spaces: 'drive',
+  });
+
+  const files = response.data.files;
+  if (files && files.length > 0) {
+    console.log(`[Google Drive] Found existing folder: ${name} (ID: ${files[0].id})`);
+    return files[0].id!;
+  }
+
+  // 2. If it doesn't exist, create it
+  console.log(`[Google Drive] Creating new folder: ${name}`);
+  return createDriveFolder(name, parentId);
 }
 
 export async function uploadToDrive(
@@ -116,10 +146,26 @@ export async function createGoogleDoc(
 export async function downloadFromDrive(fileId: string): Promise<Buffer> {
   const drive = getDriveClient();
 
-  const response = await drive.files.get(
-    { fileId, alt: "media" },
-    { responseType: "arraybuffer" }
-  );
+  // 1. Check if it's a Google Workspace document
+  const fileMeta = await drive.files.get({
+    fileId: fileId,
+    fields: 'mimeType'
+  });
 
-  return Buffer.from(response.data as ArrayBuffer);
+  if (fileMeta.data.mimeType === 'application/vnd.google-apps.document') {
+    // Google Docs CANNOT be downloaded directly, they must be exported!
+    // We export it as a PDF since the Gemini Grader expects a PDF buffer.
+    const response = await drive.files.export(
+      { fileId, mimeType: 'application/pdf' },
+      { responseType: 'arraybuffer' }
+    );
+    return Buffer.from(response.data as ArrayBuffer);
+  } else {
+    // Normal files (like uploaded PDFs) can be downloaded directly
+    const response = await drive.files.get(
+      { fileId, alt: "media" },
+      { responseType: "arraybuffer" }
+    );
+    return Buffer.from(response.data as ArrayBuffer);
+  }
 }

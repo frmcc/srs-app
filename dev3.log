@@ -1,0 +1,87 @@
+
+> srs-app@0.1.0 dev
+> next dev
+
+▲ Next.js 16.2.6 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://172.20.10.2:3000
+- Environments: .env
+✓ Ready in 276ms
+
+Failed to delete review: Error [PrismaClientKnownRequestError]: 
+Invalid `__TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$db$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["prisma"].sRSItem.delete()` invocation in
+/Users/frankmcc/.gemini/antigravity/scratch/srs-app/.next/dev/server/chunks/[root-of-the-server]__0cnhw0_._.js:103:154
+
+  100 async function DELETE(req, { params }) {
+  101     try {
+  102         const { id } = await params;
+→ 103         await __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$db$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["prisma"].sRSItem.delete(
+An operation failed because it depends on one or more records that were required but not found. No record was found for a delete.
+    at <unknown> (src/app/api/reviews/[id]/route.ts:11:32)
+    at async DELETE (src/app/api/reviews/[id]/route.ts:11:5)
+   9 |     const { id } = await params;
+  10 |     
+> 11 |     await prisma.sRSItem.delete({
+     |                                ^
+  12 |       where: { id }
+  13 |     });
+  14 | {
+  code: 'P2025',
+  meta: { modelName: 'SRSItem', cause: 'No record was found for a delete.' },
+  clientVersion: '6.19.3'
+}
+ DELETE /api/reviews/test-id 500 in 1508ms (next.js: 861ms, application-code: 647ms)
+ GET / 200 in 247ms (next.js: 99ms, application-code: 149ms)
+ GET /api/settings 200 in 510ms (next.js: 40ms, application-code: 470ms)
+ GET /api/reviews 200 in 766ms (next.js: 61ms, application-code: 705ms)
+ GET /api/reviews 200 in 411ms (next.js: 10ms, application-code: 401ms)
+ GET /api/reviews 200 in 269ms (next.js: 7ms, application-code: 262ms)
+ GET / 200 in 63ms (next.js: 8ms, application-code: 55ms)
+ GET /api/reviews 200 in 346ms (next.js: 8ms, application-code: 339ms)
+ GET /api/settings 200 in 578ms (next.js: 12ms, application-code: 566ms)
+ POST /api/settings 200 in 546ms (next.js: 2ms, application-code: 543ms)
+[Google Drive] Found existing folder: Semester 1 (ID: 1B2NuyqMnkMh8L8IsWJz9BC8W8VfBB1La)
+[Google Drive] Found existing folder: Ethik (ID: 1ofIXR00mgJFTt8zEks4V2h2iKOz_1Mam)
+[Google Drive] Creating new folder: gg
+ POST /api/quiz 200 in 3.7min (next.js: 1621ms, application-code: 3.7min)
+[NotebookLM] Starting worker for item cmpueboqn0000vttg8pcqk2lp (Type: pre, Notebook: d45cde1c-d77c-4cf3-b51d-e53ef15b4f40)
+[NotebookLM] Starting worker for item cmpueboqn0000vttg8pcqk2lp (Type: post, Notebook: a22f7705-9903-4c05-9369-dabddf05a041)
+[NotebookLM] Uploading in-memory file: EoAI26-02.pdf
+[NotebookLM] Uploading in-memory file: EoAI26-02.pdf
+[NotebookLM] Waiting 30 seconds for NotebookLM to index the uploaded materials...
+[NotebookLM] Waiting 30 seconds for NotebookLM to index the uploaded materials...
+ GET /api/reviews 200 in 170ms (next.js: 25ms, application-code: 145ms)
+[NotebookLM] Sending chat/ask to NotebookLM...
+[NotebookLM] Sending chat/ask to NotebookLM...
+[NotebookLM] Finished configuring NotebookLM for post. User can now generate audio in the NotebookLM UI if desired.
+[NotebookLM] Success! Notebook configured.
+[NotebookLM] Finished configuring NotebookLM for pre. User can now generate audio in the NotebookLM UI if desired.
+[NotebookLM] Success! Notebook configured.
+ POST /api/grade 200 in 116s (next.js: 138ms, application-code: 116s)
+[NotebookLM Video] Starting worker for item cmpueboqn0000vttg8pcqk2lp (Pass: true)
+[NotebookLM Video] Creating notebook: Pass: Ethik - gg
+[NotebookLM Video] Downloading file from Google Drive: 1KjAIFXzcH_vgD3kDcS-H9z2ZUSbcrxqj
+[NotebookLM Video] Waiting 10 seconds for notebook to process file...
+[NotebookLM Video] Asking Prompt 1...
+[NotebookLM Video] Waiting 10 seconds before second prompt...
+[NotebookLM Video] Asking Prompt 2...
+ GET /api/reviews 200 in 417ms (next.js: 26ms, application-code: 391ms)
+ GET /api/reviews 200 in 298ms (next.js: 6ms, application-code: 291ms)
+[NotebookLM Video] Success! Saving videoUrl: https://notebooklm.google.com/notebook/e83f1b05-f9b2-4969-80fd-dfb97d22ee00
+ GET /api/reviews 200 in 350ms (next.js: 10ms, application-code: 340ms)
+ GET /api/reviews 200 in 274ms (next.js: 9ms, application-code: 265ms)
+ GET /api/reviews 200 in 311ms (next.js: 13ms, application-code: 299ms)
+✓ Compiled in 181ms
+ GET /api/reviews 200 in 617ms (next.js: 3ms, application-code: 614ms)
+✓ Compiled in 64ms
+ GET /api/reviews 200 in 664ms (next.js: 3ms, application-code: 661ms)
+ GET /api/reviews 200 in 447ms (next.js: 18ms, application-code: 429ms)
+✓ Compiled in 384ms
+ GET /api/settings 200 in 502ms (next.js: 6ms, application-code: 496ms)
+ GET /api/reviews 200 in 739ms (next.js: 4ms, application-code: 735ms)
+ GET /api/reviews 200 in 288ms (next.js: 8ms, application-code: 280ms)
+ GET /api/reviews 200 in 533ms (next.js: 25ms, application-code: 508ms)
+✓ Compiled in 126ms
+ GET /api/reviews 200 in 676ms (next.js: 5ms, application-code: 671ms)
+ GET /api/reviews 200 in 435ms (next.js: 26ms, application-code: 410ms)
+[?25h

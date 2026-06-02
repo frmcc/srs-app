@@ -55,13 +55,7 @@ Modul/Vorlesungsthema:
 
 Quiz-Intervall: {INTERVAL}
 
-Originales Vorlesungsmaterial / PDF: [siehe unten/Material]
-
-Original-Quizfragen:
-{QUIZ_QUESTIONS}
-
-Beantwortetes Quiz des Studenten:
-{STUDENT_ANSWERS}
+Originales Vorlesungsmaterial / PDF, Didaktischer Blueprint, Original-Quizfragen und das beantwortete Quiz des Studenten werden dir als Inhalt in der User-Nachricht bereitgestellt.
 
 AUSGABE EXAKT IN DIESER STRUKTUR:
 Gib ausschließlich die Bewertung für die erste Hälfte aus. Kein Text davor oder danach.
@@ -123,13 +117,7 @@ Modul/Vorlesungsthema:
 
 Quiz-Intervall: {INTERVAL}
 
-Originales Vorlesungsmaterial / PDF: [siehe unten/Material]
-
-Original-Quizfragen:
-{QUIZ_QUESTIONS}
-
-Beantwortetes Quiz des Studenten:
-{STUDENT_ANSWERS}
+Originales Vorlesungsmaterial / PDF, Didaktischer Blueprint, Original-Quizfragen und das beantwortete Quiz des Studenten werden dir als Inhalt in der User-Nachricht bereitgestellt.
 
 AUSGABE EXAKT IN DIESER STRUKTUR:
 Gib ausschließlich die Bewertung für die zweite Hälfte aus. Kein Text davor oder danach.
@@ -174,17 +162,11 @@ Gib REPEAT, wenn:
 - die Gesamtbeherrschung unter ca. 80 % liegt,
 - laut den Co-Prüfern eine kritische Kernlücke vorliegt.
 
-INPUT FÜR DEINE ENTSCHEIDUNG:
-Modul/Vorlesungsthema: 
-{SUBJECT}
+INPUT ZUR ENTSCHEIDUNGSFINDUNG:
+Modul/Vorlesungsthema: {SUBJECT}
+Intervall: {INTERVAL}
 
-Quiz-Intervall: {INTERVAL}
-
-Bewertung Hälfte 1: 
-{PART_1_ASSESSMENT}
-
-Bewertung Hälfte 2: 
-{PART_2_ASSESSMENT}
+Teil-Bewertungen der Co-Prüfer werden dir als Inhalt in der User-Nachricht bereitgestellt.
 
 AUSGABEREGELN:
 WICHTIG: Schreibe die einzelnen Aufgabenbewertungen NICHT noch einmal auf! Das System fügt sie später automatisch ein. Erzeuge ausschließlich die Entscheidung, die Summary und den Brief.
@@ -239,12 +221,11 @@ Da der Student bestanden hat, darf das Video ihn nicht mit bereits bekannten Fak
 - Episode 1 (Video 1): "Polishing". Glätten der allerletzten, winzigen Restlücken, Ungenauigkeiten oder Verwechslungsgefahren aus dem Quiz.
 - Episode 2 (Video 2): Die Meta-Perspektive. Festigung der Langzeitanker und Ausblick auf den Transfer für das nächste Spaced-Repetition-Intervall.
 
-INPUT:
+INPUT FÜR DEINE REGIEANWEISUNG:
 Modul/Vorlesungsthema: {SUBJECT}
 Quiz-Intervall: {INTERVAL}
-Quizfragen: {QUIZ_QUESTIONS}
-Output des Assessment-Grader-AIs:
-{GRADER_OUTPUT}
+
+Quizfragen, didaktischer Blueprint und der Output des Assessment-Grader-AIs werden dir als Inhalt in der User-Nachricht bereitgestellt.
 
 DEINE ANALYSEAUFGABE:
 Analysiere den Assessment-Grader-Output unter der Annahme, dass die Entscheidung PASS war.
@@ -372,12 +353,11 @@ Ein NotebookLM-Erklärvideo dauert ca. 5–8 Minuten. Es ist unmöglich, alle L�
 - Episode 2 (Video 2): Transfer und Mechanismen. Fokus auf komplexe Zusammenhänge (z.B. Infrastruktur, Kausalketten) und Anwendung.
 Behandle pro Video MAXIMAL 2 bis 3 Kernkonzepte!
 
-INPUT FÜR DEINE ANALYSE:
+INPUT FÜR DEINE REGIEANWEISUNG:
 Modul/Vorlesungsthema: {SUBJECT}
 Quiz-Intervall: {INTERVAL}
-Quizfragen: {QUIZ_QUESTIONS}
-Output des Assessment-Grader-AIs:
-{GRADER_OUTPUT}
+
+Quizfragen, didaktischer Blueprint und der Output des Assessment-Grader-AIs werden dir als Inhalt in der User-Nachricht bereitgestellt.
 
 DEINE ANALYSEAUFGABE:
 Lies den Assessment-Grader-Output.
@@ -450,12 +430,10 @@ Dieses Quiz darf den Studenten NICHT mit den Basics langweilen, die er bereits f
 INPUT FÜR DEINE ANALYSE:
 Modul/Vorlesungsthema: {SUBJECT}
 Nächstes Quiz-Intervall: {NEXT_INTERVAL}
-Alte Quizfragen: {QUIZ_QUESTIONS}
-Output des Assessment-Grader-AIs (Fehleranalyse aus dem letzten Quiz):
-{GRADER_OUTPUT}
 
-Originales Vorlesungsmaterial als fachliche Quelle:
-[siehe unten/Material]
+Alte Quizfragen, der Output des Assessment-Grader-AIs, didaktischer Blueprint und bisheriges Coverage Ledger werden dir als Inhalt in der User-Nachricht bereitgestellt.
+
+Originales Vorlesungsmaterial als fachliche Quelle wird ebenfalls bereitgestellt.
 
 REGELN FÜR DIE QUIZ-ERSTELLUNG (STRIKT EINZUHALTEN):
 1. Format-Zwang: ALLE Fragen müssen zwingend als Multiple-Choice-Fragen konzipiert sein (genau 4 Antwortmöglichkeiten: A, B, C, D). Genau eine Antwort ist korrekt.
@@ -497,12 +475,10 @@ Deine Aufgabe: Erstelle ein ZIELGERICHTETES NEUES QUIZ (ca. 5 bis 8 Aufgaben) f�
 INPUT FÜR DEINE ANALYSE:
 Modul/Vorlesungsthema: {SUBJECT}
 Quiz-Intervall: {INTERVAL}
-Altes Quiz: {QUIZ_QUESTIONS}
-Fehleranalyse des Graders:
-{GRADER_OUTPUT}
 
-Originales Vorlesungsmaterial als fachliche Quelle:
-[siehe unten/Material]
+Altes Quiz, Fehleranalyse des Graders, didaktischer Blueprint und bisheriges Coverage Ledger werden dir als Inhalt in der User-Nachricht bereitgestellt.
+
+Originales Vorlesungsmaterial als fachliche Quelle wird ebenfalls bereitgestellt.
 
 REGELN FÜR DIE QUIZ-ERSTELLUNG:
 - Triage: Lies die Fehleranalyse. Wo genau lag der Student falsch? Was hat er verwechselt?

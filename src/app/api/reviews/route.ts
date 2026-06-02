@@ -5,6 +5,11 @@ import { NextResponse } from "next/server";
 export async function GET() {
   try {
     const reviews = await prisma.sRSItem.findMany({
+      where: {
+        subjectMain: {
+          not: "Freies Lernen"
+        }
+      },
       orderBy: { nextReviewDate: "asc" }
     });
 

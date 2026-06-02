@@ -3,7 +3,7 @@ import { GoogleGenAI } from "@google/genai";
 export async function generateContentWithRetry(
   ai: GoogleGenAI,
   modelName: string,
-  request: any,
+  request: Omit<Parameters<GoogleGenAI["models"]["generateContent"]>[0], "model">,
   progressCallback: (message: string) => void,
   stepLabel: string
 ) {
@@ -13,7 +13,8 @@ export async function generateContentWithRetry(
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       return await ai.models.generateContent({ model: modelName, ...request });
-    } catch (error: any) {
+    } catch (err: unknown) {
+      const error = err as Error & { status?: number };
       if (attempt === maxRetries) {
         throw error; // throw on the final failed attempt
       }

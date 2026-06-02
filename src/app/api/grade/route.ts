@@ -1,11 +1,12 @@
 export const maxDuration = 300;
 import { prisma } from "@/lib/db";
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 import { GRADE_PROMPTS } from "./prompts";
-import { downloadFromDrive } from "@/lib/google-drive";
+import { downloadFromDrive, createGoogleDoc } from "@/lib/google-drive";
 import { sendPushNotification } from "@/lib/push";
 import { generateContentWithRetry } from "@/lib/gemini-retry";
+import { generateVideoPromptsWorker } from "@/lib/notebooklm";
 import fs from "fs/promises";
 
 const modelName = "gemini-3.1-flash-lite";
@@ -25,7 +26,7 @@ export async function POST(req: NextRequest) {
     }, { status: 400 });
   }
 
-  const { itemId, studentAnswers } = await req.json();
+  const { itemId, studentAnswers, language } = await req.json();
 
   if (!itemId) {
     return NextResponse.json({ error: "Item ID is required" }, { status: 400 });
@@ -48,7 +49,11 @@ export async function POST(req: NextRequest) {
   const stream = new ReadableStream({
     async start(controller) {
       const sendEvent = (event: string, data: any) => {
-        controller.enqueue(new TextEncoder().encode(JSON.stringify({ event, data }) + "\n"));
+        try {
+          controller.enqueue(new TextEncoder().encode(JSON.stringify({ event, data }) + "\n"));
+        } catch (e) {
+          // Ignore stream errors (e.g. client disconnected) so background task continues
+        }
       };
 
       try {
@@ -120,13 +125,18 @@ export async function POST(req: NextRequest) {
           srsItem.quiz2DocId,
           srsItem.quiz3DocId,
           srsItem.quiz4DocId,
-          srsItem.quiz5DocId
+          srsItem.quiz5DocId,
+          srsItem.quiz6DocId,
+          srsItem.quiz7DocId
         ];
-        const quizQuestions = quizFields[srsItem.currentLevel] || srsItem.quiz1DocId || "";
+        const quizQuestions = (srsItem.currentLevel >= 6 ? srsItem.quiz7DocId : quizFields[srsItem.currentLevel]) || srsItem.quiz1DocId || "";
 
-        // Extract student quiz section to count tasks and avoid matching metadata
-        const studentQuizMatch = quizQuestions.match(/===STUDENT_QUIZ_START===([\s\S]*?)===STUDENT_QUIZ_END===/);
-        const studentQuizText = studentQuizMatch ? studentQuizMatch[1] : quizQuestions;
+        // Extract student quiz section tolerantly to count tasks and avoid matching metadata
+        const safeStart = "===STUDENT_QUIZ_START===".replace(/===/g, '={3,}');
+        const safeEnd = "===STUDENT_QUIZ_END===".replace(/===/g, '={3,}');
+        const regex = new RegExp(`[\\s\\S]*?${safeStart}\\s*([\\s\\S]*?)\\s*${safeEnd}`, "i");
+        const studentQuizMatch = quizQuestions.match(regex);
+        const studentQuizText = studentQuizMatch && studentQuizMatch[1] ? studentQuizMatch[1].trim() : quizQuestions;
 
         // Count tasks in the student quiz section
         const taskMatches = studentQuizText.match(/Aufgabe \d+/g) || [];
@@ -140,12 +150,13 @@ export async function POST(req: NextRequest) {
 
         // Step 0: Verify Submission
         sendEvent("progress", { step: 0, message: "Verifying submission (MATCH/MISMATCH check)..." });
+        const languageInstruction = language ? `\n\nCRITICAL: You must generate ALL text, output, and responses strictly in ${language.toUpperCase()}. This applies to every section of the generated content.` : "";
         const mismatchCheckRes = await generateContentWithRetry(ai, modelName, {
           contents: [{ role: "user", parts: [{ text: `Studenten-Antworten:\n${studentAnswers}` }] }],
           config: {
             systemInstruction: formatPrompt(GRADE_PROMPTS.mismatch_check, {
               QUIZ_QUESTIONS: studentQuizText
-            })
+            }) + languageInstruction
           }
         }, (msg) => sendEvent("progress", { step: 0, message: msg }), "Submission Check");
         
@@ -157,31 +168,33 @@ export async function POST(req: NextRequest) {
         // Step 1: Run grading halves in parallel
         sendEvent("progress", { step: 1, message: "Parallel Grading: Co-Prüfer 1 & 2 evaluating answers..." });
 
+        const co1UserParts = [...sourceMaterialParts];
+        if (srsItem.blueprint) co1UserParts.push({ text: `Didaktischer Blueprint:\n${srsItem.blueprint}` });
+        co1UserParts.push({ text: `Original-Quizfragen:\n${studentQuizText}` });
+        co1UserParts.push({ text: `Beantwortetes Quiz des Studenten:\n${studentAnswers}` });
+        co1UserParts.push({ text: "Hier sind die Dateien. Bitte führe deine System-Instruktionen aus." });
+
         const [res1, res2] = await Promise.all([
           generateContentWithRetry(ai, modelName, {
-            contents: [{ role: "user", parts: [...sourceMaterialParts, { text: "Hier sind die Dateien. Bitte führe deine System-Instruktionen aus." }] }],
+            contents: [{ role: "user", parts: co1UserParts }],
             config: {
               systemInstruction: formatPrompt(GRADE_PROMPTS.co_pruefer_1, {
                 TOTAL_TASKS: totalTasks,
                 SPLIT_POINT: splitPoint,
                 SUBJECT: subject,
-                INTERVAL: interval,
-                QUIZ_QUESTIONS: studentQuizText,
-                STUDENT_ANSWERS: studentAnswers
-              })
+                INTERVAL: interval
+              }) + languageInstruction
             }
           }, (msg) => sendEvent("progress", { step: 1, message: msg }), "Co-Prüfer 1"),
           generateContentWithRetry(ai, modelName, {
-            contents: [{ role: "user", parts: [...sourceMaterialParts, { text: "Hier sind die Dateien. Bitte führe deine System-Instruktionen aus." }] }],
+            contents: [{ role: "user", parts: co1UserParts }],
             config: {
               systemInstruction: formatPrompt(GRADE_PROMPTS.co_pruefer_2, {
                 TOTAL_TASKS: totalTasks,
                 START_INDEX: startIdx2,
                 SUBJECT: subject,
-                INTERVAL: interval,
-                QUIZ_QUESTIONS: studentQuizText,
-                STUDENT_ANSWERS: studentAnswers
-              })
+                INTERVAL: interval
+              }) + languageInstruction
             }
           }, (msg) => sendEvent("progress", { step: 1, message: msg }), "Co-Prüfer 2")
         ]);
@@ -191,15 +204,19 @@ export async function POST(req: NextRequest) {
 
         // Step 2: Consolidate via Chief Assessor
         sendEvent("progress", { step: 2, message: "Chief Assessor: Consolidating final decision & generating brief..." });
+        
+        const chefUserParts = [...sourceMaterialParts];
+        chefUserParts.push({ text: `Bewertung der ersten Quiz-Hälfte (von Co-Prüfer 1):\n${part1Feedback}` });
+        chefUserParts.push({ text: `Bewertung der zweiten Quiz-Hälfte (von Co-Prüfer 2):\n${part2Feedback}` });
+        chefUserParts.push({ text: "Hier sind die Dateien. Bitte führe deine System-Instruktionen aus." });
+
         const chefRes = await generateContentWithRetry(ai, modelName, {
-          contents: [{ role: "user", parts: [...sourceMaterialParts, { text: "Hier sind die Dateien. Bitte führe deine System-Instruktionen aus." }] }],
+          contents: [{ role: "user", parts: chefUserParts }],
           config: {
             systemInstruction: formatPrompt(GRADE_PROMPTS.chef_pruefer, {
               SUBJECT: subject,
-              INTERVAL: interval,
-              PART_1_ASSESSMENT: part1Feedback,
-              PART_2_ASSESSMENT: part2Feedback
-            })
+              INTERVAL: interval
+            }) + languageInstruction
           }
         }, (msg) => sendEvent("progress", { step: 2, message: msg }), "Chief Assessor");
 
@@ -215,15 +232,20 @@ export async function POST(req: NextRequest) {
 
         // Generate NotebookLM Prompts
         const lmInstruction = isPass ? GRADE_PROMPTS.video_pass : GRADE_PROMPTS.video_repeat;
+        const lmUserParts = [...sourceMaterialParts];
+        if (srsItem.blueprint) lmUserParts.push({ text: `Didaktischer Blueprint:\n${srsItem.blueprint}` });
+        lmUserParts.push({ text: `Original Quizfragen:\n${quizQuestions}` });
+        lmUserParts.push({ text: `Studenten-Antwort:\n${studentQuizText}` });
+        lmUserParts.push({ text: `Output des Assessment-Grader-AIs:\n${chefFeedback}` });
+        lmUserParts.push({ text: "Hier sind die Dateien. Bitte führe deine System-Instruktionen aus." });
+
         const lmPromptCall = generateContentWithRetry(ai, modelName, {
-          contents: [{ role: "user", parts: [...sourceMaterialParts, { text: "Hier sind die Dateien. Bitte führe deine System-Instruktionen aus." }] }],
+          contents: [{ role: "user", parts: lmUserParts }],
           config: {
             systemInstruction: formatPrompt(lmInstruction, {
               SUBJECT: subject,
-              INTERVAL: interval,
-              QUIZ_QUESTIONS: studentQuizText,
-              GRADER_OUTPUT: chefFeedback
-            })
+              INTERVAL: interval
+            }) + languageInstruction
           }
         }, (msg) => sendEvent("progress", { step: 3, message: msg }), "Video Prompts");
 
@@ -232,38 +254,55 @@ export async function POST(req: NextRequest) {
         let lmRes;
 
         if (isPass) {
-          // On PASS, we generate both NotebookLM prompts and the tailored next quiz
-          const isMastery = srsItem.currentLevel >= 4; // Level 4 corresponds to Tag 60
-          const passQuizInstruction = isMastery ? GRADE_PROMPTS.mastery_quiz : GRADE_PROMPTS.next_quiz_pass;
-          const nextIntervalStr = intervals[Math.min(srsItem.currentLevel + 1, 6)];
-          
-          const nextQuizCall = generateContentWithRetry(ai, modelName, {
-            contents: [{ role: "user", parts: [...sourceMaterialParts, { text: "Hier sind die Dateien. Bitte führe deine System-Instruktionen aus." }] }],
-            config: {
-              systemInstruction: formatPrompt(passQuizInstruction, {
-                SUBJECT: subject,
-                NEXT_INTERVAL: nextIntervalStr,
-                NEXT_INTERVAL_LABEL: nextIntervalStr,
-                QUIZ_QUESTIONS: studentQuizText,
-                GRADER_OUTPUT: chefFeedback
-              })
-            }
-          }, (msg) => sendEvent("progress", { step: 3, message: msg }), "Next Quiz (PASS)");
+          const nextLevel = Math.min(srsItem.currentLevel + 1, 6);
+          if (nextLevel >= 5) {
+            // MASTERY STAGE: We MUST dynamically generate the quiz for Tag 180 and Tag 365
+            const nextQuizParts = [...sourceMaterialParts];
+            if (srsItem.blueprint) nextQuizParts.push({ text: `Didaktischer Blueprint:\n${srsItem.blueprint}` });
+            if (srsItem.coverageLedger) nextQuizParts.push({ text: `Bisheriges Coverage Ledger:\n${srsItem.coverageLedger}` });
+            nextQuizParts.push({ text: `Original Quizfragen:\n${quizQuestions}` });
+            nextQuizParts.push({ text: `Studenten-Antwort:\n${studentQuizText}` });
+            nextQuizParts.push({ text: `Output des Assessment-Grader-AIs:\n${chefFeedback}` });
+            nextQuizParts.push({ text: "Hier sind die Dateien. Bitte führe deine System-Instruktionen aus." });
 
-          const [lmResult, nextQuizRes] = await Promise.all([lmPromptCall, nextQuizCall]);
-          lmRes = lmResult;
-          nextQuizText = nextQuizRes.text || "";
+            const nextInterval = nextLevel === 5 ? "Tag 180" : "Tag 365";
+
+            const nextQuizCall = generateContentWithRetry(ai, modelName, {
+              contents: [{ role: "user", parts: nextQuizParts }],
+              config: {
+                systemInstruction: formatPrompt(GRADE_PROMPTS.next_quiz_pass, {
+                  SUBJECT: subject,
+                  NEXT_INTERVAL: nextInterval,
+                  NEXT_INTERVAL_LABEL: nextInterval
+                }) + languageInstruction
+              }
+            }, (msg) => sendEvent("progress", { step: 3, message: msg }), "Next Quiz (MASTERY PASS)");
+
+            const [lmResult, nextQuizRes] = await Promise.all([lmPromptCall, nextQuizCall]);
+            lmRes = lmResult;
+            nextQuizText = nextQuizRes.text || "";
+          } else {
+            // Normal PASS for levels 0-3 (nextLevel 1-4): Quizzes are pre-generated.
+            lmRes = await lmPromptCall;
+          }
         } else {
           // On REPEAT, we generate both NotebookLM prompts and the custom remedial quiz
+          
+          const remedialQuizParts = [...sourceMaterialParts];
+          if (srsItem.blueprint) remedialQuizParts.push({ text: `Didaktischer Blueprint:\n${srsItem.blueprint}` });
+          if (srsItem.coverageLedger) remedialQuizParts.push({ text: `Bisheriges Coverage Ledger:\n${srsItem.coverageLedger}` });
+          remedialQuizParts.push({ text: `Original Quizfragen:\n${quizQuestions}` });
+          remedialQuizParts.push({ text: `Studenten-Antwort:\n${studentQuizText}` });
+          remedialQuizParts.push({ text: `Fehleranalyse des Graders:\n${chefFeedback}` });
+          remedialQuizParts.push({ text: "Hier sind die Dateien. Bitte führe deine System-Instruktionen aus." });
+
           const nextQuizCall = generateContentWithRetry(ai, modelName, {
-            contents: [{ role: "user", parts: [...sourceMaterialParts, { text: "Hier sind die Dateien. Bitte führe deine System-Instruktionen aus." }] }],
+            contents: [{ role: "user", parts: remedialQuizParts }],
             config: {
               systemInstruction: formatPrompt(GRADE_PROMPTS.retry_quiz_fail, {
                 SUBJECT: subject,
-                INTERVAL: interval,
-                QUIZ_QUESTIONS: studentQuizText,
-                GRADER_OUTPUT: chefFeedback
-              })
+                INTERVAL: interval
+              }) + languageInstruction
             }
           }, (msg) => sendEvent("progress", { step: 3, message: msg }), "Next Quiz (REPEAT)");
 
@@ -290,18 +329,13 @@ export async function POST(req: NextRequest) {
             case 2: intervalDays = 21; break;
             case 3: intervalDays = 60; break;
             case 4: intervalDays = 180; break;
-            case 5: intervalDays = 365; break;
-            case 6: intervalDays = 365; break;
+            default: intervalDays = 365; break; // Level 5 and beyond
           }
         } else {
           switch (srsItem.currentLevel) {
             case 0: intervalDays = 1; break;
             case 1: intervalDays = 3; break;
-            case 2: intervalDays = 7; break;
-            case 3: intervalDays = 7; break;
-            case 4: intervalDays = 7; break;
-            case 5: intervalDays = 7; break;
-            case 6: intervalDays = 7; break;
+            default: intervalDays = 7; break; // Level 2 and beyond
           }
         }
 
@@ -317,20 +351,57 @@ export async function POST(req: NextRequest) {
         };
 
         if (isPass) {
-          const nextLevel = Math.min(srsItem.currentLevel + 1, 6);
+          const nextLevel = srsItem.currentLevel + 1; // Uncapped mastery stages!
           updatePayload.currentLevel = nextLevel;
-          // Note: On PASS, we overwrite the next level's quiz with the dynamically generated targeted quiz.
-          const nextQuizField = nextLevel === 0 ? "quiz1DocId" :
-                                nextLevel === 1 ? "quiz2DocId" :
-                                nextLevel === 2 ? "quiz3DocId" :
-                                nextLevel === 3 ? "quiz4DocId" : "quiz5DocId";
-          updatePayload[nextQuizField] = nextQuizText;
+          
+          if (nextQuizText) {
+            // This is a Mastery Stage (Level 5 or beyond). We dynamically generated the next quiz on PASS!
+            const nextQuizField = nextLevel === 5 ? "quiz6DocId" : "quiz7DocId";
+            updatePayload[nextQuizField] = nextQuizText;
+            
+            // Upload the newly generated mastery quiz to Google Drive
+            let folderId = process.env.GOOGLE_DRIVE_FOLDER_ID!;
+            if (srsItem.sourceMaterialContent) {
+              try {
+                const parsedSrc = JSON.parse(srsItem.sourceMaterialContent);
+                if (parsedSrc.driveFolderId) folderId = parsedSrc.driveFolderId;
+              } catch(e) {}
+            }
+            const docName = `Quiz ${nextLevel + 1} (Tag ${nextLevel === 5 ? 180 : 365})`;
+            try {
+              await createGoogleDoc(docName, nextQuizText, folderId);
+            } catch(e) {
+              console.error("Failed to upload mastery quiz to drive", e);
+            }
+          }
         } else {
           const quizField = srsItem.currentLevel === 0 ? "quiz1DocId" :
                             srsItem.currentLevel === 1 ? "quiz2DocId" :
                             srsItem.currentLevel === 2 ? "quiz3DocId" :
-                            srsItem.currentLevel === 3 ? "quiz4DocId" : "quiz5DocId";
-          updatePayload[quizField] = nextQuizText;
+                            srsItem.currentLevel === 3 ? "quiz4DocId" : 
+                            srsItem.currentLevel === 4 ? "quiz5DocId" :
+                            srsItem.currentLevel === 5 ? "quiz6DocId" : "quiz7DocId"; // Level 6+ rolls over in quiz7DocId
+          
+          if (nextQuizText) {
+            // Save the raw text to the database so the frontend can render it!
+            updatePayload[quizField] = nextQuizText;
+            
+            // Upload the remedial quiz to Google Drive for the user's records
+            let folderId = process.env.GOOGLE_DRIVE_FOLDER_ID!;
+            if (srsItem.sourceMaterialContent) {
+              try {
+                const parsedSrc = JSON.parse(srsItem.sourceMaterialContent);
+                if (parsedSrc.driveFolderId) folderId = parsedSrc.driveFolderId;
+              } catch(e) {}
+            }
+            const docName = `Wiederholungs-Quiz (Level ${srsItem.currentLevel})`;
+            try {
+              // We intentionally don't save newDocId to the DB to prevent frontend crashes
+              await createGoogleDoc(docName, nextQuizText, folderId);
+            } catch(e) {
+              console.error("Failed to upload remedial quiz to drive", e);
+            }
+          }
         }
 
         // Step 4: Save DB & Complete
@@ -340,16 +411,24 @@ export async function POST(req: NextRequest) {
           data: updatePayload
         });
 
-        // Log the completed review for the "Done" calendar
-        await prisma.reviewLog.create({
-          data: {
-            subjectMain: srsItem.subjectMain,
-            subjectSub: srsItem.subjectSub,
-            level: srsItem.currentLevel,
-            passed: isPass,
-            userId: srsItem.userId
+        // Log the completed review for the "Done" calendar (fail gracefully if Prisma client is stale)
+        try {
+          if (prisma.reviewLog) {
+            await prisma.reviewLog.create({
+              data: {
+                subjectMain: srsItem.subjectMain,
+                subjectSub: srsItem.subjectSub,
+                level: srsItem.currentLevel,
+                passed: isPass,
+                userId: srsItem.userId
+              }
+            });
+          } else {
+            console.warn("Prisma ReviewLog model not found on client. Skipping review log creation.");
           }
-        });
+        } catch (logError) {
+          console.error("Failed to create review log:", logError);
+        }
 
         sendEvent("done", { success: true, srsItem: updatedItem, isPass });
 
@@ -363,11 +442,26 @@ export async function POST(req: NextRequest) {
           url: "/",
         }).catch((e) => console.error("Push notification failed:", e));
 
-        controller.close();
+        // Trigger background worker to automatically process NotebookLM for video prompts
+        after(async () => {
+          try {
+            await generateVideoPromptsWorker(
+              itemId,
+              isPass,
+              subject,
+              lastVideoPrompt1,
+              lastVideoPrompt2
+            );
+          } catch (e) {
+            console.error("Failed to start video worker:", e);
+          }
+        });
+
+        try { controller.close(); } catch (e) {}
       } catch (error: any) {
         console.error("Grading execution error:", error);
         sendEvent("error", { message: error.message });
-        controller.close();
+        try { controller.close(); } catch (e) {}
       }
     }
   });

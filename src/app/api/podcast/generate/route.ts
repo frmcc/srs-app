@@ -13,7 +13,19 @@ export async function POST(req: NextRequest) {
     // Fire and forget the background worker safely in Vercel
     after(async () => {
       try {
-        await generatePodcastWorker(itemId, podcastType);
+        const { PrismaClient } = await import('@prisma/client');
+        const prisma = new PrismaClient();
+        const item = await prisma.sRSItem.findUnique({ where: { id: itemId } });
+        if (item) {
+          const url = podcastType === "pre" ? item.prePodcastUrl : item.postPodcastUrl;
+          const notebookId = url ? url.split("/notebook/")[1] : "";
+          if (notebookId) {
+            const source = item.sourceMaterialContent ? JSON.parse(item.sourceMaterialContent) : {};
+            await generatePodcastWorker(itemId, podcastType as "pre"|"post", notebookId, source.text, source.files);
+          } else {
+            console.error("No notebook URL found for this item and type.");
+          }
+        }
       } catch (err) {
         console.error("[Background Worker Error]", err);
       }
