@@ -30,12 +30,9 @@ export async function GET(req: NextRequest) {
 
     const intervals = ["Tag 1", "Tag 3", "Tag 7", "Tag 21", "Tag 60", "Tag 180", "Tag 365"];
     const interval = intervals[log.level] || `Tag ?`;
-    const levelNum = log.level + 1;
-    
-    const emoji = log.passed ? "✅" : "🔄";
-    const status = log.passed ? "BESTANDEN" : "WIEDERHOLEN";
-
-    const summary = `${emoji} ${status}: ${log.subjectMain} - ${log.subjectSub}`;
+    const levelNum = log.level;
+    const subjectLabel = log.subjectSub && log.subjectSub.trim() !== "" ? `${log.subjectMain} - ${log.subjectSub}` : log.subjectMain;
+    const summary = log.passed ? `Completed: ${subjectLabel}` : `Repeat: ${subjectLabel}`;
     const description = [
       `Abgeschlossen am: ${reviewDate.toLocaleString("de-DE")}`,
       `Level: ${interval} (Level ${levelNum})`,

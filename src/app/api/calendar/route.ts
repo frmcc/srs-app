@@ -13,6 +13,9 @@ import { NextRequest, NextResponse } from "next/server";
  */
 export async function GET(req: NextRequest) {
   const items = await prisma.sRSItem.findMany({
+    where: {
+      subjectMain: { not: "Freies Lernen" }
+    },
     orderBy: { nextReviewDate: "asc" },
   });
 
@@ -38,10 +41,11 @@ export async function GET(req: NextRequest) {
 
     const intervals = ["Tag 1", "Tag 3", "Tag 7", "Tag 21", "Tag 60", "Tag 180", "Tag 365"];
     const interval = intervals[item.currentLevel] || `Tag ?`;
-    const levelNum = item.currentLevel + 1;
+    const levelNum = item.currentLevel;
     const baseUrl = req.nextUrl.origin;
 
-    const summary = `🧠 Review: ${item.subjectMain} - ${item.subjectSub}`;
+    const subjectLabel = item.subjectSub && item.subjectSub.trim() !== "" ? `${item.subjectMain} - ${item.subjectSub}` : item.subjectMain;
+    const summary = `Review: ${subjectLabel}`;
     const tutorUrl = item.tutorPromptDocId ? `${baseUrl}/tutor/${item.tutorPromptDocId}` : 'Keine';
     const description = [
       `Dein Review für ${interval} (Level ${levelNum})`,
@@ -49,7 +53,7 @@ export async function GET(req: NextRequest) {
       "📝 Dein Quiz für heute:",
       `${baseUrl}/?quizId=${item.id}`,
       "",
-      `🤖 Tutor Doc ID (Nicht löschen): ${item.tutorPromptDocId || "Keine"}`,
+      `🤖 Tutor Doc ID (Nicht löschen): ${tutorUrl}`,
     ].join("\n");
 
     ics.push(
