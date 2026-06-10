@@ -114,7 +114,7 @@ export async function POST(req: NextRequest) {
         const blueprintRes = await generateContentWithRetry(ai, modelName, {
           contents: [{ role: "user", parts: [...masterContextParts, { text: "Hier sind die Materialien. Bitte führe deine System-Instruktionen aus." }] }],
           config: { systemInstruction: PROMPTS.blueprint + `\n\nModul/Vorlesungsthema:\n${subjectMain} - ${subjectSub}` + languageInstruction }
-        }, (msg) => sendEvent("progress", { step: 1, message: msg }), "Blueprint");
+        }, (msg) => sendEvent("progress", { step: 1, message: msg }), "Blueprint", dbFilesData);
         const blueprint = blueprintRes.text;
 
         const quizPrompts = [PROMPTS.quiz_tag_1, PROMPTS.quiz_tag_3, PROMPTS.quiz_tag_7, PROMPTS.quiz_tag_21, PROMPTS.quiz_tag_60];
@@ -127,7 +127,7 @@ export async function POST(req: NextRequest) {
           const res = await generateContentWithRetry(ai, modelName, {
             contents: [{ role: "user", parts: [...masterContextParts, { text: "Hier sind die Materialien. Bitte führe deine System-Instruktionen aus." }] }],
             config: { systemInstruction: quizPrompts[i] + `\n\nModul/Vorlesungsthema:\n${subjectMain}\n\nBlueprint:\n${blueprint}\n\nVorheriger Quiz-Agent-Output:\n${lastQuiz}\n\nBisheriges Coverage Ledger:\n${lastLedger}` + languageInstruction }
-          }, (msg) => sendEvent("progress", { step: 2 + i, message: msg }), `Quiz ${i + 1}`);
+          }, (msg) => sendEvent("progress", { step: 2 + i, message: msg }), `Quiz ${i + 1}`, dbFilesData);
           const text = res.text;
           quizResults.push(text);
           lastQuiz = extractSection(text, "===STUDENT_QUIZ_START===", "===STUDENT_QUIZ_END===");
@@ -138,14 +138,14 @@ export async function POST(req: NextRequest) {
         const tutorRes = await generateContentWithRetry(ai, modelName, {
           contents: [{ role: "user", parts: [...masterContextParts, { text: "Bitte generiere den Tutor-Prompt basierend auf dem bereitgestellten Blueprint." }] }],
           config: { systemInstruction: PROMPTS.tutor_prompt + `\n\nModul/Vorlesungsthema:\n${subjectMain}\n\nBlueprint:\n${blueprint}` + languageInstruction }
-        }, (msg) => sendEvent("progress", { step: 7, message: msg }), "Tutor Prompt");
+        }, (msg) => sendEvent("progress", { step: 7, message: msg }), "Tutor Prompt", dbFilesData);
         const tutorPrompt = tutorRes.text;
 
         sendEvent("progress", { step: 8, message: "Generating Podcast Prompts..." });
         const podcastRes = await generateContentWithRetry(ai, modelName, {
           contents: [{ role: "user", parts: [...masterContextParts, { text: "Bitte generiere die zwei Regieanweisungen basierend auf dem bereitgestellten Blueprint." }] }],
           config: { systemInstruction: podcast_prompts + `\n\nModul/Vorlesungsthema:\n${subjectMain}\n\nBlueprint:\n${blueprint}` + languageInstruction }
-        }, (msg) => sendEvent("progress", { step: 8, message: msg }), "Podcast Prompts");
+        }, (msg) => sendEvent("progress", { step: 8, message: msg }), "Podcast Prompts", dbFilesData);
         const podcastOutput = podcastRes.text;
         const prePodcastPrompt = extractSection(podcastOutput, "===PRE_PODCAST_START===", "===PRE_PODCAST_END===");
         const postPodcastPrompt = extractSection(podcastOutput, "===POST_PODCAST_START===", "===POST_PODCAST_END===");

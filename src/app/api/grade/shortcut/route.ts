@@ -62,19 +62,11 @@ export async function POST(req: NextRequest) {
       console.log(`[Shortcut Grade] Starting background grading for item ${itemId}`);
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 
-      // 1. Upload the submitted student PDF to Gemini File API
+      // 1. Convert the submitted student PDF to inlineData so both Proxy and Gemini can use it
       const buffer = Buffer.from(await file.arrayBuffer());
-      const uniqueFileName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
-      const localFilePath = path.join(os.tmpdir(), uniqueFileName);
-      await fs.writeFile(localFilePath, buffer);
-
-      const studentPdfUpload = await ai.files.upload({
-        file: localFilePath,
-        config: { mimeType: file.type || "application/pdf" }
-      });
       
       const studentPdfFileData = {
-        fileData: { fileUri: studentPdfUpload.uri as string, mimeType: studentPdfUpload.mimeType as string }
+        inlineData: { data: buffer.toString("base64"), mimeType: file.type || "application/pdf" }
       };
 
       // 2. Fetch Source Material
@@ -409,8 +401,6 @@ export async function POST(req: NextRequest) {
         console.error("Worker error:", e);
       }
 
-      // Cleanup
-      try { await fs.unlink(localFilePath); } catch(e){}
       console.log(`[Shortcut Grade] Finished grading item ${itemId}`);
       
     } catch (e) {
