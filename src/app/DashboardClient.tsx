@@ -935,16 +935,10 @@ export default function DashboardClient({ initialItems }: { initialItems: any[] 
                     />
                   </div>
                   <div className="w-full max-w-md mt-4 text-left space-y-3">
-                     {[1, 2, 7, 8, 9, 10, 11].map(step => (
+                     {[1,2,3,4,5,6,7].map(step => (
                         <div key={step} className={`flex items-center gap-4 text-sm ${progressStep > step ? 'text-emerald-400' : progressStep === step ? 'text-white font-medium' : 'text-white/20'}`}>
                            {progressStep > step ? <CheckCircleIcon className="w-4 h-4" /> : <div className="w-4 h-4 rounded-full border-2 border-current" />}
-                           {step === 1 ? "Blueprint Engine" : 
-                            step === 2 ? "Quiz Agent (Level 1)" : 
-                            step === 7 ? "Tutor Prompt Engine" :
-                            step === 8 ? "Podcast Prompts" :
-                            step === 9 ? "NotebookLM Audio" :
-                            step === 10 ? "Google Drive Upload" :
-                            "Saving Database Records"}
+                           {step === 1 ? "Blueprint Engine" : step === 7 ? "Tutor Prompt Engine" : `Quiz Agent (Level ${step-1})`}
                         </div>
                      ))}
                   </div>

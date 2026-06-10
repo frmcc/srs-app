@@ -13,7 +13,7 @@ import os from "os";
 
 export const maxDuration = 300;
 
-const modelName = "gemini-3.5-flash";
+const modelName = "gemini-3.1-flash-lite";
 
 const formatPrompt = (template: string, vars: Record<string, any>) => {
   let formatted = template;

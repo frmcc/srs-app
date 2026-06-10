@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Save files to disk immediately
-    const uploadsDir = path.join("/tmp", "uploads");
+    const uploadsDir = path.join(process.cwd(), "uploads");
     await fs.mkdir(uploadsDir, { recursive: true });
     const savedFiles: { name: string; path: string; mimeType: string; base64: string }[] = [];
     for (const file of files) {

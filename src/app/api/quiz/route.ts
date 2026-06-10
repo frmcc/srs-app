@@ -10,7 +10,7 @@ import { createDriveFolder, getOrCreateDriveFolder, uploadToDrive, createGoogleD
 import fs from "fs/promises";
 import path from "path";
 
-const modelName = "gemini-3.5-flash";
+const modelName = "gemini-3.1-flash-lite";
 
 const extractSection = (text: string | undefined, startMarker: string, endMarker: string) => {
   if (!text) return "";
@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
     const formData = await req.formData();
     const subjectMain = formData.get("subjectMain") as string;
     const subjectSub = (formData.get("subjectSub") as string) || "Module";
-    const textContent = (formData.get("content") as string) || "";
+    let textContent = (formData.get("content") as string) || "";
     const language = (formData.get("language") as string) || "german";
     
     // Process uploaded files
@@ -46,17 +46,29 @@ export async function POST(req: NextRequest) {
 
     const uploadedFilesData: { path: string, mimeType: string }[] = [];
     const dbFilesData: { name: string, mimeType: string, base64: string }[] = [];
-    const geminiFileParts: { fileData: { fileUri: string, mimeType: string } }[] = [];
     
     // Ensure uploads directory exists
-    const uploadsDir = path.join("/tmp", "uploads");
+    const uploadsDir = path.join(process.cwd(), "uploads");
     await fs.mkdir(uploadsDir, { recursive: true });
 
     for (const file of files) {
       const arrayBuffer = await file.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
       
-      // Generate a unique filename and save locally
+      try {
+        if (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
+          // Dynamic require to prevent Next.js build errors with DOMMatrix
+          const pdfParseDynamic = eval('require("pdf-parse")');
+          const pdfData = await pdfParseDynamic(buffer);
+          textContent += `\n\n--- Inhalt von ${file.name} ---\n${pdfData.text}`;
+        } else if (file.type.startsWith("text/")) {
+          textContent += `\n\n--- Inhalt von ${file.name} ---\n${buffer.toString("utf-8")}`;
+        }
+      } catch (err) {
+        console.error(`Error parsing file ${file.name}:`, err);
+      }
+      
+      // Generate a unique filename and save locally (for Google Drive upload later)
       const uniqueFileName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
       const localFilePath = path.join(uploadsDir, uniqueFileName);
       await fs.writeFile(localFilePath, buffer);
@@ -65,27 +77,12 @@ export async function POST(req: NextRequest) {
       dbFilesData.push({ 
         name: file.name, 
         mimeType: file.type || "application/octet-stream", 
-        base64: buffer.toString("base64") 
+        base64: "" // Base64 removed to save database space
       });
-
-      try {
-        // Upload to Gemini File API
-        const uploadResult = await ai.files.upload({
-          file: localFilePath,
-          config: { mimeType: file.type || "application/octet-stream" }
-        });
-        
-        geminiFileParts.push({
-          fileData: { fileUri: uploadResult.uri as string, mimeType: uploadResult.mimeType as string }
-        });
-      } catch (err: unknown) {
-        const errObj = err instanceof Error ? err : new Error(String(err));
-        console.error(`Error uploading file ${file.name} to Gemini:`, errObj);
-      }
     }
 
     // Build the master parts array for the prompt
-    const masterContextParts: Array<{ text: string } | { fileData: { fileUri: string, mimeType: string } }> = [...geminiFileParts];
+    const masterContextParts: Array<{ text: string }> = [];
     if (textContent.trim()) {
       masterContextParts.push({ text: `\n\nZusätzliches Textmaterial:\n${textContent}` });
     }
@@ -114,10 +111,10 @@ export async function POST(req: NextRequest) {
         const blueprintRes = await generateContentWithRetry(ai, modelName, {
           contents: [{ role: "user", parts: [...masterContextParts, { text: "Hier sind die Materialien. Bitte führe deine System-Instruktionen aus." }] }],
           config: { systemInstruction: PROMPTS.blueprint + `\n\nModul/Vorlesungsthema:\n${subjectMain} - ${subjectSub}` + languageInstruction }
-        }, (msg) => sendEvent("progress", { step: 1, message: msg }), "Blueprint", dbFilesData);
+        }, (msg) => sendEvent("progress", { step: 1, message: msg }), "Blueprint");
         const blueprint = blueprintRes.text;
 
-        const quizPrompts = [PROMPTS.quiz_tag_1];
+        const quizPrompts = [PROMPTS.quiz_tag_1, PROMPTS.quiz_tag_3, PROMPTS.quiz_tag_7, PROMPTS.quiz_tag_21, PROMPTS.quiz_tag_60];
         const quizResults = [];
         let lastQuiz = "";
         let lastLedger = "";
@@ -127,7 +124,7 @@ export async function POST(req: NextRequest) {
           const res = await generateContentWithRetry(ai, modelName, {
             contents: [{ role: "user", parts: [...masterContextParts, { text: "Hier sind die Materialien. Bitte führe deine System-Instruktionen aus." }] }],
             config: { systemInstruction: quizPrompts[i] + `\n\nModul/Vorlesungsthema:\n${subjectMain}\n\nBlueprint:\n${blueprint}\n\nVorheriger Quiz-Agent-Output:\n${lastQuiz}\n\nBisheriges Coverage Ledger:\n${lastLedger}` + languageInstruction }
-          }, (msg) => sendEvent("progress", { step: 2 + i, message: msg }), `Quiz ${i + 1}`, dbFilesData);
+          }, (msg) => sendEvent("progress", { step: 2 + i, message: msg }), `Quiz ${i + 1}`);
           const text = res.text;
           quizResults.push(text);
           lastQuiz = extractSection(text, "===STUDENT_QUIZ_START===", "===STUDENT_QUIZ_END===");
@@ -138,14 +135,14 @@ export async function POST(req: NextRequest) {
         const tutorRes = await generateContentWithRetry(ai, modelName, {
           contents: [{ role: "user", parts: [...masterContextParts, { text: "Bitte generiere den Tutor-Prompt basierend auf dem bereitgestellten Blueprint." }] }],
           config: { systemInstruction: PROMPTS.tutor_prompt + `\n\nModul/Vorlesungsthema:\n${subjectMain}\n\nBlueprint:\n${blueprint}` + languageInstruction }
-        }, (msg) => sendEvent("progress", { step: 7, message: msg }), "Tutor Prompt", dbFilesData);
+        }, (msg) => sendEvent("progress", { step: 7, message: msg }), "Tutor Prompt");
         const tutorPrompt = tutorRes.text;
 
         sendEvent("progress", { step: 8, message: "Generating Podcast Prompts..." });
         const podcastRes = await generateContentWithRetry(ai, modelName, {
           contents: [{ role: "user", parts: [...masterContextParts, { text: "Bitte generiere die zwei Regieanweisungen basierend auf dem bereitgestellten Blueprint." }] }],
           config: { systemInstruction: podcast_prompts + `\n\nModul/Vorlesungsthema:\n${subjectMain}\n\nBlueprint:\n${blueprint}` + languageInstruction }
-        }, (msg) => sendEvent("progress", { step: 8, message: msg }), "Podcast Prompts", dbFilesData);
+        }, (msg) => sendEvent("progress", { step: 8, message: msg }), "Podcast Prompts");
         const podcastOutput = podcastRes.text;
         const prePodcastPrompt = extractSection(podcastOutput, "===PRE_PODCAST_START===", "===PRE_PODCAST_END===");
         const postPodcastPrompt = extractSection(podcastOutput, "===POST_PODCAST_START===", "===POST_PODCAST_END===");
@@ -197,6 +194,10 @@ export async function POST(req: NextRequest) {
 
           await Promise.allSettled([
             createGoogleDoc("Quiz 1 (Tag 1)", quizResults[0] || "", folderId),
+            createGoogleDoc("Quiz 2 (Tag 3)", quizResults[1] || "", folderId),
+            createGoogleDoc("Quiz 3 (Tag 7)", quizResults[2] || "", folderId),
+            createGoogleDoc("Quiz 4 (Tag 21)", quizResults[3] || "", folderId),
+            createGoogleDoc("Quiz 5 (Tag 60)", quizResults[4] || "", folderId),
             createGoogleDoc("Tutor Prompt", tutorPrompt || "", folderId)
           ]);
         } catch (e) {
@@ -212,11 +213,11 @@ export async function POST(req: NextRequest) {
             semester: currentSemester,
             currentLevel: 0,
             nextReviewDate: new Date(Date.now() + 24 * 60 * 60 * 1000), // Tag 1
-            quiz1DocId: quizResults[0] || null,
-            quiz2DocId: quizResults[1] || null,
-            quiz3DocId: quizResults[2] || null,
-            quiz4DocId: quizResults[3] || null,
-            quiz5DocId: quizResults[4] || null,
+            quiz1DocId: quizResults[0],
+            quiz2DocId: quizResults[1],
+            quiz3DocId: quizResults[2],
+            quiz4DocId: quizResults[3],
+            quiz5DocId: quizResults[4],
             tutorPromptContent: tutorPrompt,
             tutorPromptDocId: "pending", // Will be set to item ID after creation
             prePodcastUrl: preNotebookId ? `https://notebooklm.google.com/notebook/${preNotebookId}` : null,
@@ -239,7 +240,7 @@ export async function POST(req: NextRequest) {
         // Send push notification
         sendPushNotification({
           title: "✅ Quiz fertig generiert!",
-          body: `${subjectMain} - ${subjectSub}: Quiz 1 + Tutor-Prompt erstellt.`,
+          body: `${subjectMain} - ${subjectSub}: 5 Quizze + Tutor-Prompt erstellt.`,
           tag: `quiz-done-${createdItem.id}`,
           url: "/",
         }).catch((e) => console.error("Push notification failed:", e));

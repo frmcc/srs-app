@@ -10,7 +10,7 @@ import { generateContentWithRetry } from "@/lib/gemini-retry";
 import { generateVideoPromptsWorker } from "@/lib/notebooklm";
 import fs from "fs/promises";
 
-const modelName = "gemini-3.5-flash";
+const modelName = "gemini-3.1-flash-lite";
 
 const formatPrompt = (template: string, vars: Record<string, any>) => {
   let formatted = template;
