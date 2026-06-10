@@ -2,7 +2,8 @@ import { NextRequest, NextResponse, after } from "next/server";
 import { prisma } from "@/lib/db";
 import { GoogleGenAI } from "@google/genai";
 import { GRADE_PROMPTS } from "../prompts";
-import { downloadFromDrive } from "@/lib/google-drive";
+import { PROMPTS } from "../../quiz/prompts";
+import { downloadFromDrive, createGoogleDoc } from "@/lib/google-drive";
 import { sendPushNotification } from "@/lib/push";
 import { generateContentWithRetry } from "@/lib/gemini-retry";
 import { generateVideoPromptsWorker } from "@/lib/notebooklm";
@@ -80,23 +81,45 @@ export async function POST(req: NextRequest) {
       let sourceMaterialParts: any[] = [];
       if (srsItem.sourceMaterialContent) {
         try {
-          const sourceData = JSON.parse(srsItem.sourceMaterialContent);
-          if (Array.isArray(sourceData.geminiFiles) && sourceData.geminiFiles.length > 0) {
-            for (const gf of sourceData.geminiFiles) {
-              try {
-                await ai.files.get({ name: gf.fileUri.replace("https://generativelanguage.googleapis.com/v1beta/", "") });
-                sourceMaterialParts.push({ fileData: { fileUri: gf.fileUri, mimeType: gf.mimeType } });
-              } catch (e) {
-                if (sourceData.driveFileId) {
-                  const downloadedData = await downloadFromDrive(sourceData.driveFileId);
-                  const tmpSourceFile = path.join(os.tmpdir(), `${Date.now()}-source.pdf`);
-                  await fs.writeFile(tmpSourceFile, downloadedData);
-                  const newUpload = await ai.files.upload({ file: tmpSourceFile, config: { mimeType: "application/pdf" } });
-                  sourceMaterialParts.push({ fileData: { fileUri: newUpload.uri as string, mimeType: newUpload.mimeType as string } });
-                  try { await fs.unlink(tmpSourceFile); } catch(e){}
+          const parsed = JSON.parse(srsItem.sourceMaterialContent);
+          // Load files from Google Drive using inlineData (Gemini cache expires after 48h)
+          if (parsed.driveFileId) {
+            try {
+              const buffer = await downloadFromDrive(parsed.driveFileId);
+              const base64Data = buffer.toString("base64");
+              
+              sourceMaterialParts.push({
+                inlineData: {
+                  data: base64Data,
+                  mimeType: "application/pdf"
                 }
+              });
+            } catch (err: unknown) {
+              const errObj = err instanceof Error ? err : new Error(String(err));
+              console.error(`Could not download file from Drive:`, errObj.message);
+            }
+          } else if (parsed.files && Array.isArray(parsed.files)) {
+            // Legacy fallback logic for older items
+            for (const fileInfo of parsed.files) {
+              try {
+                if (fileInfo.base64) {
+                  sourceMaterialParts.push({
+                    inlineData: {
+                      data: fileInfo.base64,
+                      mimeType: fileInfo.mimeType
+                    }
+                  });
+                }
+              } catch (fileErr: unknown) {
+                const errObj = fileErr instanceof Error ? fileErr : new Error(String(fileErr));
+                console.error(`Could not use legacy file:`, errObj.message);
               }
             }
+          }
+          
+          // If there are no gemini files, but there is text content
+          if (sourceMaterialParts.length === 0 && parsed.text) {
+            sourceMaterialParts.push({ text: `Vorlesungsmaterial:\n${parsed.text}` });
           }
         } catch (e) {
           console.error("Failed to parse sourceMaterialContent", e);
@@ -112,14 +135,33 @@ export async function POST(req: NextRequest) {
                         srsItem.currentLevel === 5 ? "quiz6DocId" : "quiz7DocId";
       const quizQuestions = (srsItem as any)[quizField] || "Unbekanntes Quiz";
 
-      // 4. Grading Setup
+      const safeStartExt = "===STUDENT_QUIZ_START===".replace(/===/g, '={3,}');
+      const safeEndExt = "===STUDENT_QUIZ_END===".replace(/===/g, '={3,}');
+      const studentQuizRegex = new RegExp(`[\\s\\S]*?${safeStartExt}\\s*([\\s\\S]*?)\\s*${safeEndExt}`, "i");
+      const studentQuizMatch = quizQuestions.match(studentQuizRegex);
+      const studentQuizText = studentQuizMatch && studentQuizMatch[1] ? studentQuizMatch[1].trim() : quizQuestions;
+
+      // 4. Mismatch Check
+      const mismatchCheckRes = await generateContentWithRetry(ai, modelName, {
+        contents: [{ role: "user", parts: [studentPdfFileData, { text: "Studenten-Antwort (siehe PDF)" }] }],
+        config: {
+          systemInstruction: formatPrompt(GRADE_PROMPTS.mismatch_check, { QUIZ_QUESTIONS: quizQuestions })
+        }
+      }, () => {}, "Submission Check");
+      
+      const mismatchCheckText = (mismatchCheckRes.text || "").toUpperCase();
+      if (mismatchCheckText.includes("MISMATCH")) {
+        throw new Error("Falsches Dokument hochgeladen (MISMATCH). Bitte überprüfe die PDF.");
+      }
+
+      // 5. Grading Setup
       const totalTasks = (quizQuestions.match(/^\d+\.|^\*\s/gm) || []).length || 5;
       const splitPoint = Math.max(1, Math.floor(totalTasks / 2));
       const startIdx2 = splitPoint + 1;
       const subject = srsItem.subjectMain;
       const interval = `Level ${srsItem.currentLevel}`;
 
-      // 5. Co-Prüfer
+      // 6. Co-Prüfer
       const co1UserParts = [...sourceMaterialParts];
       if (srsItem.blueprint) co1UserParts.push({ text: `Didaktischer Blueprint:\n${srsItem.blueprint}` });
       co1UserParts.push({ text: `Original-Quizfragen:\n${quizQuestions}` });
@@ -174,21 +216,58 @@ export async function POST(req: NextRequest) {
       }, () => {}, "Video Prompts");
 
       let nextQuizText = "";
+      let newLedgerText = "";
       let lmRes;
 
       if (isPass) {
         const nextLevel = Math.min(srsItem.currentLevel + 1, 6);
-        if (nextLevel >= 5) {
-          const nextInterval = nextLevel === 5 ? "Tag 180" : "Tag 365";
-          const nextQuizCall = generateContentWithRetry(ai, modelName, {
-            contents: [{ role: "user", parts: lmUserParts }], // We can reuse the same parts for generating the next quiz
-            config: { systemInstruction: formatPrompt(GRADE_PROMPTS.next_quiz_pass, { SUBJECT: subject, NEXT_INTERVAL: nextInterval, NEXT_INTERVAL_LABEL: nextInterval }) }
-          }, () => {}, "Next Quiz (MASTERY)");
-          const [lmResult, nextQuizRes] = await Promise.all([lmPromptCall, nextQuizCall]);
-          lmRes = lmResult;
-          nextQuizText = nextQuizRes.text || "";
+        
+        let nextQuizParts: any[] = [];
+        let nextPrompt = "";
+        let nextIntervalLabel = "";
+
+        if (nextLevel <= 4) {
+          nextQuizParts = [...sourceMaterialParts];
+          nextQuizParts.push({ text: `Modul/Vorlesungsthema:\n${srsItem.subjectMain}` });
+          if (srsItem.blueprint) nextQuizParts.push({ text: `Didaktischer Blueprint:\n${srsItem.blueprint}` });
+          if (studentQuizText) nextQuizParts.push({ text: `Vorheriger Quiz-Agent-Output:\n${studentQuizText}` });
+          if (srsItem.coverageLedger) nextQuizParts.push({ text: `Bisheriges Coverage Ledger:\n${srsItem.coverageLedger}` });
+          nextQuizParts.push({ text: "Hier sind die Materialien und der bisherige Kontext. Bitte führe deine System-Instruktionen präzise aus." });
+          
+          if (nextLevel === 1) { nextPrompt = PROMPTS.quiz_tag_3; nextIntervalLabel = "Tag 3"; }
+          else if (nextLevel === 2) { nextPrompt = PROMPTS.quiz_tag_7; nextIntervalLabel = "Tag 7"; }
+          else if (nextLevel === 3) { nextPrompt = PROMPTS.quiz_tag_21; nextIntervalLabel = "Tag 21"; }
+          else if (nextLevel === 4) { nextPrompt = PROMPTS.quiz_tag_60; nextIntervalLabel = "Tag 60"; }
         } else {
-          lmRes = await lmPromptCall;
+          nextQuizParts = [...sourceMaterialParts];
+          if (srsItem.blueprint) nextQuizParts.push({ text: `Didaktischer Blueprint:\n${srsItem.blueprint}` });
+          if (srsItem.coverageLedger) nextQuizParts.push({ text: `Bisheriges Coverage Ledger:\n${srsItem.coverageLedger}` });
+          nextQuizParts.push({ text: `Original Quizfragen:\n${quizQuestions}` });
+          nextQuizParts.push({ text: `Studenten-Antwort (als PDF angehängt):` });
+          nextQuizParts.push(studentPdfFileData);
+          nextQuizParts.push({ text: `Output des Assessment-Grader-AIs:\n${chefFeedback}` });
+          nextQuizParts.push({ text: "Hier sind die Dateien. Bitte führe deine System-Instruktionen aus." });
+          
+          nextPrompt = GRADE_PROMPTS.next_quiz_pass;
+          nextIntervalLabel = nextLevel === 5 ? "Tag 180" : "Tag 365";
+        }
+
+        const nextQuizCall = generateContentWithRetry(ai, modelName, {
+          contents: [{ role: "user", parts: nextQuizParts }],
+          config: { systemInstruction: formatPrompt(nextPrompt, { SUBJECT: subject, NEXT_INTERVAL: nextIntervalLabel, NEXT_INTERVAL_LABEL: nextIntervalLabel }) }
+        }, () => {}, `Next Quiz (${nextIntervalLabel})`);
+
+        const [lmResult, nextQuizRes] = await Promise.all([lmPromptCall, nextQuizCall]);
+        lmRes = lmResult;
+        nextQuizText = nextQuizRes.text || "";
+        
+        // Extract new ledger
+        const safeStart = "===COVERAGE_LEDGER_START===".replace(/===/g, '={3,}');
+        const safeEnd = "===COVERAGE_LEDGER_END===".replace(/===/g, '={3,}');
+        const ledgerRegex = new RegExp(`[\\s\\S]*?${safeStart}\\s*([\\s\\S]*?)\\s*${safeEnd}`, "i");
+        const ledgerMatch = nextQuizText.match(ledgerRegex);
+        if (ledgerMatch && ledgerMatch[1]) {
+          newLedgerText = ledgerMatch[1].trim();
         }
       } else {
         const nextQuizCall = generateContentWithRetry(ai, modelName, {
@@ -229,9 +308,18 @@ export async function POST(req: NextRequest) {
       const nextReviewDate = new Date();
       nextReviewDate.setDate(now.getDate() + intervalDays);
 
+      // Clean up the feedback for the UI
+      const summaryMatch = chefFeedback.match(/===ASSESSMENT_SUMMARY_START===([\s\S]*?)===ASSESSMENT_SUMMARY_END===/);
+      const briefMatch = chefFeedback.match(/===REMEDIATION_BRIEF_START===([\s\S]*?)===REMEDIATION_BRIEF_END===/);
+      
+      let cleanFeedback = "";
+      if (summaryMatch) cleanFeedback += summaryMatch[1].trim() + "\n\n---\n\n";
+      if (briefMatch) cleanFeedback += briefMatch[1].trim();
+      if (!cleanFeedback) cleanFeedback = chefFeedback;
+
       const updatePayload: any = {
         nextReviewDate,
-        lastFeedback: chefFeedback,
+        lastFeedback: cleanFeedback,
         lastVideoPrompt1,
         lastVideoPrompt2,
       };
@@ -239,9 +327,32 @@ export async function POST(req: NextRequest) {
       if (isPass) {
         const nextLevel = srsItem.currentLevel + 1;
         updatePayload.currentLevel = nextLevel;
+        if (newLedgerText) {
+          updatePayload.coverageLedger = newLedgerText;
+        }
         if (nextQuizText) {
-          const nextQuizField = nextLevel === 5 ? "quiz6DocId" : "quiz7DocId";
+          const nextQuizField = nextLevel === 1 ? "quiz2DocId" :
+                                nextLevel === 2 ? "quiz3DocId" :
+                                nextLevel === 3 ? "quiz4DocId" :
+                                nextLevel === 4 ? "quiz5DocId" :
+                                nextLevel === 5 ? "quiz6DocId" : "quiz7DocId";
           updatePayload[nextQuizField] = nextQuizText;
+          
+          let folderId = process.env.GOOGLE_DRIVE_FOLDER_ID!;
+          if (srsItem.sourceMaterialContent) {
+            try {
+              const parsedSrc = JSON.parse(srsItem.sourceMaterialContent);
+              if (parsedSrc.driveFolderId) folderId = parsedSrc.driveFolderId;
+            } catch(e) {}
+          }
+          const intervalsArr = ["Tag 1", "Tag 3", "Tag 7", "Tag 21", "Tag 60", "Tag 180", "Tag 365"];
+          const docInterval = nextLevel <= 6 ? intervalsArr[nextLevel] : "Tag 365+";
+          const docName = `Quiz ${nextLevel + 1} (${docInterval})`;
+          try {
+            await createGoogleDoc(docName, nextQuizText, folderId);
+          } catch(e) {
+            console.error("Failed to upload next quiz to drive", e);
+          }
         }
       } else {
         const quizField = srsItem.currentLevel === 0 ? "quiz1DocId" :
@@ -252,6 +363,20 @@ export async function POST(req: NextRequest) {
                           srsItem.currentLevel === 5 ? "quiz6DocId" : "quiz7DocId";
         if (nextQuizText) {
           updatePayload[quizField] = nextQuizText;
+          
+          let folderId = process.env.GOOGLE_DRIVE_FOLDER_ID!;
+          if (srsItem.sourceMaterialContent) {
+            try {
+              const parsedSrc = JSON.parse(srsItem.sourceMaterialContent);
+              if (parsedSrc.driveFolderId) folderId = parsedSrc.driveFolderId;
+            } catch(e) {}
+          }
+          const docName = `Wiederholungs-Quiz (Level ${srsItem.currentLevel})`;
+          try {
+            await createGoogleDoc(docName, nextQuizText, folderId);
+          } catch(e) {
+            console.error("Failed to upload remedial quiz to drive", e);
+          }
         }
       }
 

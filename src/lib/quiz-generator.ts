@@ -94,8 +94,8 @@ export async function runQuizGeneration(params: {
     }, (msg) => progress(1, msg), "Blueprint");
     const blueprint = blueprintRes.text;
 
-    // Steps 2-6: Quiz 1-5
-    const quizPrompts = [PROMPTS.quiz_tag_1, PROMPTS.quiz_tag_3, PROMPTS.quiz_tag_7, PROMPTS.quiz_tag_21, PROMPTS.quiz_tag_60];
+    // Step 2: Quiz 1 Only (dynamically generate others later)
+    const quizPrompts = [PROMPTS.quiz_tag_1];
     const quizResults: string[] = [];
     let lastQuiz = "";
     let lastLedger = "";
@@ -186,13 +186,9 @@ export async function runQuizGeneration(params: {
         mainPdfId = await createGoogleDoc("Vorlesungsmaterial", textContent, folderId);
       }
 
-      // Create Docs for Quizzes and Tutor Prompt
+      // Create Docs for Quiz 1 and Tutor Prompt
       await Promise.allSettled([
         createGoogleDoc("Quiz 1 (Tag 1)", quizResults[0] || "", folderId),
-        createGoogleDoc("Quiz 2 (Tag 3)", quizResults[1] || "", folderId),
-        createGoogleDoc("Quiz 3 (Tag 7)", quizResults[2] || "", folderId),
-        createGoogleDoc("Quiz 4 (Tag 21)", quizResults[3] || "", folderId),
-        createGoogleDoc("Quiz 5 (Tag 60)", quizResults[4] || "", folderId),
         createGoogleDoc("Tutor Prompt", tutorPrompt || "", folderId)
       ]);
     } catch (e) {
@@ -208,11 +204,11 @@ export async function runQuizGeneration(params: {
         subjectSub,
         currentLevel: 0,
         nextReviewDate: new Date(Date.now() + 24 * 60 * 60 * 1000),
-        quiz1DocId: quizResults[0],
-        quiz2DocId: quizResults[1],
-        quiz3DocId: quizResults[2],
-        quiz4DocId: quizResults[3],
-        quiz5DocId: quizResults[4],
+        quiz1DocId: quizResults[0] || null,
+        quiz2DocId: null,
+        quiz3DocId: null,
+        quiz4DocId: null,
+        quiz5DocId: null,
         blueprint: blueprint,
         coverageLedger: lastLedger,
         tutorPromptContent: tutorPrompt,

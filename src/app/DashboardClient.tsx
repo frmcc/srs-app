@@ -518,7 +518,7 @@ export default function DashboardClient({ initialItems }: { initialItems: any[] 
             <div className="border-b-2 border-zinc-200 pb-6 mb-8">
               <h1 className="text-2xl font-bold font-sans text-zinc-900 mb-2">{selectedReview.topic}</h1>
               <p className="text-xs text-zinc-500 font-medium">
-                <span className="bg-zinc-900 text-zinc-300 px-2 py-0 rounded mr-2 font-bold uppercase tracking-wider">Level {selectedReview.level}</span>
+                <span className="bg-zinc-900 text-zinc-300 px-2 py-0 rounded mr-2 font-bold uppercase tracking-wider">Level {selectedReview.level + 1}</span>
                 {selectedReview.subject}
               </p>
               <div className="flex justify-between mt-4 pt-4 border-t border-zinc-200 text-xs text-zinc-500">
@@ -717,7 +717,7 @@ export default function DashboardClient({ initialItems }: { initialItems: any[] 
                         <div className="flex justify-between items-start pl-2">
                           <div className="flex-1 min-w-0 pr-4">
                             <div className="flex flex-wrap items-center gap-2 mb-2">
-                              <span className={`text-[10px] sm:text-xs font-semibold px-2 py-1.5 sm:py-2 rounded-md ${review.isDue ? 'badge-due' : 'badge-level'}`}>Level {review.level}</span>
+                              <span className={`text-[10px] sm:text-xs font-semibold px-2 py-1.5 sm:py-2 rounded-md ${review.isDue ? 'badge-due' : 'badge-level'}`}>Level {review.level + 1}</span>
                               <span className="text-[10px] font-bold text-white/50 bg-white/[0.04] px-2 py-0 rounded-full border border-white/[0.08]">
                                 Sem {review.semester}
                               </span>
@@ -752,38 +752,44 @@ export default function DashboardClient({ initialItems }: { initialItems: any[] 
                             {(() => {
                               let latestVideoUrl = review.raw.videoUrl;
                               let videoHistory: any[] = [];
+                              let latestVideoLevel = 0;
                               if (latestVideoUrl && latestVideoUrl.startsWith("[")) {
                                 try {
                                   videoHistory = JSON.parse(latestVideoUrl);
                                   if (videoHistory.length > 0) {
-                                    latestVideoUrl = videoHistory[videoHistory.length - 1].url;
+                                    const lastVid = videoHistory[videoHistory.length - 1];
+                                    latestVideoUrl = lastVid.url;
+                                    latestVideoLevel = lastVid.level !== undefined ? lastVid.level : 0;
                                   } else {
                                     latestVideoUrl = null;
                                   }
                                 } catch(e) { }
                               } else if (latestVideoUrl && latestVideoUrl.startsWith("http")) {
-                                videoHistory = [{ level: review.level, url: latestVideoUrl }];
+                                videoHistory = [{ level: 0, url: latestVideoUrl }];
+                                latestVideoLevel = 0;
                               }
+
+                              const isWaitingForNewVideo = latestVideoLevel < review.level;
+                              const archiveVideos = isWaitingForNewVideo ? videoHistory : videoHistory.slice(0, -1);
 
                               return (
                                 <>
-                                  {videoHistory.length > 1 && (
+                                  {archiveVideos.length > 0 && (
                                     <button 
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        setArchiveModalData(videoHistory);
+                                        setArchiveModalData(archiveVideos);
                                       }}
                                       className="mt-2 text-xs bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 text-indigo-400 px-4 py-2 rounded-lg flex items-center gap-2 transition-all cursor-pointer"
                                     >
                                       <ClockIcon className="w-4 h-4" />
-                                      View Video Archive ({videoHistory.length})
+                                      View Video Archive ({archiveVideos.length})
                                     </button>
                                   )}
 
                                   <div className="mt-6">
                                     <div className="text-[10px] font-bold text-white/30 uppercase mb-2 pl-1 tracking-widest flex items-center gap-2">
-                                      {review.level === 0 ? (language === 'german' ? 'Lernmaterialien' : 'Study Materials') : (language === 'german' ? 'Basis-Lernmaterialien' : 'Foundation Materials')}
-                                      {review.level > 0 && <span className="px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-[8px]">Level 0</span>}
+                                      {language === 'german' ? 'Lernmaterialien' : 'Study Materials'}
                                     </div>
                                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 sm:p-4 bg-black/40 rounded-xl border border-white/5 relative overflow-hidden">
                               {/* PRE-PODCAST */}
@@ -802,7 +808,7 @@ export default function DashboardClient({ initialItems }: { initialItems: any[] 
                                   </a>
                                 ) : (
                                   <div className="text-[10px] font-medium bg-zinc-900 border border-zinc-800 text-zinc-500 px-2 py-2 rounded-md flex items-center gap-2 w-full justify-center text-center">
-                                    {language === 'german' ? 'Nach Grading' : 'After Grading'}
+                                    {language === 'german' ? 'Wird generiert' : 'Generating'}
                                   </div>
                                 )}
                               </div>
@@ -823,7 +829,7 @@ export default function DashboardClient({ initialItems }: { initialItems: any[] 
                                   </a>
                                 ) : (
                                   <div className="text-[10px] font-medium bg-zinc-900 border border-zinc-800 text-zinc-500 px-2 py-2 rounded-md flex items-center gap-2 w-full justify-center text-center">
-                                    {language === 'german' ? 'Nach Grading' : 'After Grading'}
+                                    {language === 'german' ? 'Wird generiert' : 'Generating'}
                                   </div>
                                 )}
                               </div>
@@ -831,7 +837,7 @@ export default function DashboardClient({ initialItems }: { initialItems: any[] 
                               {/* VIDEO STUDIO */}
                               <div className="flex-1 min-w-0">
                                 <h5 className="text-[10px] font-bold text-stone-500 uppercase mb-2 truncate">{language === "german" ? "Videostudio" : "Video Studio"}</h5>
-                                {latestVideoUrl && latestVideoUrl.startsWith("http") ? (
+                                {!isWaitingForNewVideo && latestVideoUrl && latestVideoUrl.startsWith("http") ? (
                                   <a 
                                     href={latestVideoUrl} 
                                     target="_blank" 
@@ -844,7 +850,7 @@ export default function DashboardClient({ initialItems }: { initialItems: any[] 
                                   </a>
                                 ) : (
                                   <div className="text-[10px] bg-zinc-900 border border-zinc-800 text-zinc-500 px-2 py-2 rounded-md flex items-center gap-2 w-full justify-center text-center">
-                                    Nach Grading
+                                    {language === 'german' ? 'Wird generiert...' : 'Generating...'}
                                   </div>
                                 )}
                               </div>
@@ -1082,7 +1088,7 @@ export default function DashboardClient({ initialItems }: { initialItems: any[] 
 
               <header className="mb-8">
                 <div className="flex items-center gap-4 mb-2">
-                  <span className="text-xs font-semibold px-2 py-2 rounded-md badge-level">Level {selectedReview.level}</span>
+                  <span className="text-xs font-semibold px-2 py-2 rounded-md badge-level">Level {selectedReview.level + 1}</span>
                   <span className="text-xs text-white/40">{language === "german" ? "Aktives Quiz" : "Active Quiz"}</span>
                 </div>
                 <div className="flex items-center justify-between">
@@ -1155,7 +1161,7 @@ export default function DashboardClient({ initialItems }: { initialItems: any[] 
                         {gradingResult.isPass ? "Level Promoted!" : "Remediation Scheduled"}
                       </h2>
                       <p className="text-white/50 mt-2 text-sm">
-                        Next review set to: <strong className="text-white">{new Date(gradingResult.srsItem.nextReviewDate).toLocaleDateString()}</strong> (Level {gradingResult.srsItem.currentLevel})
+                        Next review set to: <strong className="text-white">{new Date(gradingResult.srsItem.nextReviewDate).toLocaleDateString()}</strong> (Level {gradingResult.srsItem.currentLevel + 1})
                       </p>
                     </div>
                     <button 
@@ -1307,7 +1313,7 @@ export default function DashboardClient({ initialItems }: { initialItems: any[] 
                   {archiveModalData.map((item, idx) => (
                     <div key={idx} className="card-surface p-4 rounded-xl flex items-center justify-between">
                       <div>
-                        <h4 className="text-white font-medium">Level {item.level} Video</h4>
+                        <h4 className="text-white font-medium">Level {item.level + 1} Video</h4>
                         {item.date && <p className="text-xs text-white/40">{new Date(item.date).toLocaleDateString()}</p>}
                       </div>
                       <a 
@@ -1343,7 +1349,7 @@ export default function DashboardClient({ initialItems }: { initialItems: any[] 
               <div className="p-6 border-b border-white/[0.06] flex justify-between items-center bg-white/[0.02]">
                 <div>
                   <h3 className="text-xl font-bold text-white">{activeFeedbackItem.subjectSub}</h3>
-                  <p className="text-xs text-white/40">{activeFeedbackItem.subjectMain} — Level {activeFeedbackItem.currentLevel}</p>
+                  <p className="text-xs text-white/40">{activeFeedbackItem.subjectMain} — Level {activeFeedbackItem.currentLevel + 1}</p>
                 </div>
                 <button 
                   onClick={() => setActiveFeedbackItem(null)}

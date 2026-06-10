@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { NextRequest, NextResponse, after } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 import { GRADE_PROMPTS } from "./prompts";
+import { PROMPTS } from "../quiz/prompts";
 import { downloadFromDrive, createGoogleDoc } from "@/lib/google-drive";
 import { sendPushNotification } from "@/lib/push";
 import { generateContentWithRetry } from "@/lib/gemini-retry";
@@ -251,39 +252,65 @@ export async function POST(req: NextRequest) {
 
         // Generate dynamic Quiz only on REPEAT (decision is not PASS)
         let nextQuizText = "";
+        let newLedgerText = "";
         let lmRes;
 
         if (isPass) {
           const nextLevel = Math.min(srsItem.currentLevel + 1, 6);
-          if (nextLevel >= 5) {
-            // MASTERY STAGE: We MUST dynamically generate the quiz for Tag 180 and Tag 365
-            const nextQuizParts = [...sourceMaterialParts];
+          
+          let nextQuizParts: any[] = [];
+          let nextPrompt = "";
+          let nextIntervalLabel = "";
+
+          if (nextLevel <= 4) {
+            // For standard Spaced Repetition levels, use the exact context the quiz-generator used previously
+            nextQuizParts = [...sourceMaterialParts];
+            nextQuizParts.push({ text: `Modul/Vorlesungsthema:\n${srsItem.subjectMain}` });
+            if (srsItem.blueprint) nextQuizParts.push({ text: `Didaktischer Blueprint:\n${srsItem.blueprint}` });
+            if (studentQuizText) nextQuizParts.push({ text: `Vorheriger Quiz-Agent-Output:\n${studentQuizText}` });
+            if (srsItem.coverageLedger) nextQuizParts.push({ text: `Bisheriges Coverage Ledger:\n${srsItem.coverageLedger}` });
+            nextQuizParts.push({ text: "Hier sind die Materialien und der bisherige Kontext. Bitte führe deine System-Instruktionen präzise aus." });
+            
+            if (nextLevel === 1) { nextPrompt = PROMPTS.quiz_tag_3; nextIntervalLabel = "Tag 3"; }
+            else if (nextLevel === 2) { nextPrompt = PROMPTS.quiz_tag_7; nextIntervalLabel = "Tag 7"; }
+            else if (nextLevel === 3) { nextPrompt = PROMPTS.quiz_tag_21; nextIntervalLabel = "Tag 21"; }
+            else if (nextLevel === 4) { nextPrompt = PROMPTS.quiz_tag_60; nextIntervalLabel = "Tag 60"; }
+          } else {
+            // For Mastery levels (Tag 180, Tag 365), use the original Mastery context which includes Grader feedback
+            nextQuizParts = [...sourceMaterialParts];
             if (srsItem.blueprint) nextQuizParts.push({ text: `Didaktischer Blueprint:\n${srsItem.blueprint}` });
             if (srsItem.coverageLedger) nextQuizParts.push({ text: `Bisheriges Coverage Ledger:\n${srsItem.coverageLedger}` });
             nextQuizParts.push({ text: `Original Quizfragen:\n${quizQuestions}` });
             nextQuizParts.push({ text: `Studenten-Antwort:\n${studentQuizText}` });
             nextQuizParts.push({ text: `Output des Assessment-Grader-AIs:\n${chefFeedback}` });
             nextQuizParts.push({ text: "Hier sind die Dateien. Bitte führe deine System-Instruktionen aus." });
+            
+            nextPrompt = GRADE_PROMPTS.next_quiz_pass;
+            nextIntervalLabel = nextLevel === 5 ? "Tag 180" : "Tag 365";
+          }
 
-            const nextInterval = nextLevel === 5 ? "Tag 180" : "Tag 365";
+          const nextQuizCall = generateContentWithRetry(ai, modelName, {
+            contents: [{ role: "user", parts: nextQuizParts }],
+            config: {
+              systemInstruction: formatPrompt(nextPrompt, {
+                SUBJECT: subject,
+                NEXT_INTERVAL: nextIntervalLabel,
+                NEXT_INTERVAL_LABEL: nextIntervalLabel
+              }) + languageInstruction
+            }
+          }, (msg) => sendEvent("progress", { step: 3, message: msg }), `Next Quiz (${nextIntervalLabel})`);
 
-            const nextQuizCall = generateContentWithRetry(ai, modelName, {
-              contents: [{ role: "user", parts: nextQuizParts }],
-              config: {
-                systemInstruction: formatPrompt(GRADE_PROMPTS.next_quiz_pass, {
-                  SUBJECT: subject,
-                  NEXT_INTERVAL: nextInterval,
-                  NEXT_INTERVAL_LABEL: nextInterval
-                }) + languageInstruction
-              }
-            }, (msg) => sendEvent("progress", { step: 3, message: msg }), "Next Quiz (MASTERY PASS)");
-
-            const [lmResult, nextQuizRes] = await Promise.all([lmPromptCall, nextQuizCall]);
-            lmRes = lmResult;
-            nextQuizText = nextQuizRes.text || "";
-          } else {
-            // Normal PASS for levels 0-3 (nextLevel 1-4): Quizzes are pre-generated.
-            lmRes = await lmPromptCall;
+          const [lmResult, nextQuizRes] = await Promise.all([lmPromptCall, nextQuizCall]);
+          lmRes = lmResult;
+          nextQuizText = nextQuizRes.text || "";
+          
+          // Extract new ledger if generated (usually for levels 1-4 using PROMPTS)
+          const safeStart = "===COVERAGE_LEDGER_START===".replace(/===/g, '={3,}');
+          const safeEnd = "===COVERAGE_LEDGER_END===".replace(/===/g, '={3,}');
+          const ledgerRegex = new RegExp(`[\\s\\S]*?${safeStart}\\s*([\\s\\S]*?)\\s*${safeEnd}`, "i");
+          const ledgerMatch = nextQuizText.match(ledgerRegex);
+          if (ledgerMatch && ledgerMatch[1]) {
+            newLedgerText = ledgerMatch[1].trim();
           }
         } else {
           // On REPEAT, we generate both NotebookLM prompts and the custom remedial quiz
@@ -342,10 +369,19 @@ export async function POST(req: NextRequest) {
         const nextReviewDate = new Date();
         nextReviewDate.setDate(now.getDate() + intervalDays);
 
+        // Clean up the feedback for the UI
+        const summaryMatch = chefFeedback.match(/===ASSESSMENT_SUMMARY_START===([\s\S]*?)===ASSESSMENT_SUMMARY_END===/);
+        const briefMatch = chefFeedback.match(/===REMEDIATION_BRIEF_START===([\s\S]*?)===REMEDIATION_BRIEF_END===/);
+        
+        let cleanFeedback = "";
+        if (summaryMatch) cleanFeedback += summaryMatch[1].trim() + "\n\n---\n\n";
+        if (briefMatch) cleanFeedback += briefMatch[1].trim();
+        if (!cleanFeedback) cleanFeedback = chefFeedback;
+
         // Prep database update payload
         const updatePayload: any = {
           nextReviewDate,
-          lastFeedback: chefFeedback,
+          lastFeedback: cleanFeedback,
           lastVideoPrompt1,
           lastVideoPrompt2,
         };
@@ -354,12 +390,20 @@ export async function POST(req: NextRequest) {
           const nextLevel = srsItem.currentLevel + 1; // Uncapped mastery stages!
           updatePayload.currentLevel = nextLevel;
           
+          if (newLedgerText) {
+            updatePayload.coverageLedger = newLedgerText;
+          }
+          
           if (nextQuizText) {
-            // This is a Mastery Stage (Level 5 or beyond). We dynamically generated the next quiz on PASS!
-            const nextQuizField = nextLevel === 5 ? "quiz6DocId" : "quiz7DocId";
+            const nextQuizField = nextLevel === 1 ? "quiz2DocId" :
+                                  nextLevel === 2 ? "quiz3DocId" :
+                                  nextLevel === 3 ? "quiz4DocId" :
+                                  nextLevel === 4 ? "quiz5DocId" :
+                                  nextLevel === 5 ? "quiz6DocId" : "quiz7DocId";
+            
             updatePayload[nextQuizField] = nextQuizText;
             
-            // Upload the newly generated mastery quiz to Google Drive
+            // Upload the newly generated quiz to Google Drive
             let folderId = process.env.GOOGLE_DRIVE_FOLDER_ID!;
             if (srsItem.sourceMaterialContent) {
               try {
@@ -367,11 +411,14 @@ export async function POST(req: NextRequest) {
                 if (parsedSrc.driveFolderId) folderId = parsedSrc.driveFolderId;
               } catch(e) {}
             }
-            const docName = `Quiz ${nextLevel + 1} (Tag ${nextLevel === 5 ? 180 : 365})`;
+            
+            const intervalsArr = ["Tag 1", "Tag 3", "Tag 7", "Tag 21", "Tag 60", "Tag 180", "Tag 365"];
+            const docInterval = nextLevel <= 6 ? intervalsArr[nextLevel] : "Tag 365+";
+            const docName = `Quiz ${nextLevel + 1} (${docInterval})`;
             try {
               await createGoogleDoc(docName, nextQuizText, folderId);
             } catch(e) {
-              console.error("Failed to upload mastery quiz to drive", e);
+              console.error("Failed to upload next quiz to drive", e);
             }
           }
         } else {

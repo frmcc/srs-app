@@ -33,51 +33,9 @@ export async function generateVideoPromptsWorker(
     console.log(`[NotebookLM Video] Creating notebook: ${title}`);
     const notebookId = await createNotebook(title);
 
-    // 2. Upload the original PDF
-    const sourceMaterial = item.sourceMaterialContent ? JSON.parse(item.sourceMaterialContent as string) : null;
-    if (sourceMaterial && sourceMaterial.driveFileId) {
-      console.log(`[NotebookLM Video] Downloading file from Google Drive: ${sourceMaterial.driveFileId}`);
-      try {
-        const buffer = await downloadFromDrive(sourceMaterial.driveFileId);
-        await uploadFile(notebookId, "Vorlesungsmaterial.pdf", buffer.toString("base64"), "Vorlesungsmaterial.pdf");
-      } catch (e) {
-        console.error(`[NotebookLM Video] Failed to download/upload file from Drive ${sourceMaterial.driveFileId}`, e);
-      }
-    } else {
-      console.log(`[NotebookLM Video] No Drive File ID found, skipping PDF upload.`);
-    }
-
-    // 3. Wait 20 seconds
-    console.log(`[NotebookLM Video] Waiting 20 seconds for notebook to process file...`);
-    await new Promise(resolve => setTimeout(resolve, 20000));
-
-    // 4. Ask the first video prompt
-    if (prompt1) {
-      console.log(`[NotebookLM Video] Asking Prompt 1...`);
-      try {
-        await askChat(notebookId, prompt1);
-      } catch (e) {
-        console.error(`[NotebookLM Video] Failed to ask Prompt 1`, e);
-      }
-    }
-
-    // 5. Wait 45 seconds to ensure NotebookLM finishes generating the first response
-    console.log(`[NotebookLM Video] Waiting 45 seconds before second prompt...`);
-    await new Promise(resolve => setTimeout(resolve, 45000));
-
-    // 6. Ask the second video prompt
-    if (prompt2) {
-      console.log(`[NotebookLM Video] Asking Prompt 2...`);
-      try {
-        await askChat(notebookId, prompt2);
-      } catch (e) {
-        console.error(`[NotebookLM Video] Failed to ask Prompt 2`, e);
-      }
-    }
-
-    // 7. Save the notebook link to the database
+    // IMMEDIATELY SAVE THE LINK TO DB SO UI UPDATES INSTANTLY
     const newVideoUrl = `https://notebooklm.google.com/notebook/${notebookId}`;
-    console.log(`[NotebookLM Video] Success! Saving videoUrl: ${newVideoUrl}`);
+    console.log(`[NotebookLM Video] Saving videoUrl instantly: ${newVideoUrl}`);
     
     // Parse existing history
     let videoHistory: { level: number, url: string, date: string }[] = [];
@@ -106,6 +64,37 @@ export async function generateVideoPromptsWorker(
       where: { id: itemId },
       data: { videoUrl: JSON.stringify(videoHistory) }
     });
+
+    // 2. Upload the original PDF
+    const sourceMaterial = item.sourceMaterialContent ? JSON.parse(item.sourceMaterialContent as string) : null;
+    if (sourceMaterial && sourceMaterial.driveFileId) {
+      console.log(`[NotebookLM Video] Downloading file from Google Drive: ${sourceMaterial.driveFileId}`);
+      try {
+        const buffer = await downloadFromDrive(sourceMaterial.driveFileId);
+        await uploadFile(notebookId, "Vorlesungsmaterial.pdf", buffer.toString("base64"), "Vorlesungsmaterial.pdf");
+      } catch (e) {
+        console.error(`[NotebookLM Video] Failed to download/upload file from Drive ${sourceMaterial.driveFileId}`, e);
+      }
+    } else {
+      console.log(`[NotebookLM Video] No Drive File ID found, skipping PDF upload.`);
+    }
+
+    // 3. Wait 20 seconds for notebook to process file
+    console.log(`[NotebookLM Video] Waiting 20 seconds for notebook to process file...`);
+    await new Promise(resolve => setTimeout(resolve, 20000));
+
+    // 4. Combine prompts and ask once to avoid Vercel 60s timeout
+    if (prompt1 || prompt2) {
+      console.log(`[NotebookLM Video] Asking combined Prompts...`);
+      const combinedPrompt = `Bitte generiere beide Skripte nacheinander in dieser einen Antwort:\n\n### TEIL 1 (Video 1):\n${prompt1}\n\n---\n\n### TEIL 2 (Video 2):\n${prompt2}`;
+      try {
+        await askChat(notebookId, combinedPrompt);
+      } catch (e) {
+        console.error(`[NotebookLM Video] Failed to ask combined prompts`, e);
+      }
+    }
+
+    console.log(`[NotebookLM Video] Success! Prompts generated.`);
 
   } catch (err) {
     console.error(`[NotebookLM Video] Worker Error:`, err);
