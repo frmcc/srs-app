@@ -225,7 +225,9 @@ export async function POST(req: NextRequest) {
             tutorPromptDocId: "pending", // Will be set to item ID after creation
             prePodcastUrl: preNotebookId ? `https://notebooklm.google.com/notebook/${preNotebookId}` : null,
             postPodcastUrl: postNotebookId ? `https://notebooklm.google.com/notebook/${postNotebookId}` : null,
-            sourceMaterialContent: JSON.stringify({ driveFileId: mainPdfId, driveFolderId: folderId }) 
+            sourceMaterialContent: JSON.stringify({ driveFileId: mainPdfId, driveFolderId: folderId }),
+            blueprint: blueprint,
+            coverageLedger: lastLedger
           }
         });
 
