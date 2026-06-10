@@ -1,12 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 
-const wrapperUrl = process.env.AISTUDIO_BASE_URL || "http://127.0.0.1:7860/v1beta";
-const wrapperKey = process.env.AISTUDIO_API_KEY || "123456";
-
-const aiWrapper = new GoogleGenAI({
-  apiKey: wrapperKey,
-  httpOptions: { baseUrl: wrapperUrl }
-});
+// Removed aiWrapper
 
 export async function generateContentWithRetry(
   ai: GoogleGenAI,
@@ -96,18 +90,12 @@ export async function generateContentWithRetry(
           return { text: textResponse };
         } catch (proxyErr) {
           console.warn(`[Gemini Proxy] OpenAI Proxy failed for ${stepLabel}. Falling back to old system...`, proxyErr instanceof Error ? proxyErr.message : String(proxyErr));
+          progressCallback(`⚠️ Proxy fehlgeschlagen (${stepLabel}). Nutze Fallback-Modell...`);
         }
       }
 
-      // SECOND LINE: Try AIStudioToAPI Gemini Wrapper
-      try {
-        console.log(`[Gemini Wrapper] Trying AIStudioToAPI for ${stepLabel}...`);
-        return await aiWrapper.models.generateContent({ model: modelName, ...request });
-      } catch (wrapperError) {
-        // THIRD LINE: Try Official Gemini API (Fallback)
-        console.warn(`[Gemini Wrapper] Failed for ${stepLabel}, falling back to standard Gemini API...`, wrapperError instanceof Error ? wrapperError.message : String(wrapperError));
-        return await ai.models.generateContent({ model: modelName, ...request });
-      }
+      // SECOND LINE: Try Official Gemini API (Fallback)
+      return await ai.models.generateContent({ model: modelName, ...request });
     } catch (err: unknown) {
       const error = err as Error & { status?: number };
       if (attempt === maxRetries) {

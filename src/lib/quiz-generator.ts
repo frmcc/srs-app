@@ -45,7 +45,7 @@ export async function runQuizGeneration(params: {
   jobId?: string;
 }) {
   const { subjectMain, subjectSub, textContent, filePaths, onProgress, jobId } = params;
-  const modelName = "gemini-3.1-flash-lite";
+  const modelName = "gemini-3.5-flash";
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
   const progress = onProgress || (() => {});
 

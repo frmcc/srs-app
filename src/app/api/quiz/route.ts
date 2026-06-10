@@ -10,7 +10,7 @@ import { createDriveFolder, getOrCreateDriveFolder, uploadToDrive, createGoogleD
 import fs from "fs/promises";
 import path from "path";
 
-const modelName = "gemini-3.1-flash-lite";
+const modelName = "gemini-3.5-flash";
 
 const extractSection = (text: string | undefined, startMarker: string, endMarker: string) => {
   if (!text) return "";
@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
     const geminiFileParts: { fileData: { fileUri: string, mimeType: string } }[] = [];
     
     // Ensure uploads directory exists
-    const uploadsDir = path.join(process.cwd(), "uploads");
+    const uploadsDir = path.join("/tmp", "uploads");
     await fs.mkdir(uploadsDir, { recursive: true });
 
     for (const file of files) {
@@ -117,7 +117,7 @@ export async function POST(req: NextRequest) {
         }, (msg) => sendEvent("progress", { step: 1, message: msg }), "Blueprint", dbFilesData);
         const blueprint = blueprintRes.text;
 
-        const quizPrompts = [PROMPTS.quiz_tag_1, PROMPTS.quiz_tag_3, PROMPTS.quiz_tag_7, PROMPTS.quiz_tag_21, PROMPTS.quiz_tag_60];
+        const quizPrompts = [PROMPTS.quiz_tag_1];
         const quizResults = [];
         let lastQuiz = "";
         let lastLedger = "";
@@ -197,10 +197,6 @@ export async function POST(req: NextRequest) {
 
           await Promise.allSettled([
             createGoogleDoc("Quiz 1 (Tag 1)", quizResults[0] || "", folderId),
-            createGoogleDoc("Quiz 2 (Tag 3)", quizResults[1] || "", folderId),
-            createGoogleDoc("Quiz 3 (Tag 7)", quizResults[2] || "", folderId),
-            createGoogleDoc("Quiz 4 (Tag 21)", quizResults[3] || "", folderId),
-            createGoogleDoc("Quiz 5 (Tag 60)", quizResults[4] || "", folderId),
             createGoogleDoc("Tutor Prompt", tutorPrompt || "", folderId)
           ]);
         } catch (e) {
@@ -216,11 +212,11 @@ export async function POST(req: NextRequest) {
             semester: currentSemester,
             currentLevel: 0,
             nextReviewDate: new Date(Date.now() + 24 * 60 * 60 * 1000), // Tag 1
-            quiz1DocId: quizResults[0],
-            quiz2DocId: quizResults[1],
-            quiz3DocId: quizResults[2],
-            quiz4DocId: quizResults[3],
-            quiz5DocId: quizResults[4],
+            quiz1DocId: quizResults[0] || null,
+            quiz2DocId: quizResults[1] || null,
+            quiz3DocId: quizResults[2] || null,
+            quiz4DocId: quizResults[3] || null,
+            quiz5DocId: quizResults[4] || null,
             tutorPromptContent: tutorPrompt,
             tutorPromptDocId: "pending", // Will be set to item ID after creation
             prePodcastUrl: preNotebookId ? `https://notebooklm.google.com/notebook/${preNotebookId}` : null,
@@ -243,7 +239,7 @@ export async function POST(req: NextRequest) {
         // Send push notification
         sendPushNotification({
           title: "✅ Quiz fertig generiert!",
-          body: `${subjectMain} - ${subjectSub}: 5 Quizze + Tutor-Prompt erstellt.`,
+          body: `${subjectMain} - ${subjectSub}: Quiz 1 + Tutor-Prompt erstellt.`,
           tag: `quiz-done-${createdItem.id}`,
           url: "/",
         }).catch((e) => console.error("Push notification failed:", e));
