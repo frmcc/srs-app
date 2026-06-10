@@ -1,5 +1,13 @@
 import { GoogleGenAI } from "@google/genai";
 
+const wrapperUrl = process.env.AISTUDIO_BASE_URL || "http://127.0.0.1:7860/v1beta";
+const wrapperKey = process.env.AISTUDIO_API_KEY || "123456";
+
+const aiWrapper = new GoogleGenAI({
+  apiKey: wrapperKey,
+  httpOptions: { baseUrl: wrapperUrl }
+});
+
 export async function generateContentWithRetry(
   ai: GoogleGenAI,
   modelName: string,
@@ -12,7 +20,13 @@ export async function generateContentWithRetry(
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      return await ai.models.generateContent({ model: modelName, ...request });
+      try {
+        console.log(`[Gemini Wrapper] Trying AIStudioToAPI for ${stepLabel}...`);
+        return await aiWrapper.models.generateContent({ model: modelName, ...request });
+      } catch (wrapperError) {
+        console.warn(`[Gemini Wrapper] Failed for ${stepLabel}, falling back to standard Gemini API...`, wrapperError instanceof Error ? wrapperError.message : String(wrapperError));
+        return await ai.models.generateContent({ model: modelName, ...request });
+      }
     } catch (err: unknown) {
       const error = err as Error & { status?: number };
       if (attempt === maxRetries) {
