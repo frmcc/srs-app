@@ -121,6 +121,7 @@ export default function DashboardClient({ initialItems }: { initialItems: any[] 
   const [currentSemester, setCurrentSemester] = useState<number>(1);
   const [modulePresets, setModulePresets] = useState<string[]>([]);
   const [language, setLanguage] = useState<string>("german");
+  const [wrapperMode, setWrapperMode] = useState<string>("all");
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [newPresetInput, setNewPresetInput] = useState("");
@@ -131,8 +132,9 @@ export default function DashboardClient({ initialItems }: { initialItems: any[] 
       .then(data => {
         if (!data.error) {
           setCurrentSemester(data.currentSemester);
-          setModulePresets(data.modulePresets || []);
+          if (data.modulePresets) setModulePresets(data.modulePresets);
           if (data.language) setLanguage(data.language);
+          if (data.wrapperMode) setWrapperMode(data.wrapperMode);
           if (data.modulePresets && data.modulePresets.length > 0) {
             setSubjectInput(data.modulePresets[0]);
           }
@@ -389,11 +391,16 @@ export default function DashboardClient({ initialItems }: { initialItems: any[] 
       const decoder = new TextDecoder();
       let done = false;
 
+      let buffer = "";
+
       while (!done) {
         const { value, done: doneReading } = await reader.read();
         done = doneReading;
         if (value) {
-          const lines = decoder.decode(value, { stream: true }).split("\n");
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || ""; // Keep the last partial line in the buffer
+          
           for (const line of lines) {
             if (line.trim()) {
               try {
@@ -469,12 +476,16 @@ export default function DashboardClient({ initialItems }: { initialItems: any[] 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let done = false;
+      let buffer = "";
 
       while (!done) {
         const { value, done: doneReading } = await reader.read();
         done = doneReading;
         if (value) {
-          const lines = decoder.decode(value, { stream: true }).split("\n");
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+          
           for (const line of lines) {
             if (line.trim()) {
               try {
@@ -1632,6 +1643,67 @@ export default function DashboardClient({ initialItems }: { initialItems: any[] 
                       className={`flex-1 py-2 rounded-lg text-sm transition-colors border ${language === 'english' ? 'bg-white/[0.1] border-white/[0.2] text-white' : 'bg-transparent border-white/[0.08] text-white/50 hover:bg-white/[0.04]'}`}
                     >
                       English
+                    </button>
+                  </div>
+                </div>
+
+                <div className="pt-4 mt-6 border-t border-white/[0.08]">
+                  <h4 className="text-sm font-semibold text-white/50 uppercase tracking-wider mb-4">{language === "german" ? "KI-Verbindung" : "AI Connection"}</h4>
+                  <p className="text-xs text-white/40 mb-4">
+                    {language === "german" 
+                      ? "Wähle aus, für welche Module der experimentelle Gemini Proxy genutzt werden soll. Die offizielle Google API dient immer als sicherer Fallback." 
+                      : "Choose which modules should use the experimental Gemini proxy. The official Google API will always act as a reliable fallback."}
+                  </p>
+                  {(isGenerating || isGrading) && (
+                    <div className="mb-4 text-xs font-semibold text-accent-1">
+                      {language === "german" ? "Einstellungen gesperrt, während eine KI-Aktion läuft." : "Settings locked while AI generation is in progress."}
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    <button 
+                      disabled={isGenerating || isGrading}
+                      onClick={() => {
+                        fetch('/api/settings', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ action: 'update_wrapper_toggle', wrapperMode: "all" })
+                        }).then(res => res.json()).then(data => {
+                          if (!data.error && data.wrapperMode) setWrapperMode(data.wrapperMode);
+                        });
+                      }}
+                      className={`flex-1 py-2 rounded-lg text-sm transition-colors border ${(isGenerating || isGrading) ? 'opacity-50 cursor-not-allowed' : ''} ${wrapperMode === "all" ? 'bg-white/[0.1] border-white/[0.2] text-white' : 'bg-transparent border-white/[0.08] text-white/50 hover:bg-white/[0.04]'}`}
+                    >
+                      {language === "german" ? "Alles (Wrapper)" : "All (Proxy)"}
+                    </button>
+                    <button 
+                      disabled={isGenerating || isGrading}
+                      onClick={() => {
+                        fetch('/api/settings', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ action: 'update_wrapper_toggle', wrapperMode: "generation_only" })
+                        }).then(res => res.json()).then(data => {
+                          if (!data.error && data.wrapperMode) setWrapperMode(data.wrapperMode);
+                        });
+                      }}
+                      className={`flex-1 py-2 rounded-lg text-sm transition-colors border ${(isGenerating || isGrading) ? 'opacity-50 cursor-not-allowed' : ''} ${wrapperMode === "generation_only" ? 'bg-white/[0.1] border-white/[0.2] text-white' : 'bg-transparent border-white/[0.08] text-white/50 hover:bg-white/[0.04]'}`}
+                    >
+                      {language === "german" ? "Nur Generierung" : "Gen Only"}
+                    </button>
+                    <button 
+                      disabled={isGenerating || isGrading}
+                      onClick={() => {
+                        fetch('/api/settings', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ action: 'update_wrapper_toggle', wrapperMode: "none" })
+                        }).then(res => res.json()).then(data => {
+                          if (!data.error && data.wrapperMode) setWrapperMode(data.wrapperMode);
+                        });
+                      }}
+                      className={`flex-1 py-2 rounded-lg text-sm transition-colors border ${(isGenerating || isGrading) ? 'opacity-50 cursor-not-allowed' : ''} ${wrapperMode === "none" ? 'bg-white/[0.1] border-white/[0.2] text-white' : 'bg-transparent border-white/[0.08] text-white/50 hover:bg-white/[0.04]'}`}
+                    >
+                      {language === "german" ? "Nur Fallback" : "Fallback Only"}
                     </button>
                   </div>
                 </div>

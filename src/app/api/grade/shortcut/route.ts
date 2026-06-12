@@ -13,7 +13,7 @@ import os from "os";
 
 export const maxDuration = 300;
 
-const modelName = "gemini-3.1-flash-lite";
+const modelName = "gemini-3.5-flash";
 
 const formatPrompt = (template: string, vars: Record<string, any>) => {
   let formatted = template;
@@ -61,6 +61,10 @@ export async function POST(req: NextRequest) {
     try {
       console.log(`[Shortcut Grade] Starting background grading for item ${itemId}`);
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+      const appConfig = await prisma.appConfig.findUnique({ where: { id: 1 } });
+      const wrapperMode = appConfig?.wrapperMode || "all";
+      const useAiWrapper = wrapperMode === "all";
+      const languageInstruction = "\n\nAntworte immer auf Deutsch.";
 
       // 1. Convert the submitted student PDF to inlineData so both Proxy and Gemini can use it
       const buffer = Buffer.from(await file.arrayBuffer());
@@ -68,6 +72,21 @@ export async function POST(req: NextRequest) {
       const studentPdfFileData = {
         inlineData: { data: buffer.toString("base64"), mimeType: file.type || "application/pdf" }
       };
+
+      // Extract text from the student PDF for the wrapper
+      let studentText = "";
+      try {
+        if (typeof global.DOMMatrix === "undefined") {
+          (global as any).DOMMatrix = class DOMMatrix {};
+        }
+        const { PDFParse } = require("pdf-parse");
+        const parser = new PDFParse(new Uint8Array(buffer));
+        await parser.load();
+        const pdfText = await parser.getText();
+        studentText = pdfText;
+      } catch (e) {
+        console.error("Student PDF parse failed:", e);
+      }
 
       // 2. Fetch Source Material
       let sourceMaterialParts: any[] = [];
@@ -86,6 +105,19 @@ export async function POST(req: NextRequest) {
                   mimeType: "application/pdf"
                 }
               });
+              
+              try {
+                if (typeof global.DOMMatrix === "undefined") {
+                  (global as any).DOMMatrix = class DOMMatrix {};
+                }
+                const { PDFParse } = require("pdf-parse");
+                const parser = new PDFParse(new Uint8Array(buffer));
+                await parser.load();
+                const pdfText = await parser.getText();
+                sourceMaterialParts.push({ text: `Vorlesungsmaterial (Text):\n${pdfText}` });
+              } catch (e) {
+                console.error("Source material PDF parse failed:", e);
+              }
             } catch (err: unknown) {
               const errObj = err instanceof Error ? err : new Error(String(err));
               console.error(`Could not download file from Drive:`, errObj.message);
@@ -135,11 +167,11 @@ export async function POST(req: NextRequest) {
 
       // 4. Mismatch Check
       const mismatchCheckRes = await generateContentWithRetry(ai, modelName, {
-        contents: [{ role: "user", parts: [studentPdfFileData, { text: "Studenten-Antwort (siehe PDF)" }] }],
+        contents: [{ role: "user", parts: [studentPdfFileData, { text: `Studenten-Antwort (Text-Fallback):\n${studentText}\n\nBitte prüfe die Einreichung.` }] }],
         config: {
           systemInstruction: formatPrompt(GRADE_PROMPTS.mismatch_check, { QUIZ_QUESTIONS: quizQuestions })
         }
-      }, () => {}, "Submission Check");
+      }, () => {}, "Submission Check", useAiWrapper);
       
       const mismatchCheckText = (mismatchCheckRes.text || "").toUpperCase();
       if (mismatchCheckText.includes("MISMATCH")) {
@@ -159,18 +191,19 @@ export async function POST(req: NextRequest) {
       co1UserParts.push({ text: `Original-Quizfragen:\n${quizQuestions}` });
       co1UserParts.push({ text: `Beantwortetes Quiz des Studenten (handschriftlich gescannt):` });
       co1UserParts.push(studentPdfFileData);
+      if (studentText.trim()) co1UserParts.push({ text: `(Zusätzlicher extrahierter Text vom Scan):\n${studentText}` });
       co1UserParts.push({ text: "Hier sind die Dateien. Bitte führe deine System-Instruktionen aus." });
 
       console.log(`[Shortcut Grade] Running Co-Prüfer for item ${itemId}`);
       const [res1, res2] = await Promise.all([
         generateContentWithRetry(ai, modelName, {
           contents: [{ role: "user", parts: co1UserParts }],
-          config: { systemInstruction: formatPrompt(GRADE_PROMPTS.co_pruefer_1, { TOTAL_TASKS: totalTasks, SPLIT_POINT: splitPoint, SUBJECT: subject, INTERVAL: interval }) }
-        }, () => {}, "Co-Prüfer 1"),
+          config: { systemInstruction: formatPrompt(GRADE_PROMPTS.co_pruefer_1, { TOTAL_TASKS: totalTasks, SPLIT_POINT: splitPoint, SUBJECT: subject, INTERVAL: interval }) + languageInstruction }
+        }, () => {}, "Co-Prüfer 1", useAiWrapper),
         generateContentWithRetry(ai, modelName, {
           contents: [{ role: "user", parts: co1UserParts }],
-          config: { systemInstruction: formatPrompt(GRADE_PROMPTS.co_pruefer_2, { TOTAL_TASKS: totalTasks, START_INDEX: startIdx2, SUBJECT: subject, INTERVAL: interval }) }
-        }, () => {}, "Co-Prüfer 2")
+          config: { systemInstruction: formatPrompt(GRADE_PROMPTS.co_pruefer_2, { TOTAL_TASKS: totalTasks, START_INDEX: startIdx2, SUBJECT: subject, INTERVAL: interval }) + languageInstruction }
+        }, () => {}, "Co-Prüfer 2", useAiWrapper)
       ]);
 
       const part1Feedback = res1.text || "";
@@ -184,8 +217,8 @@ export async function POST(req: NextRequest) {
 
       const chefRes = await generateContentWithRetry(ai, modelName, {
         contents: [{ role: "user", parts: chefUserParts }],
-        config: { systemInstruction: formatPrompt(GRADE_PROMPTS.chef_pruefer, { SUBJECT: subject, INTERVAL: interval }) }
-      }, () => {}, "Chief Assessor");
+        config: { systemInstruction: formatPrompt(GRADE_PROMPTS.chef_pruefer, { SUBJECT: subject, INTERVAL: interval }) + languageInstruction }
+      }, () => {}, "Chief Assessor", useAiWrapper);
 
       const chefFeedback = chefRes.text || "";
       const decisionMatch = chefFeedback.match(/===ASSESSMENT_DECISION_START===([\s\S]*?)===ASSESSMENT_DECISION_END===/);
@@ -199,13 +232,14 @@ export async function POST(req: NextRequest) {
       lmUserParts.push({ text: `Original Quizfragen:\n${quizQuestions}` });
       lmUserParts.push({ text: `Studenten-Antwort (als PDF angehängt):` });
       lmUserParts.push(studentPdfFileData);
+      if (studentText.trim()) lmUserParts.push({ text: `(Extrahierter Text):\n${studentText}` });
       lmUserParts.push({ text: `Output des Assessment-Grader-AIs:\n${chefFeedback}` });
       lmUserParts.push({ text: "Hier sind die Dateien. Bitte führe deine System-Instruktionen aus." });
 
       const lmPromptCall = generateContentWithRetry(ai, modelName, {
         contents: [{ role: "user", parts: lmUserParts }],
-        config: { systemInstruction: formatPrompt(lmInstruction, { SUBJECT: subject, INTERVAL: interval }) }
-      }, () => {}, "Video Prompts");
+        config: { systemInstruction: formatPrompt(lmInstruction, { SUBJECT: subject, INTERVAL: interval }) + languageInstruction }
+      }, () => {}, "Video Prompts", useAiWrapper);
 
       let nextQuizText = "";
       let newLedgerText = "";
@@ -237,6 +271,7 @@ export async function POST(req: NextRequest) {
           nextQuizParts.push({ text: `Original Quizfragen:\n${quizQuestions}` });
           nextQuizParts.push({ text: `Studenten-Antwort (als PDF angehängt):` });
           nextQuizParts.push(studentPdfFileData);
+          if (studentText.trim()) nextQuizParts.push({ text: `(Extrahierter Text):\n${studentText}` });
           nextQuizParts.push({ text: `Output des Assessment-Grader-AIs:\n${chefFeedback}` });
           nextQuizParts.push({ text: "Hier sind die Dateien. Bitte führe deine System-Instruktionen aus." });
           
@@ -246,8 +281,8 @@ export async function POST(req: NextRequest) {
 
         const nextQuizCall = generateContentWithRetry(ai, modelName, {
           contents: [{ role: "user", parts: nextQuizParts }],
-          config: { systemInstruction: formatPrompt(nextPrompt, { SUBJECT: subject, NEXT_INTERVAL: nextIntervalLabel, NEXT_INTERVAL_LABEL: nextIntervalLabel }) }
-        }, () => {}, `Next Quiz (${nextIntervalLabel})`);
+          config: { systemInstruction: formatPrompt(nextPrompt, { SUBJECT: subject, NEXT_INTERVAL: nextIntervalLabel, NEXT_INTERVAL_LABEL: nextIntervalLabel }) + languageInstruction }
+        }, () => {}, `Next Quiz (${nextIntervalLabel})`, useAiWrapper);
 
         const [lmResult, nextQuizRes] = await Promise.all([lmPromptCall, nextQuizCall]);
         lmRes = lmResult;
@@ -264,8 +299,8 @@ export async function POST(req: NextRequest) {
       } else {
         const nextQuizCall = generateContentWithRetry(ai, modelName, {
           contents: [{ role: "user", parts: lmUserParts }],
-          config: { systemInstruction: formatPrompt(GRADE_PROMPTS.retry_quiz_fail, { SUBJECT: subject, INTERVAL: interval }) }
-        }, () => {}, "Next Quiz (REPEAT)");
+          config: { systemInstruction: formatPrompt(GRADE_PROMPTS.retry_quiz_fail, { SUBJECT: subject, INTERVAL: interval }) + languageInstruction }
+        }, () => {}, "Next Quiz (REPEAT)", useAiWrapper);
         const [lmResult, nextQuizRes] = await Promise.all([lmPromptCall, nextQuizCall]);
         lmRes = lmResult;
         nextQuizText = nextQuizRes.text || "";

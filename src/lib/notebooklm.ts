@@ -83,14 +83,22 @@ export async function generateVideoPromptsWorker(
     console.log(`[NotebookLM Video] Waiting 20 seconds for notebook to process file...`);
     await new Promise(resolve => setTimeout(resolve, 20000));
 
-    // 4. Combine prompts and ask once to avoid Vercel 60s timeout
-    if (prompt1 || prompt2) {
-      console.log(`[NotebookLM Video] Asking combined Prompts...`);
-      const combinedPrompt = `Bitte generiere beide Skripte nacheinander in dieser einen Antwort:\n\n### TEIL 1 (Video 1):\n${prompt1}\n\n---\n\n### TEIL 2 (Video 2):\n${prompt2}`;
+    // 4. Send prompts separately to trigger video generation for each
+    if (prompt1) {
+      console.log(`[NotebookLM Video] Asking Prompt 1...`);
       try {
-        await askChat(notebookId, combinedPrompt);
+        await askChat(notebookId, `Erstelle ein Video, Whiteboard Style auf Deutsch.\n\n${prompt1}`);
       } catch (e) {
-        console.error(`[NotebookLM Video] Failed to ask combined prompts`, e);
+        console.error(`[NotebookLM Video] Failed to ask prompt 1`, e);
+      }
+    }
+    
+    if (prompt2) {
+      console.log(`[NotebookLM Video] Asking Prompt 2...`);
+      try {
+        await askChat(notebookId, `Erstelle ein Video, Whiteboard Style auf Deutsch.\n\n${prompt2}`);
+      } catch (e) {
+        console.error(`[NotebookLM Video] Failed to ask prompt 2`, e);
       }
     }
 

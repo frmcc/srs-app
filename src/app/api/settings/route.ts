@@ -26,7 +26,8 @@ export async function GET() {
     return NextResponse.json({
       currentSemester: config.currentSemester,
       modulePresets: JSON.parse(config.modulePresets),
-      language: config.language
+      language: config.language,
+      wrapperMode: config.wrapperMode
     });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
@@ -35,7 +36,8 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
-    const { action, presets, language } = await req.json();
+    const body = await req.json();
+    const { action, presets, language } = body;
     const config = await getOrCreateConfig();
 
     if (action === "update_presets") {
@@ -65,7 +67,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         currentSemester: updated.currentSemester,
         modulePresets: JSON.parse(updated.modulePresets),
-        language: updated.language
+        language: updated.language,
+        wrapperMode: updated.wrapperMode
+      });
+    }
+
+    if (action === "update_wrapper_toggle") {
+      const { wrapperMode } = body;
+      const updated = await prisma.appConfig.update({
+        where: { id: 1 },
+        data: {
+          wrapperMode: wrapperMode,
+        },
+      });
+      return NextResponse.json({
+        currentSemester: updated.currentSemester,
+        modulePresets: JSON.parse(updated.modulePresets),
+        language: updated.language,
+        wrapperMode: updated.wrapperMode
       });
     }
 

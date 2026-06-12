@@ -10,7 +10,7 @@ import { generateContentWithRetry } from "@/lib/gemini-retry";
 import { generateVideoPromptsWorker } from "@/lib/notebooklm";
 import fs from "fs/promises";
 
-const modelName = "gemini-3.1-flash-lite";
+const modelName = "gemini-3.5-flash";
 
 const formatPrompt = (template: string, vars: Record<string, any>) => {
   let formatted = template;
@@ -46,6 +46,9 @@ export async function POST(req: NextRequest) {
   }
 
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  const appConfig = await prisma.appConfig.findUnique({ where: { id: 1 } });
+  const wrapperMode = appConfig?.wrapperMode || "all";
+  const useAiWrapper = wrapperMode === "all";
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -77,6 +80,20 @@ export async function POST(req: NextRequest) {
                     mimeType: "application/pdf" // Assuming PDF since the user uploads PDFs
                   }
                 });
+                
+                // Fallback: Parse text for the Wrapper
+                try {
+                  if (typeof global.DOMMatrix === "undefined") {
+                    (global as any).DOMMatrix = class DOMMatrix {};
+                  }
+                  const { PDFParse } = require("pdf-parse");
+                  const parser = new PDFParse(new Uint8Array(buffer));
+                  await parser.load();
+                  const pdfText = await parser.getText();
+                  sourceMaterialParts.push({ text: `Vorlesungsmaterial (Text):\n${pdfText}` });
+                } catch (e) {
+                  console.error("PDF parse failed during grading:", e);
+                }
               } catch (err: unknown) {
                 const errObj = err instanceof Error ? err : new Error(String(err));
                 console.error(`Could not download file from Drive:`, errObj.message);
@@ -159,7 +176,7 @@ export async function POST(req: NextRequest) {
               QUIZ_QUESTIONS: studentQuizText
             }) + languageInstruction
           }
-        }, (msg) => sendEvent("progress", { step: 0, message: msg }), "Submission Check");
+        }, (msg) => sendEvent("progress", { step: 0, message: msg }), "Submission Check", useAiWrapper);
         
         const mismatchCheckText = (mismatchCheckRes.text || "").toUpperCase();
         if (mismatchCheckText.includes("MISMATCH")) {
@@ -186,7 +203,7 @@ export async function POST(req: NextRequest) {
                 INTERVAL: interval
               }) + languageInstruction
             }
-          }, (msg) => sendEvent("progress", { step: 1, message: msg }), "Co-Prüfer 1"),
+          }, (msg) => sendEvent("progress", { step: 1, message: msg }), "Co-Prüfer 1", useAiWrapper),
           generateContentWithRetry(ai, modelName, {
             contents: [{ role: "user", parts: co1UserParts }],
             config: {
@@ -197,7 +214,7 @@ export async function POST(req: NextRequest) {
                 INTERVAL: interval
               }) + languageInstruction
             }
-          }, (msg) => sendEvent("progress", { step: 1, message: msg }), "Co-Prüfer 2")
+          }, (msg) => sendEvent("progress", { step: 1, message: msg }), "Co-Prüfer 2", useAiWrapper)
         ]);
 
         const part1Feedback = res1.text || "";
@@ -219,7 +236,7 @@ export async function POST(req: NextRequest) {
               INTERVAL: interval
             }) + languageInstruction
           }
-        }, (msg) => sendEvent("progress", { step: 2, message: msg }), "Chief Assessor");
+        }, (msg) => sendEvent("progress", { step: 2, message: msg }), "Chief Assessor", useAiWrapper);
 
         const chefFeedback = chefRes.text || "";
 
@@ -248,7 +265,7 @@ export async function POST(req: NextRequest) {
               INTERVAL: interval
             }) + languageInstruction
           }
-        }, (msg) => sendEvent("progress", { step: 3, message: msg }), "Video Prompts");
+        }, (msg) => sendEvent("progress", { step: 3, message: msg }), "Video Prompts", useAiWrapper);
 
         // Generate dynamic Quiz only on REPEAT (decision is not PASS)
         let nextQuizText = "";
@@ -298,7 +315,7 @@ export async function POST(req: NextRequest) {
                 NEXT_INTERVAL_LABEL: nextIntervalLabel
               }) + languageInstruction
             }
-          }, (msg) => sendEvent("progress", { step: 3, message: msg }), `Next Quiz (${nextIntervalLabel})`);
+          }, (msg) => sendEvent("progress", { step: 3, message: msg }), `Next Quiz (${nextIntervalLabel})`, useAiWrapper);
 
           const [lmResult, nextQuizRes] = await Promise.all([lmPromptCall, nextQuizCall]);
           lmRes = lmResult;
@@ -331,7 +348,7 @@ export async function POST(req: NextRequest) {
                 INTERVAL: interval
               }) + languageInstruction
             }
-          }, (msg) => sendEvent("progress", { step: 3, message: msg }), "Next Quiz (REPEAT)");
+          }, (msg) => sendEvent("progress", { step: 3, message: msg }), "Next Quiz (REPEAT)", useAiWrapper);
 
           const [lmResult, nextQuizRes] = await Promise.all([lmPromptCall, nextQuizCall]);
           lmRes = lmResult;

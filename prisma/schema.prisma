@@ -89,6 +89,7 @@ model AppConfig {
   currentSemester Int      @default(1)
   modulePresets   String   @default("[]") // JSON string array
   language        String   @default("german") // german or english
+  wrapperMode     String   @default("all") // "all", "generation_only", "none"
   updatedAt       DateTime @updatedAt
 }
 

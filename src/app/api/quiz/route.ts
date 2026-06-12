@@ -9,8 +9,9 @@ import { generateContentWithRetry } from "@/lib/gemini-retry";
 import { createDriveFolder, getOrCreateDriveFolder, uploadToDrive, createGoogleDoc } from "@/lib/google-drive";
 import fs from "fs/promises";
 import path from "path";
+import os from "os";
 
-const modelName = "gemini-3.1-flash-lite";
+const modelName = "gemini-3.5-flash";
 
 const extractSection = (text: string | undefined, startMarker: string, endMarker: string) => {
   if (!text) return "";
@@ -27,13 +28,22 @@ export async function POST(req: NextRequest) {
     }, { status: 500 });
   }
 
+  const formData = await req.formData();
+  const subjectMain = formData.get("subjectMain") as string;
+  const subjectSub = (formData.get("subjectSub") as string) || "Module";
+
+  if (!subjectMain || !subjectSub) {
+    return NextResponse.json({ error: "Bitte fülle alle Pflichtfelder aus." }, { status: 400 });
+  }
+
+  const appConfig = await prisma.appConfig.findUnique({ where: { id: 1 } });
+  const wrapperMode = appConfig?.wrapperMode || "all";
+  const useAiWrapper = wrapperMode === "all" || wrapperMode === "generation_only";
+
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
   const encoder = new TextEncoder();
   
   try {
-    const formData = await req.formData();
-    const subjectMain = formData.get("subjectMain") as string;
-    const subjectSub = (formData.get("subjectSub") as string) || "Module";
     let textContent = (formData.get("content") as string) || "";
     const language = (formData.get("language") as string) || "german";
     
@@ -46,9 +56,9 @@ export async function POST(req: NextRequest) {
 
     const uploadedFilesData: { path: string, mimeType: string }[] = [];
     const dbFilesData: { name: string, mimeType: string, base64: string }[] = [];
+    const geminiFileParts: { fileData: { fileUri: string, mimeType: string } }[] = [];
     
-    // Ensure uploads directory exists
-    const uploadsDir = path.join(process.cwd(), "uploads");
+    const uploadsDir = path.join(os.tmpdir(), "srs-uploads");
     await fs.mkdir(uploadsDir, { recursive: true });
 
     for (const file of files) {
@@ -57,10 +67,14 @@ export async function POST(req: NextRequest) {
       
       try {
         if (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
-          // Dynamic require to prevent Next.js build errors with DOMMatrix
-          const pdfParseDynamic = eval('require("pdf-parse")');
-          const pdfData = await pdfParseDynamic(buffer);
-          textContent += `\n\n--- Inhalt von ${file.name} ---\n${pdfData.text}`;
+          if (typeof global.DOMMatrix === "undefined") {
+            (global as any).DOMMatrix = class DOMMatrix {};
+          }
+          const { PDFParse } = require("pdf-parse");
+          const parser = new PDFParse(new Uint8Array(arrayBuffer));
+          await parser.load();
+          const pdfText = await parser.getText();
+          textContent += `\n\n--- Inhalt von ${file.name} ---\n${pdfText}`;
         } else if (file.type.startsWith("text/")) {
           textContent += `\n\n--- Inhalt von ${file.name} ---\n${buffer.toString("utf-8")}`;
         }
@@ -68,7 +82,7 @@ export async function POST(req: NextRequest) {
         console.error(`Error parsing file ${file.name}:`, err);
       }
       
-      // Generate a unique filename and save locally (for Google Drive upload later)
+      // Generate a unique filename and save locally
       const uniqueFileName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
       const localFilePath = path.join(uploadsDir, uniqueFileName);
       await fs.writeFile(localFilePath, buffer);
@@ -79,10 +93,25 @@ export async function POST(req: NextRequest) {
         mimeType: file.type || "application/octet-stream", 
         base64: "" // Base64 removed to save database space
       });
+
+      try {
+        // Upload to Gemini File API (Double-Track fallback strategy)
+        const uploadResult = await ai.files.upload({
+          file: localFilePath,
+          config: { mimeType: file.type || "application/octet-stream" }
+        });
+        
+        geminiFileParts.push({
+          fileData: { fileUri: uploadResult.uri as string, mimeType: uploadResult.mimeType as string }
+        });
+      } catch (err: unknown) {
+        const errObj = err instanceof Error ? err : new Error(String(err));
+        console.error(`Error uploading file ${file.name} to Gemini:`, errObj);
+      }
     }
 
     // Build the master parts array for the prompt
-    const masterContextParts: Array<{ text: string }> = [];
+    const masterContextParts: Array<{ text: string } | { fileData: { fileUri: string, mimeType: string } }> = [...geminiFileParts];
     if (textContent.trim()) {
       masterContextParts.push({ text: `\n\nZusätzliches Textmaterial:\n${textContent}` });
     }
@@ -109,40 +138,33 @@ export async function POST(req: NextRequest) {
         const languageInstruction = `\n\nCRITICAL: You must generate ALL text, output, and responses strictly in ${language.toUpperCase()}. This applies to every section of the generated content.`;
         sendEvent("progress", { step: 1, message: "Analyzing material & Generating Blueprint..." });
         const blueprintRes = await generateContentWithRetry(ai, modelName, {
-          contents: [{ role: "user", parts: [...masterContextParts, { text: "Hier sind die Materialien. Bitte führe deine System-Instruktionen aus." }] }],
-          config: { systemInstruction: PROMPTS.blueprint + `\n\nModul/Vorlesungsthema:\n${subjectMain} - ${subjectSub}` + languageInstruction }
-        }, (msg) => sendEvent("progress", { step: 1, message: msg }), "Blueprint");
+          contents: [{ role: "user", parts: [...masterContextParts, { text: `Modul/Vorlesungsthema:\n${subjectMain} - ${subjectSub}` }, { text: "Hier sind die Materialien. Bitte führe deine System-Instruktionen aus." }] }],
+          config: { systemInstruction: PROMPTS.blueprint + languageInstruction },
+        }, (msg) => sendEvent("progress", { step: 1, message: msg }), "Blueprint", useAiWrapper);
         const blueprint = blueprintRes.text;
-
-        const quizPrompts = [PROMPTS.quiz_tag_1, PROMPTS.quiz_tag_3, PROMPTS.quiz_tag_7, PROMPTS.quiz_tag_21, PROMPTS.quiz_tag_60];
-        const quizResults = [];
-        let lastQuiz = "";
-        let lastLedger = "";
-
-        for (let i = 0; i < quizPrompts.length; i++) {
-          sendEvent("progress", { step: 2 + i, message: `Generating Quiz ${i + 1}...` });
-          const res = await generateContentWithRetry(ai, modelName, {
-            contents: [{ role: "user", parts: [...masterContextParts, { text: "Hier sind die Materialien. Bitte führe deine System-Instruktionen aus." }] }],
-            config: { systemInstruction: quizPrompts[i] + `\n\nModul/Vorlesungsthema:\n${subjectMain}\n\nBlueprint:\n${blueprint}\n\nVorheriger Quiz-Agent-Output:\n${lastQuiz}\n\nBisheriges Coverage Ledger:\n${lastLedger}` + languageInstruction }
-          }, (msg) => sendEvent("progress", { step: 2 + i, message: msg }), `Quiz ${i + 1}`);
-          const text = res.text;
-          quizResults.push(text);
-          lastQuiz = extractSection(text, "===STUDENT_QUIZ_START===", "===STUDENT_QUIZ_END===");
-          lastLedger = extractSection(text, "===COVERAGE_LEDGER_START===", "===COVERAGE_LEDGER_END===");
-        }
+        
+        // Quizzes 2-5 are generated Just-in-Time during grading. We only generate Quiz 1 here.
+        sendEvent("progress", { step: 2, message: "Generating Quiz 1..." });
+        const res = await generateContentWithRetry(ai, modelName, {
+          contents: [{ role: "user", parts: [...masterContextParts, { text: "Hier sind die Materialien. Bitte führe deine System-Instruktionen aus." }] }],
+          config: { systemInstruction: PROMPTS.quiz_tag_1 + `\n\nModul/Vorlesungsthema:\n${subjectMain}\n\nBlueprint:\n${blueprint}` + languageInstruction }
+        }, (msg) => sendEvent("progress", { step: 2, message: msg }), "Quiz 1", useAiWrapper);
+        
+        const quiz1Text = res.text || "";
+        const quiz1Ledger = extractSection(quiz1Text, "===COVERAGE_LEDGER_START===", "===COVERAGE_LEDGER_END===");
 
         sendEvent("progress", { step: 7, message: "Generating Tutor Prompt System..." });
         const tutorRes = await generateContentWithRetry(ai, modelName, {
-          contents: [{ role: "user", parts: [...masterContextParts, { text: "Bitte generiere den Tutor-Prompt basierend auf dem bereitgestellten Blueprint." }] }],
+          contents: [{ role: "user", parts: [...masterContextParts, { text: `Modul/Vorlesungsthema:\n${subjectMain}` }, { text: `Didaktischer Blueprint:\n${blueprint}` }, { text: "Bitte generiere den Tutor-Prompt basierend auf dem bereitgestellten Blueprint." }] }],
           config: { systemInstruction: PROMPTS.tutor_prompt + `\n\nModul/Vorlesungsthema:\n${subjectMain}\n\nBlueprint:\n${blueprint}` + languageInstruction }
-        }, (msg) => sendEvent("progress", { step: 7, message: msg }), "Tutor Prompt");
+        }, (msg) => sendEvent("progress", { step: 7, message: msg }), "Tutor Prompt", useAiWrapper);
         const tutorPrompt = tutorRes.text;
 
         sendEvent("progress", { step: 8, message: "Generating Podcast Prompts..." });
         const podcastRes = await generateContentWithRetry(ai, modelName, {
           contents: [{ role: "user", parts: [...masterContextParts, { text: "Bitte generiere die zwei Regieanweisungen basierend auf dem bereitgestellten Blueprint." }] }],
           config: { systemInstruction: podcast_prompts + `\n\nModul/Vorlesungsthema:\n${subjectMain}\n\nBlueprint:\n${blueprint}` + languageInstruction }
-        }, (msg) => sendEvent("progress", { step: 8, message: msg }), "Podcast Prompts");
+        }, (msg) => sendEvent("progress", { step: 8, message: msg }), "Podcast Prompts", useAiWrapper);
         const podcastOutput = podcastRes.text;
         const prePodcastPrompt = extractSection(podcastOutput, "===PRE_PODCAST_START===", "===PRE_PODCAST_END===");
         const postPodcastPrompt = extractSection(podcastOutput, "===POST_PODCAST_START===", "===POST_PODCAST_END===");
@@ -166,7 +188,6 @@ export async function POST(req: NextRequest) {
 
         sendEvent("progress", { step: 10, message: "Uploading to Google Drive..." });
 
-        const appConfig = await prisma.appConfig.findUnique({ where: { id: 1 } });
         const currentSemester = appConfig?.currentSemester || 1;
 
         let folderId = "";
@@ -193,11 +214,7 @@ export async function POST(req: NextRequest) {
           }
 
           await Promise.allSettled([
-            createGoogleDoc("Quiz 1 (Tag 1)", quizResults[0] || "", folderId),
-            createGoogleDoc("Quiz 2 (Tag 3)", quizResults[1] || "", folderId),
-            createGoogleDoc("Quiz 3 (Tag 7)", quizResults[2] || "", folderId),
-            createGoogleDoc("Quiz 4 (Tag 21)", quizResults[3] || "", folderId),
-            createGoogleDoc("Quiz 5 (Tag 60)", quizResults[4] || "", folderId),
+            createGoogleDoc("Quiz 1 (Tag 1)", quiz1Text, folderId),
             createGoogleDoc("Tutor Prompt", tutorPrompt || "", folderId)
           ]);
         } catch (e) {
@@ -213,18 +230,18 @@ export async function POST(req: NextRequest) {
             semester: currentSemester,
             currentLevel: 0,
             nextReviewDate: new Date(Date.now() + 24 * 60 * 60 * 1000), // Tag 1
-            quiz1DocId: quizResults[0],
-            quiz2DocId: quizResults[1],
-            quiz3DocId: quizResults[2],
-            quiz4DocId: quizResults[3],
-            quiz5DocId: quizResults[4],
+            quiz1DocId: quiz1Text,
+            quiz2DocId: null,
+            quiz3DocId: null,
+            quiz4DocId: null,
+            quiz5DocId: null,
             tutorPromptContent: tutorPrompt,
             tutorPromptDocId: "pending", // Will be set to item ID after creation
             prePodcastUrl: preNotebookId ? `https://notebooklm.google.com/notebook/${preNotebookId}` : null,
             postPodcastUrl: postNotebookId ? `https://notebooklm.google.com/notebook/${postNotebookId}` : null,
             sourceMaterialContent: JSON.stringify({ driveFileId: mainPdfId, driveFolderId: folderId }),
             blueprint: blueprint,
-            coverageLedger: lastLedger
+            coverageLedger: quiz1Ledger
           }
         });
 

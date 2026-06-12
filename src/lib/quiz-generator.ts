@@ -58,10 +58,18 @@ export async function runQuizGeneration(params: {
   }
 
   try {
-    // Upload files to Gemini
+    const appConfig = await prisma.appConfig.findUnique({ where: { id: 1 } });
+    const wrapperMode = appConfig?.wrapperMode || "all";
+    const useAiWrapper = wrapperMode === "all" || wrapperMode === "generation_only";
+    const currentSemester = appConfig?.currentSemester || 1;
+
+    // Upload files to Gemini & extract text via pdf-parse
     const geminiFileParts: { fileData: { fileUri: string, mimeType: string } }[] = [];
+    let dynamicTextContent = textContent;
+    
     for (const fileInfo of filePaths) {
       try {
+        // 1. Native File Upload
         const uploadResult = await ai.files.upload({
           file: fileInfo.path,
           config: { mimeType: fileInfo.mimeType },
@@ -73,11 +81,31 @@ export async function runQuizGeneration(params: {
         const errObj = err instanceof Error ? err : new Error(String(err));
         console.error(`Error uploading file to Gemini:`, errObj);
       }
+      
+      try {
+        // 2. Text Extraction Fallback
+        const buffer = await fs.readFile(fileInfo.path);
+        const name = fileInfo.name || path.basename(fileInfo.path);
+        if (fileInfo.mimeType === "application/pdf" || name.toLowerCase().endsWith(".pdf")) {
+          if (typeof global.DOMMatrix === "undefined") {
+            (global as any).DOMMatrix = class DOMMatrix {};
+          }
+          const { PDFParse } = require("pdf-parse");
+          const parser = new PDFParse(new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength / Uint8Array.BYTES_PER_ELEMENT));
+          await parser.load();
+          const pdfText = await parser.getText();
+          dynamicTextContent += `\n\n--- Inhalt von ${name} ---\n${pdfText}`;
+        } else if (fileInfo.mimeType.startsWith("text/")) {
+          dynamicTextContent += `\n\n--- Inhalt von ${name} ---\n${buffer.toString("utf-8")}`;
+        }
+      } catch (err) {
+        console.error(`Error parsing file ${fileInfo.path}:`, err);
+      }
     }
 
     const masterContextParts: Array<{ text: string } | { fileData: { fileUri: string, mimeType: string } }> = [...geminiFileParts];
-    if (textContent.trim()) {
-      masterContextParts.push({ text: `\n\nZusätzliches Textmaterial:\n${textContent}` });
+    if (dynamicTextContent.trim()) {
+      masterContextParts.push({ text: `\n\nZusätzliches Textmaterial:\n${dynamicTextContent}` });
     }
 
     const dbFilesData = filePaths.map(f => ({
@@ -91,41 +119,25 @@ export async function runQuizGeneration(params: {
     const blueprintRes = await generateContentWithRetry(ai, modelName, {
       contents: [{ role: "user", parts: [...masterContextParts, { text: `Modul/Vorlesungsthema:\n${subjectMain} - ${subjectSub}` }, { text: "Hier sind die Materialien. Bitte führe deine System-Instruktionen aus." }] }],
       config: { systemInstruction: PROMPTS.blueprint },
-    }, (msg) => progress(1, msg), "Blueprint");
+    }, (msg) => progress(1, msg), "Blueprint", useAiWrapper);
     const blueprint = blueprintRes.text;
 
-    // Step 2: Quiz 1 Only (dynamically generate others later)
-    const quizPrompts = [PROMPTS.quiz_tag_1];
-    const quizResults: string[] = [];
-    let lastQuiz = "";
-    let lastLedger = "";
-
-    for (let i = 0; i < quizPrompts.length; i++) {
-      progress(2 + i, `Generating Quiz ${i + 1}...`);
-      
-      const userParts = [...masterContextParts];
-      userParts.push({ text: `Modul/Vorlesungsthema:\n${subjectMain}` });
-      if (blueprint) userParts.push({ text: `Didaktischer Blueprint:\n${blueprint}` });
-      if (lastQuiz) userParts.push({ text: `Vorheriger Quiz-Agent-Output:\n${lastQuiz}` });
-      if (lastLedger) userParts.push({ text: `Bisheriges Coverage Ledger:\n${lastLedger}` });
-      userParts.push({ text: "Hier sind die Materialien und der bisherige Kontext. Bitte führe deine System-Instruktionen präzise aus." });
-
-      const res = await generateContentWithRetry(ai, modelName, {
-        contents: [{ role: "user", parts: userParts }],
-        config: { systemInstruction: quizPrompts[i] },
-      }, (msg) => progress(2 + i, msg), `Quiz ${i + 1}`);
-      const text = res.text;
-      quizResults.push(text || "");
-      lastQuiz = extractSection(text, "===STUDENT_QUIZ_START===", "===STUDENT_QUIZ_END===");
-      lastLedger = extractSection(text, "===COVERAGE_LEDGER_START===", "===COVERAGE_LEDGER_END===");
-    }
+    // Quizzes 2-5 are no longer generated upfront. We only generate Quiz 1.
+    progress(2, "Generating Quiz 1...");
+    const quiz1Res = await generateContentWithRetry(ai, modelName, {
+      contents: [{ role: "user", parts: [...masterContextParts, { text: "Hier sind die Materialien. Bitte führe deine System-Instruktionen aus." }] }],
+      config: { systemInstruction: PROMPTS.quiz_tag_1 + `\n\nModul/Vorlesungsthema:\n${subjectMain}\n\nBlueprint:\n${blueprint}` }
+    }, (msg) => progress(2, msg), "Quiz 1", useAiWrapper);
+    
+    const quiz1Text = quiz1Res.text || "";
+    const quiz1Ledger = extractSection(quiz1Text, "===COVERAGE_LEDGER_START===", "===COVERAGE_LEDGER_END===");
 
     // Step 7: Tutor Prompt
     progress(7, "Generating Tutor Prompt System...");
     const tutorRes = await generateContentWithRetry(ai, modelName, {
       contents: [{ role: "user", parts: [...masterContextParts, { text: `Modul/Vorlesungsthema:\n${subjectMain}` }, { text: `Didaktischer Blueprint:\n${blueprint}` }, { text: "Bitte generiere den Tutor-Prompt basierend auf dem bereitgestellten Blueprint." }] }],
       config: { systemInstruction: PROMPTS.tutor_prompt },
-    }, (msg) => progress(7, msg), "Tutor Prompt");
+    }, (msg) => progress(7, msg), "Tutor Prompt", useAiWrapper);
     const tutorPrompt = tutorRes.text;
 
     // Step 8: Podcast Prompts
@@ -133,7 +145,7 @@ export async function runQuizGeneration(params: {
     const podcastRes = await generateContentWithRetry(ai, modelName, {
       contents: [{ role: "user", parts: [...masterContextParts, { text: `Modul/Vorlesungsthema:\n${subjectMain}` }, { text: `Didaktischer Blueprint:\n${blueprint}` }, { text: "Bitte generiere die zwei Regieanweisungen basierend auf dem bereitgestellten Blueprint." }] }],
       config: { systemInstruction: podcast_prompts },
-    }, (msg) => progress(8, msg), "Podcast Prompts");
+    }, (msg) => progress(8, msg), "Podcast Prompts", useAiWrapper);
     const podcastOutput = podcastRes.text;
     const prePodcastPrompt = extractSection(podcastOutput, "===PRE_PODCAST_START===", "===PRE_PODCAST_END===");
     const postPodcastPrompt = extractSection(podcastOutput, "===POST_PODCAST_START===", "===POST_PODCAST_END===");
@@ -158,9 +170,6 @@ export async function runQuizGeneration(params: {
     // Step 10: Save to Google Drive
     progress(10, "Uploading to Google Drive...");
     
-    const appConfig = await prisma.appConfig.findUnique({ where: { id: 1 } });
-    const currentSemester = appConfig?.currentSemester || 1;
-
     let folderId = "";
     let mainPdfId = "";
     try {
@@ -186,9 +195,9 @@ export async function runQuizGeneration(params: {
         mainPdfId = await createGoogleDoc("Vorlesungsmaterial", textContent, folderId);
       }
 
-      // Create Docs for Quiz 1 and Tutor Prompt
+      // Create Docs for Tutor Prompt
       await Promise.allSettled([
-        createGoogleDoc("Quiz 1 (Tag 1)", quizResults[0] || "", folderId),
+        createGoogleDoc("Quiz 1 (Tag 1)", quiz1Text, folderId),
         createGoogleDoc("Tutor Prompt", tutorPrompt || "", folderId)
       ]);
     } catch (e) {
@@ -204,13 +213,13 @@ export async function runQuizGeneration(params: {
         subjectSub,
         currentLevel: 0,
         nextReviewDate: new Date(Date.now() + 24 * 60 * 60 * 1000),
-        quiz1DocId: quizResults[0] || null,
+        quiz1DocId: quiz1Text,
         quiz2DocId: null,
         quiz3DocId: null,
         quiz4DocId: null,
         quiz5DocId: null,
         blueprint: blueprint,
-        coverageLedger: lastLedger,
+        coverageLedger: quiz1Ledger,
         tutorPromptContent: tutorPrompt,
         tutorPromptDocId: "pending",
         prePodcastUrl: preNotebookId ? `https://notebooklm.google.com/notebook/${preNotebookId}` : null,
@@ -229,10 +238,10 @@ export async function runQuizGeneration(params: {
     try {
       const uploadTasks = [];
       if (preNotebookId) {
-        uploadTasks.push(generatePodcastWorker(createdItem.id, "pre", preNotebookId, textContent, filePaths));
+        uploadTasks.push(generatePodcastWorker(createdItem.id, "pre", preNotebookId, dynamicTextContent, filePaths));
       }
       if (postNotebookId) {
-        uploadTasks.push(generatePodcastWorker(createdItem.id, "post", postNotebookId, textContent, filePaths));
+        uploadTasks.push(generatePodcastWorker(createdItem.id, "post", postNotebookId, dynamicTextContent, filePaths));
       }
       Promise.allSettled(uploadTasks).catch(e => console.error("Error starting background tasks:", e));
     } catch (e) {
