@@ -1,36 +1,36 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# SRS App (Spaced Repetition System)
 
-## Getting Started
+Ein KI-basiertes Lernsystem, das Vorlesungsskripte verarbeitet, strukturierte Quizzes generiert und handschriftliche Einreichungen automatisch über die Google Gemini API korrigiert.
 
-First, run the development server:
+## 📱 Apple Shortcuts (Kurzbefehle)
+
+Mit diesen Shortcuts kannst du direkt von deinem iPhone oder iPad Dokumente an das Backend schicken:
+
+1. **Vorlesung hochladen (Quiz-Generierung starten)**
+   Lade ein Skript hoch, um den Blueprint, das erste Quiz und die Podcast-Prompts zu generieren:
+   👉 [iCloud Link: Vorlesung hochladen](https://www.icloud.com/shortcuts/5df6c00cf6854c09b04456810c380f80)
+
+2. **Quiz-Lösung hochladen (Grading)**
+   Mache ein Foto deiner beantworteten Aufgaben und lass sie von der KI korrigieren:
+   👉 [iCloud Link: Grading](https://www.icloud.com/shortcuts/b31e9ae5e30844a0b41dad6b31d8f071)
+
+---
+
+## 🛠 Entwicklung & lokaler Start
+
+Installiere die Abhängigkeiten und starte den Entwicklungsserver:
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Die App ist anschließend unter [http://localhost:3000](http://localhost:3000) erreichbar.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## ☁️ Deployment (Cloud Run)
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Um ein Update direkt in die Google Cloud (Cloud Run) zu pushen, nutze das Deployment-Skript oder den direkten Befehl:
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+gcloud run deploy srs-app --source . --region europe-west1 --project auto-drive-494409
+```
