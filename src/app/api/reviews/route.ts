@@ -1,20 +1,10 @@
-import { prisma } from "@/lib/db";
 import { NextResponse } from "next/server";
-
+import { fetchReviewList } from "@/lib/review-query";
 
 export async function GET() {
   try {
-    const reviews = await prisma.sRSItem.findMany({
-      where: {
-        subjectMain: {
-          not: "Freies Lernen"
-        }
-      },
-      orderBy: { nextReviewDate: "asc" }
-    });
-
-    return NextResponse.json(reviews);
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return NextResponse.json(await fetchReviewList());
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : "Unknown error" }, { status: 500 });
   }
 }

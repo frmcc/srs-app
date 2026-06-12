@@ -4,37 +4,25 @@ import { PROMPTS, podcast_prompts } from "../app/api/quiz/prompts";
 import { sendPushNotification } from "./push";
 import { generatePodcastWorker, createNotebook } from "./notebooklm";
 import { generateContentWithRetry } from "./gemini-retry";
-import { createDriveFolder, getOrCreateDriveFolder, uploadToDrive, createGoogleDoc } from "./google-drive";
+import { getOrCreateDriveFolder, uploadToDrive, createGoogleDoc } from "./google-drive";
+import { extractSection } from "./markers";
+import { pdfToText } from "./pdf-text";
+import type { SRSItem } from "@prisma/client";
 import fs from "fs/promises";
 import path from "path";
 
-
-const extractSection = (text: string | undefined, startMarker: string, endMarker: string) => {
-  if (!text) return "";
-  
-  // Escape markers for regex, but allow optional spaces around the equal signs
-  const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const safeStart = escapeRegExp(startMarker).replace(/===/g, '={3,}');
-  const safeEnd = escapeRegExp(endMarker).replace(/===/g, '={3,}');
-  
-  // Tolerant regex: allows spaces inside the marker blocks, and handles formatting typos
-  const regex = new RegExp(`[\\s\\S]*?${safeStart}\\s*([\\s\\S]*?)\\s*${safeEnd}`, "i");
-  const match = text.match(regex);
-  
-  if (match && match[1]) {
-    return match[1].trim();
-  }
-  
-  // SAFE FALLBACK: Never return the raw unparsed text if extraction fails.
-  // Returning the entire unparsed text would cause a catastrophic prompt-injection loop.
-  console.warn(`[WARNING] Failed to extract section between ${startMarker} and ${endMarker}. Returning empty fallback to prevent context flooding.`);
-  return "";
-};
+const DEFAULT_MODEL = "gemini-3.5-flash";
 
 /**
- * Shared quiz generation logic used by both:
- * - /api/quiz (streaming, for web UI)
- * - /api/quiz/submit (fire-and-forget, for iPhone Shortcut)
+ * THE quiz generation pipeline. Used by both:
+ * - /api/quiz         (streaming, web UI)
+ * - /api/quiz/submit  (fire-and-forget, iPhone Shortcut)
+ *
+ * Lifecycle contract:
+ * - `onCreated` fires as soon as the SRSItem row exists — the web UI can show
+ *   the finished quiz while podcasts still upload in the background.
+ * - Temp files are deleted ONLY after the podcast workers finish (they read
+ *   the files from disk), fixing the delete-while-uploading race.
  */
 export async function runQuizGeneration(params: {
   subjectMain: string;
@@ -42,19 +30,20 @@ export async function runQuizGeneration(params: {
   textContent: string;
   filePaths: { name?: string; path: string; mimeType: string; base64?: string }[];
   onProgress?: (step: number, message: string) => void;
+  onCreated?: (item: SRSItem) => void;
   jobId?: string;
+  modelName?: string;
 }) {
-  const { subjectMain, subjectSub, textContent, filePaths, onProgress, jobId } = params;
-  const modelName = "gemini-3.1-flash-lite";
+  const { subjectMain, subjectSub, textContent, filePaths, onProgress, onCreated, jobId } = params;
+  const modelName = params.modelName || DEFAULT_MODEL;
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
   const progress = onProgress || (() => {});
 
-  // Update job status if tracking
   if (jobId) {
     await prisma.backgroundJob.update({
       where: { id: jobId },
       data: { status: "processing" },
-    });
+    }).catch((e) => console.error("[quiz-gen] Failed to mark job processing:", e));
   }
 
   try {
@@ -62,14 +51,15 @@ export async function runQuizGeneration(params: {
     const wrapperMode = appConfig?.wrapperMode || "all";
     const useAiWrapper = wrapperMode === "all" || wrapperMode === "generation_only";
     const currentSemester = appConfig?.currentSemester || 1;
+    const language = appConfig?.language || "german";
+    const languageInstruction = `\n\nCRITICAL: You must generate ALL text, output, and responses strictly in ${language.toUpperCase()}. This applies to every section of the generated content.`;
 
-    // Upload files to Gemini & extract text via pdf-parse
-    const geminiFileParts: { fileData: { fileUri: string, mimeType: string } }[] = [];
+    // ---- Prepare source material: Gemini upload + text extraction fallback ----
+    const geminiFileParts: { fileData: { fileUri: string; mimeType: string } }[] = [];
     let dynamicTextContent = textContent;
-    
+
     for (const fileInfo of filePaths) {
       try {
-        // 1. Native File Upload
         const uploadResult = await ai.files.upload({
           file: fileInfo.path,
           config: { mimeType: fileInfo.mimeType },
@@ -77,220 +67,194 @@ export async function runQuizGeneration(params: {
         geminiFileParts.push({
           fileData: { fileUri: uploadResult.uri as string, mimeType: uploadResult.mimeType as string },
         });
-      } catch (err: unknown) {
-        const errObj = err instanceof Error ? err : new Error(String(err));
-        console.error(`Error uploading file to Gemini:`, errObj);
+      } catch (err) {
+        console.error("[quiz-gen] Error uploading file to Gemini:", err instanceof Error ? err.message : err);
       }
-      
+
       try {
-        // 2. Text Extraction Fallback
         const buffer = await fs.readFile(fileInfo.path);
         const name = fileInfo.name || path.basename(fileInfo.path);
         if (fileInfo.mimeType === "application/pdf" || name.toLowerCase().endsWith(".pdf")) {
-          if (typeof global.DOMMatrix === "undefined") {
-            (global as any).DOMMatrix = class DOMMatrix {};
-          }
-          const { PDFParse } = require("pdf-parse");
-          const parser = new PDFParse(new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength / Uint8Array.BYTES_PER_ELEMENT));
-          await parser.load();
-          const pdfText = await parser.getText();
-          dynamicTextContent += `\n\n--- Inhalt von ${name} ---\n${pdfText}`;
+          dynamicTextContent += `\n\n--- Inhalt von ${name} ---\n${await pdfToText(buffer)}`;
         } else if (fileInfo.mimeType.startsWith("text/")) {
           dynamicTextContent += `\n\n--- Inhalt von ${name} ---\n${buffer.toString("utf-8")}`;
         }
       } catch (err) {
-        console.error(`Error parsing file ${fileInfo.path}:`, err);
+        console.error(`[quiz-gen] Error parsing file ${fileInfo.path}:`, err);
       }
     }
 
-    const masterContextParts: Array<{ text: string } | { fileData: { fileUri: string, mimeType: string } }> = [...geminiFileParts];
+    const masterContextParts: Array<{ text: string } | { fileData: { fileUri: string; mimeType: string } }> = [...geminiFileParts];
     if (dynamicTextContent.trim()) {
       masterContextParts.push({ text: `\n\nZusätzliches Textmaterial:\n${dynamicTextContent}` });
     }
 
-    const dbFilesData = filePaths.map(f => ({
-      name: f.name || path.basename(f.path),
-      mimeType: f.mimeType,
-      base64: f.base64 || ""
-    }));
-
-    // Step 1: Blueprint
+    // ---- Step 1: Blueprint ----
     progress(1, "Analyzing material & Generating Blueprint...");
     const blueprintRes = await generateContentWithRetry(ai, modelName, {
       contents: [{ role: "user", parts: [...masterContextParts, { text: `Modul/Vorlesungsthema:\n${subjectMain} - ${subjectSub}` }, { text: "Hier sind die Materialien. Bitte führe deine System-Instruktionen aus." }] }],
-      config: { systemInstruction: PROMPTS.blueprint },
+      config: { systemInstruction: PROMPTS.blueprint + languageInstruction },
     }, (msg) => progress(1, msg), "Blueprint", useAiWrapper);
     const blueprint = blueprintRes.text;
 
-    // Quizzes 2-5 are no longer generated upfront. We only generate Quiz 1.
+    // ---- Step 2: Quiz 1 (later quizzes are generated on-demand after grading) ----
     progress(2, "Generating Quiz 1...");
     const quiz1Res = await generateContentWithRetry(ai, modelName, {
       contents: [{ role: "user", parts: [...masterContextParts, { text: "Hier sind die Materialien. Bitte führe deine System-Instruktionen aus." }] }],
-      config: { systemInstruction: PROMPTS.quiz_tag_1 + `\n\nModul/Vorlesungsthema:\n${subjectMain}\n\nBlueprint:\n${blueprint}` }
+      config: { systemInstruction: PROMPTS.quiz_tag_1 + `\n\nModul/Vorlesungsthema:\n${subjectMain}\n\nBlueprint:\n${blueprint}` + languageInstruction },
     }, (msg) => progress(2, msg), "Quiz 1", useAiWrapper);
-    
+
     const quiz1Text = quiz1Res.text || "";
     const quiz1Ledger = extractSection(quiz1Text, "===COVERAGE_LEDGER_START===", "===COVERAGE_LEDGER_END===");
 
-    // Step 7: Tutor Prompt
-    progress(7, "Generating Tutor Prompt System...");
-    const tutorRes = await generateContentWithRetry(ai, modelName, {
-      contents: [{ role: "user", parts: [...masterContextParts, { text: `Modul/Vorlesungsthema:\n${subjectMain}` }, { text: `Didaktischer Blueprint:\n${blueprint}` }, { text: "Bitte generiere den Tutor-Prompt basierend auf dem bereitgestellten Blueprint." }] }],
-      config: { systemInstruction: PROMPTS.tutor_prompt },
-    }, (msg) => progress(7, msg), "Tutor Prompt", useAiWrapper);
+    // ---- Step 3+4: Tutor prompt & podcast prompts in parallel (independent) ----
+    progress(3, "Generating Tutor Prompt & Podcast Prompts...");
+    const [tutorRes, podcastRes] = await Promise.all([
+      generateContentWithRetry(ai, modelName, {
+        contents: [{ role: "user", parts: [...masterContextParts, { text: `Modul/Vorlesungsthema:\n${subjectMain}` }, { text: `Didaktischer Blueprint:\n${blueprint}` }, { text: "Bitte generiere den Tutor-Prompt basierend auf dem bereitgestellten Blueprint." }] }],
+        config: { systemInstruction: PROMPTS.tutor_prompt + languageInstruction },
+      }, (msg) => progress(3, msg), "Tutor Prompt", useAiWrapper),
+      generateContentWithRetry(ai, modelName, {
+        contents: [{ role: "user", parts: [...masterContextParts, { text: `Modul/Vorlesungsthema:\n${subjectMain}` }, { text: `Didaktischer Blueprint:\n${blueprint}` }, { text: "Bitte generiere die zwei Regieanweisungen basierend auf dem bereitgestellten Blueprint." }] }],
+        config: { systemInstruction: podcast_prompts + languageInstruction },
+      }, (msg) => progress(3, msg), "Podcast Prompts", useAiWrapper),
+    ]);
     const tutorPrompt = tutorRes.text;
-
-    // Step 8: Podcast Prompts
-    progress(8, "Generating Podcast Prompts...");
-    const podcastRes = await generateContentWithRetry(ai, modelName, {
-      contents: [{ role: "user", parts: [...masterContextParts, { text: `Modul/Vorlesungsthema:\n${subjectMain}` }, { text: `Didaktischer Blueprint:\n${blueprint}` }, { text: "Bitte generiere die zwei Regieanweisungen basierend auf dem bereitgestellten Blueprint." }] }],
-      config: { systemInstruction: podcast_prompts },
-    }, (msg) => progress(8, msg), "Podcast Prompts", useAiWrapper);
     const podcastOutput = podcastRes.text;
     const prePodcastPrompt = extractSection(podcastOutput, "===PRE_PODCAST_START===", "===PRE_PODCAST_END===");
     const postPodcastPrompt = extractSection(podcastOutput, "===POST_PODCAST_START===", "===POST_PODCAST_END===");
 
-    // Step 9: Create NotebookLM Notebooks
-    progress(9, "Creating NotebookLM Podcasts...");
+    // ---- Step 5: NotebookLM notebooks ----
+    progress(5, "Creating NotebookLM Podcasts...");
     let preNotebookId = "";
     let postNotebookId = "";
     try {
-      const preTitle = `Pre - ${subjectMain}`.substring(0, 50);
-      const postTitle = `Post - ${subjectMain}`.substring(0, 50);
       const [preId, postId] = await Promise.all([
-        createNotebook(preTitle),
-        createNotebook(postTitle)
+        createNotebook(`Pre - ${subjectMain}`.substring(0, 50)),
+        createNotebook(`Post - ${subjectMain}`.substring(0, 50)),
       ]);
       if (preId) preNotebookId = preId;
       if (postId) postNotebookId = postId;
     } catch (e) {
-      console.error("NotebookLM creation failed:", e);
+      console.error("[quiz-gen] NotebookLM creation failed:", e);
     }
 
-    // Step 10: Save to Google Drive
-    progress(10, "Uploading to Google Drive...");
-    
+    // ---- Step 6: Google Drive (Semester X / Module / Topic) ----
+    progress(6, "Uploading to Google Drive...");
     let folderId = "";
     let mainPdfId = "";
     try {
-      // Build the hierarchy: Root -> Semester X -> Module -> Topic
-      const semesterFolderName = `Semester ${currentSemester}`;
-      const semesterFolderId = await getOrCreateDriveFolder(semesterFolderName);
-      
+      const semesterFolderId = await getOrCreateDriveFolder(`Semester ${currentSemester}`);
       const moduleFolderId = await getOrCreateDriveFolder(subjectMain, semesterFolderId);
-      
       folderId = await getOrCreateDriveFolder(subjectSub, moduleFolderId);
-      
-      // Upload PDF if present
+
       if (filePaths.length > 0) {
         const firstFile = filePaths[0];
-        mainPdfId = await uploadToDrive(
-          firstFile.name || "Vorlesungsmaterial.pdf",
-          firstFile.mimeType,
-          firstFile.base64 ? Buffer.from(firstFile.base64, "base64") : Buffer.from(""),
-          folderId
-        );
+        // Read from disk when no base64 is provided — uploading Buffer.from("")
+        // silently created 0-byte files that poisoned every later grading run.
+        const fileBuffer = firstFile.base64
+          ? Buffer.from(firstFile.base64, "base64")
+          : await fs.readFile(firstFile.path);
+        if (fileBuffer.length === 0) {
+          console.warn("[quiz-gen] Source file is empty — skipping Drive upload to avoid a corrupt driveFileId.");
+        } else {
+          mainPdfId = await uploadToDrive(
+            firstFile.name || "Vorlesungsmaterial.pdf",
+            firstFile.mimeType,
+            fileBuffer,
+            folderId
+          );
+        }
       } else if (textContent) {
-        // If no file but text content, create a doc for it
         mainPdfId = await createGoogleDoc("Vorlesungsmaterial", textContent, folderId);
       }
 
-      // Create Docs for Tutor Prompt
       await Promise.allSettled([
         createGoogleDoc("Quiz 1 (Tag 1)", quiz1Text, folderId),
-        createGoogleDoc("Tutor Prompt", tutorPrompt || "", folderId)
+        createGoogleDoc("Tutor Prompt", tutorPrompt || "", folderId),
       ]);
     } catch (e) {
-      console.error("Google Drive upload failed:", e);
-      // Fallback: Continue saving to DB even if Drive fails
+      console.error("[quiz-gen] Google Drive upload failed (continuing with DB save):", e);
     }
 
-    // Step 11: Save to DB
-    progress(11, "Saving records to database...");
+    // ---- Step 7: Persist ----
+    progress(7, "Saving records to database...");
     const createdItem = await prisma.sRSItem.create({
       data: {
         subjectMain,
         subjectSub,
+        semester: currentSemester,
         currentLevel: 0,
         nextReviewDate: new Date(Date.now() + 24 * 60 * 60 * 1000),
         quiz1DocId: quiz1Text,
-        quiz2DocId: null,
-        quiz3DocId: null,
-        quiz4DocId: null,
-        quiz5DocId: null,
-        blueprint: blueprint,
+        blueprint,
         coverageLedger: quiz1Ledger,
         tutorPromptContent: tutorPrompt,
         tutorPromptDocId: "pending",
+        prePodcastPrompt: prePodcastPrompt || null,
+        postPodcastPrompt: postPodcastPrompt || null,
         prePodcastUrl: preNotebookId ? `https://notebooklm.google.com/notebook/${preNotebookId}` : null,
         postPodcastUrl: postNotebookId ? `https://notebooklm.google.com/notebook/${postNotebookId}` : null,
         sourceMaterialContent: JSON.stringify({ driveFileId: mainPdfId, driveFolderId: folderId }),
       },
     });
 
-    // Set tutorPromptDocId to the item's own ID
-    await prisma.sRSItem.update({
+    const finalItem = await prisma.sRSItem.update({
       where: { id: createdItem.id },
-      data: { tutorPromptDocId: createdItem.id }
+      data: { tutorPromptDocId: createdItem.id },
     });
 
-    // Automatically trigger podcast generation in the background with in-memory files
-    try {
-      const uploadTasks = [];
-      if (preNotebookId) {
-        uploadTasks.push(generatePodcastWorker(createdItem.id, "pre", preNotebookId, dynamicTextContent, filePaths));
-      }
-      if (postNotebookId) {
-        uploadTasks.push(generatePodcastWorker(createdItem.id, "post", postNotebookId, dynamicTextContent, filePaths));
-      }
-      Promise.allSettled(uploadTasks).catch(e => console.error("Error starting background tasks:", e));
-    } catch (e) {
-      console.error("Error in background podcast worker:", e);
-    }
-
-    // Mark job done
     if (jobId) {
       await prisma.backgroundJob.update({
         where: { id: jobId },
         data: { status: "done", completedAt: new Date(), itemId: createdItem.id },
-      });
+      }).catch((e) => console.error("[quiz-gen] Failed to mark job done:", e));
     }
 
-    // Send push notification
-    await sendPushNotification({
+    // The item is fully usable now — let the caller show it immediately.
+    onCreated?.(finalItem);
+
+    sendPushNotification({
       title: "✅ Quiz fertig generiert!",
-      body: `${subjectMain} - ${subjectSub}: 5 Quizze + Tutor-Prompt erstellt.`,
+      body: `${subjectMain} - ${subjectSub}: Quiz 1 + Tutor-Prompt erstellt.`,
       tag: `quiz-done-${createdItem.id}`,
       url: "/",
     }).catch((e) => console.error("Push notification failed:", e));
 
-    // (Podcast generation was already triggered above)
+    // ---- Step 8: Podcast uploads (workers read filePaths from disk) ----
+    // MUST finish before the finally-block deletes the temp files.
+    progress(8, "Uploading sources to NotebookLM podcasts...");
+    const podcastTasks: Promise<unknown>[] = [];
+    if (preNotebookId) podcastTasks.push(generatePodcastWorker(createdItem.id, "pre", preNotebookId, dynamicTextContent, filePaths));
+    if (postNotebookId) podcastTasks.push(generatePodcastWorker(createdItem.id, "post", postNotebookId, dynamicTextContent, filePaths));
+    if (podcastTasks.length > 0) {
+      const results = await Promise.allSettled(podcastTasks);
+      for (const r of results) {
+        if (r.status === "rejected") console.error("[quiz-gen] Podcast worker failed:", r.reason);
+      }
+    }
 
-    return createdItem;
-  } catch (error: unknown) {
+    return finalItem;
+  } catch (error) {
     const errObj = error instanceof Error ? error : new Error(String(error));
     if (jobId) {
       await prisma.backgroundJob.update({
         where: { id: jobId },
         data: { status: "error", error: errObj.message, completedAt: new Date() },
-      });
+      }).catch((e) => console.error("[quiz-gen] Failed to mark job errored:", e));
     }
 
-    // Send error push notification
-    await sendPushNotification({
+    sendPushNotification({
       title: "❌ Quiz-Generierung fehlgeschlagen",
       body: `${subjectMain}: ${errObj.message}`,
-      tag: `quiz-error-${jobId}`,
+      tag: `quiz-error-${jobId || subjectMain}`,
     }).catch(() => {});
 
     throw errObj;
   } finally {
+    // Safe now: podcast workers have already consumed the files.
     for (const fileInfo of filePaths) {
-      try {
-        await fs.unlink(fileInfo.path);
-      } catch (e) {
-        console.error("Failed to delete temp file:", fileInfo.path, e);
-      }
+      await fs.unlink(fileInfo.path).catch((e) => console.error("Failed to delete temp file:", fileInfo.path, e));
     }
   }
 }

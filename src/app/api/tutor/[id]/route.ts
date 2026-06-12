@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { prisma } from "@/lib/db";
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 
 export async function GET(
   req: NextRequest,
@@ -26,7 +26,7 @@ export async function GET(
         "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=86400",
       },
     });
-  } catch (err: any) {
-    return new Response(err.message || "Internal Server Error", { status: 500 });
+  } catch (err) {
+    return new Response(err instanceof Error ? err.message : "Internal Server Error", { status: 500 });
   }
 }

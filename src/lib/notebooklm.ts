@@ -1,6 +1,5 @@
 import { prisma } from "./db";
 import fs from "fs/promises";
-import { createReadStream } from "fs";
 import path from "path";
 import { sendPushNotification } from "./push";
 import { downloadFromDrive } from "./google-drive";
@@ -48,7 +47,7 @@ export async function generateVideoPromptsWorker(
           // Legacy string migration
           videoHistory = [{ level: item.currentLevel - (isPass ? 1 : 0), url: item.videoUrl, date: new Date().toISOString() }];
         }
-      } catch (e) {
+      } catch {
         // Legacy string migration
         videoHistory = [{ level: item.currentLevel - (isPass ? 1 : 0), url: item.videoUrl, date: new Date().toISOString() }];
       }
@@ -219,15 +218,17 @@ export async function generatePodcastWorker(
       await uploadText(notebookId, "Vorlesungsskript", textContent);
     }
     
-    // Upload files from memory or Drive
+    // Upload files from memory (base64) or disk (path) — uploadFile falls back
+    // to fs.readFile(path) when no base64 is given. The old `if (!file.base64)
+    // continue;` silently skipped every disk-backed file.
     if (memoryFiles && memoryFiles.length > 0) {
       for (const file of memoryFiles) {
-        if (!file.base64) continue;
-        console.log(`[NotebookLM] Uploading in-memory file: ${file.name}`);
+        if (!file.base64 && !file.path) continue;
+        console.log(`[NotebookLM] Uploading file: ${file.name || file.path}`);
         try {
           await uploadFile(notebookId, file.path || file.name || "fallback.pdf", file.base64, file.name);
         } catch(e) {
-          console.error(`[NotebookLM] Failed to upload file ${file.name}`, e);
+          console.error(`[NotebookLM] Failed to upload file ${file.name || file.path}`, e);
         }
       }
     } else {

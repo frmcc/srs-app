@@ -1,321 +1,98 @@
 export const maxDuration = 300;
-import { prisma } from "@/lib/db";
-import { NextRequest, NextResponse, after } from "next/server";
-import { GoogleGenAI } from "@google/genai";
-import { PROMPTS, podcast_prompts } from "./prompts";
-import { sendPushNotification } from "@/lib/push";
-import { generatePodcastWorker, createNotebook } from "@/lib/notebooklm";
-import { generateContentWithRetry } from "@/lib/gemini-retry";
-import { createDriveFolder, getOrCreateDriveFolder, uploadToDrive, createGoogleDoc } from "@/lib/google-drive";
+import { NextRequest, NextResponse } from "next/server";
+import { runQuizGeneration } from "@/lib/quiz-generator";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
 
-const modelName = "gemini-3.5-flash";
-
-const extractSection = (text: string | undefined, startMarker: string, endMarker: string) => {
-  if (!text) return "";
-  const regex = new RegExp(`${startMarker}([\\s\\S]*?)${endMarker}`);
-  const match = text.match(regex);
-  return match ? match[1].trim() : text.trim();
-};
-
+/**
+ * Web quiz generation endpoint. Thin wrapper over runQuizGeneration:
+ * saves uploads to temp files, streams NDJSON progress, sends `done` as soon
+ * as the item exists (podcast uploads continue inside the generator, which
+ * also owns temp-file cleanup).
+ */
 export async function POST(req: NextRequest) {
   if (!process.env.GEMINI_API_KEY) {
-    return NextResponse.json({ 
-      error: "Missing API Key", 
-      details: "Set GEMINI_API_KEY in your .env file." 
-    }, { status: 500 });
+    return NextResponse.json(
+      { error: "Missing API Key", details: "Set GEMINI_API_KEY in your .env file." },
+      { status: 500 }
+    );
   }
 
-  const formData = await req.formData();
+  let formData: FormData;
+  try {
+    formData = await req.formData();
+  } catch (err) {
+    console.error("Form parsing error:", err);
+    return NextResponse.json({ error: "Failed to parse form data." }, { status: 500 });
+  }
+
   const subjectMain = formData.get("subjectMain") as string;
   const subjectSub = (formData.get("subjectSub") as string) || "Module";
+  const textContent = (formData.get("content") as string) || "";
+  const files = formData.getAll("files") as File[];
 
-  if (!subjectMain || !subjectSub) {
+  if (!subjectMain) {
     return NextResponse.json({ error: "Bitte fülle alle Pflichtfelder aus." }, { status: 400 });
   }
+  if (!textContent.trim() && files.length === 0) {
+    return NextResponse.json({ error: "Missing subject or content." }, { status: 400 });
+  }
 
-  const appConfig = await prisma.appConfig.findUnique({ where: { id: 1 } });
-  const wrapperMode = appConfig?.wrapperMode || "all";
-  const useAiWrapper = wrapperMode === "all" || wrapperMode === "generation_only";
+  // Persist uploads to temp files BEFORE streaming starts — the generator
+  // reads them from disk (Gemini upload, text extraction, Drive, NotebookLM).
+  const uploadsDir = path.join(os.tmpdir(), "srs-uploads");
+  await fs.mkdir(uploadsDir, { recursive: true });
 
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-  const encoder = new TextEncoder();
-  
-  try {
-    let textContent = (formData.get("content") as string) || "";
-    const language = (formData.get("language") as string) || "german";
-    
-    // Process uploaded files
-    const files = formData.getAll("files") as File[];
-    
-    if (!subjectMain || (!textContent && files.length === 0)) {
-      return NextResponse.json({ error: "Missing subject or content." }, { status: 400 });
-    }
+  const filePaths: { name: string; path: string; mimeType: string }[] = [];
+  for (const file of files) {
+    if (file.size === 0) continue;
+    const uniqueFileName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
+    const localFilePath = path.join(uploadsDir, uniqueFileName);
+    await fs.writeFile(localFilePath, Buffer.from(await file.arrayBuffer()));
+    filePaths.push({ name: file.name, path: localFilePath, mimeType: file.type || "application/octet-stream" });
+  }
 
-    const uploadedFilesData: { path: string, mimeType: string }[] = [];
-    const dbFilesData: { name: string, mimeType: string, base64: string }[] = [];
-    const geminiFileParts: { fileData: { fileUri: string, mimeType: string } }[] = [];
-    
-    const uploadsDir = path.join(os.tmpdir(), "srs-uploads");
-    await fs.mkdir(uploadsDir, { recursive: true });
-
-    for (const file of files) {
-      const arrayBuffer = await file.arrayBuffer();
-      const buffer = Buffer.from(arrayBuffer);
-      
-      try {
-        if (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
-          if (typeof global.DOMMatrix === "undefined") {
-            (global as any).DOMMatrix = class DOMMatrix {};
-          }
-          const { PDFParse } = require("pdf-parse");
-          const parser = new PDFParse(new Uint8Array(arrayBuffer));
-          await parser.load();
-          const pdfText = await parser.getText();
-          textContent += `\n\n--- Inhalt von ${file.name} ---\n${pdfText}`;
-        } else if (file.type.startsWith("text/")) {
-          textContent += `\n\n--- Inhalt von ${file.name} ---\n${buffer.toString("utf-8")}`;
-        }
-      } catch (err) {
-        console.error(`Error parsing file ${file.name}:`, err);
-      }
-      
-      // Generate a unique filename and save locally
-      const uniqueFileName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
-      const localFilePath = path.join(uploadsDir, uniqueFileName);
-      await fs.writeFile(localFilePath, buffer);
-      
-      uploadedFilesData.push({ path: localFilePath, mimeType: file.type || "application/octet-stream" });
-      dbFilesData.push({ 
-        name: file.name, 
-        mimeType: file.type || "application/octet-stream", 
-        base64: "" // Base64 removed to save database space
-      });
-
-      try {
-        // Upload to Gemini File API (Double-Track fallback strategy)
-        const uploadResult = await ai.files.upload({
-          file: localFilePath,
-          config: { mimeType: file.type || "application/octet-stream" }
-        });
-        
-        geminiFileParts.push({
-          fileData: { fileUri: uploadResult.uri as string, mimeType: uploadResult.mimeType as string }
-        });
-      } catch (err: unknown) {
-        const errObj = err instanceof Error ? err : new Error(String(err));
-        console.error(`Error uploading file ${file.name} to Gemini:`, errObj);
-      }
-    }
-
-    // Build the master parts array for the prompt
-    const masterContextParts: Array<{ text: string } | { fileData: { fileUri: string, mimeType: string } }> = [...geminiFileParts];
-    if (textContent.trim()) {
-      masterContextParts.push({ text: `\n\nZusätzliches Textmaterial:\n${textContent}` });
-    }
-    
-    // Serialize sourceMaterialContent to store in DB
-    const sourceMaterialContentPayload = JSON.stringify({
-      text: textContent,
-      files: dbFilesData
-    });
-
-    let generationSuccess = false;
-
-    const stream = new ReadableStream({
-      async start(controller) {
-      const sendEvent = (event: string, data: Record<string, unknown> | unknown) => {
+  const stream = new ReadableStream({
+    async start(controller) {
+      const encoder = new TextEncoder();
+      const sendEvent = (event: string, data: unknown) => {
         try {
-          controller.enqueue(new TextEncoder().encode(JSON.stringify({ event, data }) + "\n"));
-        } catch (e) {
-          // Ignore stream errors (e.g. client disconnected) so background task continues
+          controller.enqueue(encoder.encode(JSON.stringify({ event, data }) + "\n"));
+        } catch {
+          // Client disconnected — generation continues, results land in the DB.
         }
       };
 
       try {
-        const languageInstruction = `\n\nCRITICAL: You must generate ALL text, output, and responses strictly in ${language.toUpperCase()}. This applies to every section of the generated content.`;
-        sendEvent("progress", { step: 1, message: "Analyzing material & Generating Blueprint..." });
-        const blueprintRes = await generateContentWithRetry(ai, modelName, {
-          contents: [{ role: "user", parts: [...masterContextParts, { text: `Modul/Vorlesungsthema:\n${subjectMain} - ${subjectSub}` }, { text: "Hier sind die Materialien. Bitte führe deine System-Instruktionen aus." }] }],
-          config: { systemInstruction: PROMPTS.blueprint + languageInstruction },
-        }, (msg) => sendEvent("progress", { step: 1, message: msg }), "Blueprint", useAiWrapper);
-        const blueprint = blueprintRes.text;
-        
-        // Quizzes 2-5 are generated Just-in-Time during grading. We only generate Quiz 1 here.
-        sendEvent("progress", { step: 2, message: "Generating Quiz 1..." });
-        const res = await generateContentWithRetry(ai, modelName, {
-          contents: [{ role: "user", parts: [...masterContextParts, { text: "Hier sind die Materialien. Bitte führe deine System-Instruktionen aus." }] }],
-          config: { systemInstruction: PROMPTS.quiz_tag_1 + `\n\nModul/Vorlesungsthema:\n${subjectMain}\n\nBlueprint:\n${blueprint}` + languageInstruction }
-        }, (msg) => sendEvent("progress", { step: 2, message: msg }), "Quiz 1", useAiWrapper);
-        
-        const quiz1Text = res.text || "";
-        const quiz1Ledger = extractSection(quiz1Text, "===COVERAGE_LEDGER_START===", "===COVERAGE_LEDGER_END===");
-
-        sendEvent("progress", { step: 7, message: "Generating Tutor Prompt System..." });
-        const tutorRes = await generateContentWithRetry(ai, modelName, {
-          contents: [{ role: "user", parts: [...masterContextParts, { text: `Modul/Vorlesungsthema:\n${subjectMain}` }, { text: `Didaktischer Blueprint:\n${blueprint}` }, { text: "Bitte generiere den Tutor-Prompt basierend auf dem bereitgestellten Blueprint." }] }],
-          config: { systemInstruction: PROMPTS.tutor_prompt + `\n\nModul/Vorlesungsthema:\n${subjectMain}\n\nBlueprint:\n${blueprint}` + languageInstruction }
-        }, (msg) => sendEvent("progress", { step: 7, message: msg }), "Tutor Prompt", useAiWrapper);
-        const tutorPrompt = tutorRes.text;
-
-        sendEvent("progress", { step: 8, message: "Generating Podcast Prompts..." });
-        const podcastRes = await generateContentWithRetry(ai, modelName, {
-          contents: [{ role: "user", parts: [...masterContextParts, { text: "Bitte generiere die zwei Regieanweisungen basierend auf dem bereitgestellten Blueprint." }] }],
-          config: { systemInstruction: podcast_prompts + `\n\nModul/Vorlesungsthema:\n${subjectMain}\n\nBlueprint:\n${blueprint}` + languageInstruction }
-        }, (msg) => sendEvent("progress", { step: 8, message: msg }), "Podcast Prompts", useAiWrapper);
-        const podcastOutput = podcastRes.text;
-        const prePodcastPrompt = extractSection(podcastOutput, "===PRE_PODCAST_START===", "===PRE_PODCAST_END===");
-        const postPodcastPrompt = extractSection(podcastOutput, "===POST_PODCAST_START===", "===POST_PODCAST_END===");
-
-        sendEvent("progress", { step: 9, message: "Creating NotebookLM Podcasts..." });
-
-        let preNotebookId = "";
-        let postNotebookId = "";
-        try {
-          const preTitle = `Pre - ${subjectMain}`.substring(0, 50);
-          const postTitle = `Post - ${subjectMain}`.substring(0, 50);
-          const [preId, postId] = await Promise.all([
-            createNotebook(preTitle),
-            createNotebook(postTitle)
-          ]);
-          if (preId) preNotebookId = preId;
-          if (postId) postNotebookId = postId;
-        } catch (e) {
-          console.error("NotebookLM creation failed:", e);
-        }
-
-        sendEvent("progress", { step: 10, message: "Uploading to Google Drive..." });
-
-        const currentSemester = appConfig?.currentSemester || 1;
-
-        let folderId = "";
-        let mainPdfId = "";
-        try {
-          // Build the hierarchy: Root -> Semester X -> Module -> Topic
-          const semesterFolderName = `Semester ${currentSemester}`;
-          const semesterFolderId = await getOrCreateDriveFolder(semesterFolderName);
-          
-          const moduleFolderId = await getOrCreateDriveFolder(subjectMain, semesterFolderId);
-          
-          folderId = await getOrCreateDriveFolder(subjectSub, moduleFolderId);
-          
-          if (dbFilesData.length > 0) {
-            const firstFile = dbFilesData[0];
-            mainPdfId = await uploadToDrive(
-              firstFile.name || "Vorlesungsmaterial.pdf",
-              firstFile.mimeType,
-              firstFile.base64 ? Buffer.from(firstFile.base64, "base64") : Buffer.from(""),
-              folderId
-            );
-          } else if (textContent) {
-            mainPdfId = await createGoogleDoc("Vorlesungsmaterial", textContent, folderId);
-          }
-
-          await Promise.allSettled([
-            createGoogleDoc("Quiz 1 (Tag 1)", quiz1Text, folderId),
-            createGoogleDoc("Tutor Prompt", tutorPrompt || "", folderId)
-          ]);
-        } catch (e) {
-          console.error("Google Drive upload failed:", e);
-        }
-
-        sendEvent("progress", { step: 11, message: "Saving records to database..." });
-
-        const createdItem = await prisma.sRSItem.create({
-          data: {
-            subjectMain: subjectMain,
-            subjectSub: subjectSub,
-            semester: currentSemester,
-            currentLevel: 0,
-            nextReviewDate: new Date(Date.now() + 24 * 60 * 60 * 1000), // Tag 1
-            quiz1DocId: quiz1Text,
-            quiz2DocId: null,
-            quiz3DocId: null,
-            quiz4DocId: null,
-            quiz5DocId: null,
-            tutorPromptContent: tutorPrompt,
-            tutorPromptDocId: "pending", // Will be set to item ID after creation
-            prePodcastUrl: preNotebookId ? `https://notebooklm.google.com/notebook/${preNotebookId}` : null,
-            postPodcastUrl: postNotebookId ? `https://notebooklm.google.com/notebook/${postNotebookId}` : null,
-            sourceMaterialContent: JSON.stringify({ driveFileId: mainPdfId, driveFolderId: folderId }),
-            blueprint: blueprint,
-            coverageLedger: quiz1Ledger
-          }
+        await runQuizGeneration({
+          subjectMain,
+          subjectSub,
+          textContent,
+          filePaths,
+          onProgress: (step, message) => sendEvent("progress", { step, message }),
+          // Fire `done` the moment the item exists — podcast uploads keep
+          // running inside the generator without blocking the UI.
+          onCreated: (item) => sendEvent("done", { success: true, srsItem: item }),
         });
-
-        // Set tutorPromptDocId to the item's own ID (used for /tutor/[id] URL)
-        await prisma.sRSItem.update({
-          where: { id: createdItem.id },
-          data: { tutorPromptDocId: createdItem.id }
-        });
-
-        sendEvent("done", { success: true, srsItem: createdItem });
-        generationSuccess = true;
-
-        // Send push notification
-        sendPushNotification({
-          title: "✅ Quiz fertig generiert!",
-          body: `${subjectMain} - ${subjectSub}: 5 Quizze + Tutor-Prompt erstellt.`,
-          tag: `quiz-done-${createdItem.id}`,
-          url: "/",
-        }).catch((e) => console.error("Push notification failed:", e));
-
-        // Automatically trigger podcast generation in the background with in-memory files
-        after(async () => {
-          try {
-            const uploadTasks = [];
-            if (preNotebookId) {
-              uploadTasks.push(generatePodcastWorker(createdItem.id, "pre", preNotebookId, textContent, dbFilesData));
-            }
-            if (postNotebookId) {
-              uploadTasks.push(generatePodcastWorker(createdItem.id, "post", postNotebookId, textContent, dbFilesData));
-            }
-            await Promise.allSettled(uploadTasks);
-          } catch (e) {
-            console.error("Error in background podcast worker:", e);
-          } finally {
-            // Delete temp files after background workers are completely finished
-            for (const fileInfo of uploadedFilesData) {
-              try {
-                await fs.unlink(fileInfo.path);
-              } catch (e) {
-                console.error("Failed to delete temp file:", fileInfo.path, e);
-              }
-            }
-          }
-        });
-
-        try { controller.close(); } catch (e) {}
-      } catch (err: unknown) {
+      } catch (err) {
         const error = err instanceof Error ? err : new Error(String(err));
         console.error("Quiz generation error:", error);
         sendEvent("error", { message: error.message });
-        try { controller.close(); } catch (e) {}
       } finally {
-        if (!generationSuccess) {
-          for (const fileInfo of uploadedFilesData) {
-            try {
-              await fs.unlink(fileInfo.path);
-            } catch (e) {
-              console.error("Failed to delete temp file:", fileInfo.path, e);
-            }
-          }
+        try {
+          controller.close();
+        } catch {
+          /* already closed */
         }
       }
-    }
+    },
   });
 
   return new Response(stream, {
     headers: {
-      "Content-Type": "application/x-ndjson",
+      "Content-Type": "application/x-ndjson; charset=utf-8",
       "Cache-Control": "no-cache",
-    }
+    },
   });
-  } catch (err: unknown) {
-    const error = err instanceof Error ? err : new Error(String(err));
-    console.error("Form parsing error:", error);
-    return NextResponse.json({ error: "Failed to parse form data." }, { status: 500 });
-  }
 }

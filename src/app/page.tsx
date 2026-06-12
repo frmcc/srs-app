@@ -1,17 +1,9 @@
-import { prisma } from "@/lib/db";
+import { fetchReviewList } from "@/lib/review-query";
 import DashboardClient from "./DashboardClient";
 
 export const dynamic = "force-dynamic";
 
 export default async function Page() {
-  const items = await prisma.sRSItem.findMany({
-    where: {
-      subjectMain: {
-        not: "Freies Lernen"
-      }
-    },
-    orderBy: { nextReviewDate: "asc" }
-  });
-
+  const items = await fetchReviewList();
   return <DashboardClient initialItems={items} />;
 }

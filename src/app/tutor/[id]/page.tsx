@@ -2,13 +2,26 @@ import { prisma } from "@/lib/db";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { cache } from "react";
 import { CopyButton } from "./copy-button";
 
 type Params = Promise<{ id: string }>;
 
+/**
+ * Deduped item loader — generateMetadata and the page share ONE query.
+ * Falls back to tutorPromptDocId for legacy items where that column
+ * holds a Google Doc ID instead of the item's own ID (matches the
+ * lookup in /api/tutor/[id]).
+ */
+const getItem = cache(async (id: string) => {
+  const item = await prisma.sRSItem.findUnique({ where: { id } });
+  if (item) return item;
+  return prisma.sRSItem.findFirst({ where: { tutorPromptDocId: id } });
+});
+
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { id } = await params;
-  const item = await prisma.sRSItem.findUnique({ where: { id } });
+  const item = await getItem(id);
   if (!item) return { title: "Nicht gefunden" };
   return {
     title: `Tutor Prompt – ${item.subjectMain}`,
@@ -18,7 +31,7 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
 
 export default async function TutorPage({ params }: { params: Params }) {
   const { id } = await params;
-  const item = await prisma.sRSItem.findUnique({ where: { id } });
+  const item = await getItem(id);
   if (!item || !item.tutorPromptContent) notFound();
 
   return (

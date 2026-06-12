@@ -45,32 +45,45 @@ export async function createDriveFolder(name: string, parentFolderId?: string): 
   return file.data.id!;
 }
 
-export async function getOrCreateDriveFolder(name: string, parentFolderId?: string): Promise<string> {
-  const drive = getDriveClient();
+// Serialize list-then-create per (parent, name) so two concurrent generations
+// can't both miss the lookup and create duplicate sibling folders.
+const folderLocks = new Map<string, Promise<string>>();
+
+export function getOrCreateDriveFolder(name: string, parentFolderId?: string): Promise<string> {
   const parentId = parentFolderId || process.env.GOOGLE_DRIVE_FOLDER_ID;
-  
   if (!parentId) {
-    throw new Error("GOOGLE_DRIVE_FOLDER_ID is missing in .env");
+    return Promise.reject(new Error("GOOGLE_DRIVE_FOLDER_ID is missing in .env"));
   }
 
-  // 1. Search if the folder already exists
-  const escapedName = name.replace(/'/g, "\\'");
-  const query = `name='${escapedName}' and '${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-  const response = await drive.files.list({
-    q: query,
-    fields: 'files(id, name)',
-    spaces: 'drive',
-  });
+  const lockKey = `${parentId}/${name}`;
+  const existing = folderLocks.get(lockKey);
+  if (existing) return existing;
 
-  const files = response.data.files;
-  if (files && files.length > 0) {
-    console.log(`[Google Drive] Found existing folder: ${name} (ID: ${files[0].id})`);
-    return files[0].id!;
-  }
+  const task = (async () => {
+    const drive = getDriveClient();
+    const escapedName = name.replace(/'/g, "\\'");
+    const query = `name='${escapedName}' and '${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+    const response = await drive.files.list({
+      q: query,
+      fields: 'files(id, name)',
+      spaces: 'drive',
+    });
 
-  // 2. If it doesn't exist, create it
-  console.log(`[Google Drive] Creating new folder: ${name}`);
-  return createDriveFolder(name, parentId);
+    const files = response.data.files;
+    if (files && files.length > 0) {
+      console.log(`[Google Drive] Found existing folder: ${name} (ID: ${files[0].id})`);
+      return files[0].id!;
+    }
+
+    console.log(`[Google Drive] Creating new folder: ${name}`);
+    return createDriveFolder(name, parentId);
+  })();
+
+  folderLocks.set(lockKey, task);
+  // Drop the lock on settle: successes are re-resolved instantly by the list
+  // call next time; failures shouldn't poison future attempts.
+  task.finally(() => folderLocks.delete(lockKey)).catch(() => {});
+  return task;
 }
 
 export async function uploadToDrive(
@@ -92,6 +105,11 @@ export async function uploadToDrive(
     buffer = Buffer.from(bufferOrBase64, "base64");
   } else {
     buffer = bufferOrBase64;
+  }
+
+  if (buffer.length === 0) {
+    // A 0-byte "source material" file silently poisons every later grading run.
+    throw new Error(`Refusing to upload empty file "${name}" to Drive.`);
   }
 
   const stream = new Readable();

@@ -62,6 +62,9 @@ model SRSItem {
   // Relationship to User for future multi-tenant support
   userId           String?
   user             User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([nextReviewDate])
+  @@index([subjectMain])
 }
 
 model PushSubscription {
@@ -81,7 +84,10 @@ model BackgroundJob {
   itemId      String?   // for grading jobs, references SRSItem
   error       String?
   createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @default(now()) @updatedAt
   completedAt DateTime?
+
+  @@index([status, createdAt])
 }
 
 model AppConfig {

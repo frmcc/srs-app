@@ -30,8 +30,109 @@ import {
   LockClosedIcon
 } from "@heroicons/react/24/outline";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 
+import { useToasts, ToastStack } from "./components/Toast";
+
+/**
+ * Slim list item served by the server page (`initialItems`) and GET /api/reviews.
+ * Dates arrive as Date objects from the server component and as ISO strings
+ * from the JSON API. The full row (quiz columns, blueprint, …) is only
+ * available via GET /api/reviews/[id] and inside grading/generation `done`
+ * events — never merge those fat objects into this list shape.
+ */
+interface RawReviewItem {
+  id: string;
+  subjectMain: string;
+  subjectSub: string;
+  semester: number;
+  currentLevel: number;
+  nextReviewDate: string | Date;
+  createdAt: string | Date;
+  lastFeedback: string | null;
+  prePodcastUrl: string | null;
+  postPodcastUrl: string | null;
+  videoUrl: string | null;
+  tutorPromptDocId: string | null;
+  /** Level-correct quiz text, computed server-side (incl. quiz-1 fallback and level>=6 rollover). */
+  currentQuizText: string;
+}
+
+/** Display wrapper around a RawReviewItem produced by formatItems(). */
+interface ReviewCard {
+  id: string;
+  subject: string;
+  topic: string;
+  level: number;
+  dueDate: string;
+  isDue: boolean;
+  semester: number;
+  raw: RawReviewItem;
+}
+
+/** Slim grading outcome kept for the result screen (the fat srsItem is NOT retained). */
+interface GradingOutcome {
+  isPass: boolean;
+  feedback: string;
+  nextReviewDate: string | null;
+  currentLevel: number | null;
+}
+
+interface NdjsonEvent {
+  event: "progress" | "done" | "error";
+  data: {
+    step?: number;
+    message?: string;
+    success?: boolean;
+    isPass?: boolean;
+    feedback?: string;
+    srsItem?: RawReviewItem;
+  };
+}
+
+/** Hard cap per NDJSON stream so a hung connection can never spin forever. */
+const STREAM_TIMEOUT_MS = 6 * 60 * 1000;
+
+/**
+ * Reads an NDJSON stream line by line. Partial lines are buffered across
+ * chunk boundaries (split on "\n", trailing fragment stays in the buffer).
+ * Resolves with `true` if a terminal `done`/`error` event arrived before the
+ * stream ended — `false` means the stream died silently.
+ */
+async function readNdjsonStream(
+  res: Response,
+  onEvent: (evt: NdjsonEvent) => void
+): Promise<boolean> {
+  if (!res.body) throw new Error("No response body");
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let sawTerminalEvent = false;
+
+  const handleLine = (line: string) => {
+    if (!line.trim()) return;
+    try {
+      const evt = JSON.parse(line) as NdjsonEvent;
+      if (evt.event === "done" || evt.event === "error") sawTerminalEvent = true;
+      onEvent(evt);
+    } catch {
+      // Not a complete JSON line — the server writes one JSON object per line.
+    }
+  };
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || ""; // keep the trailing fragment for the next chunk
+    for (const line of lines) handleLine(line);
+  }
+  buffer += decoder.decode(); // flush any multi-byte remainder
+  if (buffer.trim()) handleLine(buffer); // final line without trailing \n
+
+  return sawTerminalEvent;
+}
 
 const extractStudentQuiz = (rawQuizText: string) => {
   if (!rawQuizText) return "";
@@ -68,7 +169,7 @@ const parseQuizTasks = (studentQuizText: string) => {
   return tasks;
 };
 
-const formatItems = (data: any[]) => {
+const formatItems = (data: RawReviewItem[]): ReviewCard[] => {
   if (!Array.isArray(data)) return [];
 
   const now = new Date();
@@ -107,12 +208,15 @@ const formatItems = (data: any[]) => {
   return formatted;
 };
 
-export default function DashboardClient({ initialItems }: { initialItems: any[] }) {
-  const [upcomingReviews, setUpcomingReviews] = useState<any[]>(initialItems ? formatItems(initialItems) : []);
+export default function DashboardClient({ initialItems }: { initialItems: RawReviewItem[] }) {
+  const [upcomingReviews, setUpcomingReviews] = useState<ReviewCard[]>(initialItems ? formatItems(initialItems) : []);
   const [activeTab, setActiveTab] = useState("dashboard");
   const [isGenerating, setIsGenerating] = useState(false);
   const [progressStep, setProgressStep] = useState(0);
   const [progressMsg, setProgressMsg] = useState("");
+
+  // Toasts (non-blocking replacement for alert())
+  const { toasts, addToast, dismissToast } = useToasts();
 
   const [subjectInput, setSubjectInput] = useState("");
   const [topicInput, setTopicInput] = useState("");
@@ -147,22 +251,28 @@ export default function DashboardClient({ initialItems }: { initialItems: any[] 
   }, []);
 
   // Quiz taking state
-  const [selectedReview, setSelectedReview] = useState<any>(null);
+  const [selectedReview, setSelectedReview] = useState<ReviewCard | null>(null);
   const [studentAnswers, setStudentAnswers] = useState("");
-  const [parsedTasks, setParsedTasks] = useState<any[]>([]);
+  const [parsedTasks, setParsedTasks] = useState<ReturnType<typeof parseQuizTasks>>([]);
   const [individualAnswers, setIndividualAnswers] = useState<Record<string, string>>({});
   const [isGrading, setIsGrading] = useState(false);
   const [showAllScheduled, setShowAllScheduled] = useState(false);
   const [gradingStep, setGradingStep] = useState(0);
   const [gradingMsg, setGradingMsg] = useState("");
   const [gradingError, setGradingError] = useState("");
-  const [gradingResult, setGradingResult] = useState<any>(null);
-  const [copiedId, setCopiedId] = useState("");
+  const [gradingResult, setGradingResult] = useState<GradingOutcome | null>(null);
+
+  // Inline delete confirmation (two-step button) + per-item busy state
+  const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
+  const [deletingIds, setDeletingIds] = useState<Record<string, boolean>>({});
+
+  // Two-step confirmation state for the semester danger-zone buttons
+  const [confirmingNewSemester, setConfirmingNewSemester] = useState(false);
+  const [confirmingResetSemester, setConfirmingResetSemester] = useState(false);
+  const [isSemesterActionBusy, setIsSemesterActionBusy] = useState(false);
 
   // Historical feedback modal
-  const [activeFeedbackItem, setActiveFeedbackItem] = useState<any>(null);
-  const [feedbackTab, setFeedbackTab] = useState("brief");
-  const [resultTab, setResultTab] = useState("brief");
+  const [activeFeedbackItem, setActiveFeedbackItem] = useState<RawReviewItem | null>(null);
   const [showCalendarModal, setShowCalendarModal] = useState(false);
   const [calendarUrlCopied, setCalendarUrlCopied] = useState(false);
   const [archiveModalData, setArchiveModalData] = useState<{level: number, url: string, date?: string}[] | null>(null);
@@ -174,9 +284,11 @@ export default function DashboardClient({ initialItems }: { initialItems: any[] 
   const [pushPermission, setPushPermission] = useState<string>("default");
   const [pushSubscribed, setPushSubscribed] = useState(false);
 
-  // Check notification permission on mount
+  // Check notification permission on mount. Must run in an effect (not a
+  // lazy initializer) so SSR markup and the first client render agree.
   useEffect(() => {
     if (typeof window !== "undefined" && "Notification" in window) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time external API read, SSR-safe
       setPushPermission(Notification.permission);
     }
   }, []);
@@ -234,51 +346,100 @@ export default function DashboardClient({ initialItems }: { initialItems: any[] 
     }
   }, [pushSubscribed, subscribeToPush]);
 
-  const fetchReviews = useCallback(() => {
-    fetch('/api/reviews')
-      .then(res => res.json())
-      .then(data => {
-        if (Array.isArray(data)) {
-          setUpcomingReviews(formatItems(data));
-        }
-      })
-      .catch(console.error);
+  // Guards against overlapping refetches (mount + focus + interval can race).
+  const fetchInFlightRef = useRef(false);
+
+  const fetchReviews = useCallback(async () => {
+    if (fetchInFlightRef.current) return;
+    fetchInFlightRef.current = true;
+    try {
+      const res = await fetch('/api/reviews');
+      if (!res.ok) throw new Error(`Server returned status ${res.status}`);
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        setUpcomingReviews(formatItems(data));
+      }
+    } catch (err) {
+      // Background resync — stay quiet, the next focus/interval retries.
+      console.error("Failed to refresh reviews:", err);
+    } finally {
+      fetchInFlightRef.current = false;
+    }
   }, []);
 
+  // Always refetch on mount and whenever the tab regains focus/visibility.
   useEffect(() => {
-    // Only fetch if we somehow don't have reviews (initial load missing)
-    // or when returning to the dashboard tab from another tab
-    if (activeTab === "dashboard" && upcomingReviews.length === 0) {
-      fetchReviews();
-    }
-  }, [activeTab, fetchReviews]);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- async fetch kickoff, not a sync state write
+    fetchReviews();
+    const onFocus = () => fetchReviews();
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") fetchReviews();
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [fetchReviews]);
+
+  // While any podcast is still rendering server-side ("Wird generiert"), poll
+  // every 60s (only while the tab is visible) so links appear without a reload.
+  const isPendingUrl = (url: string | null) => !url || !url.startsWith("http");
+  const hasPendingPodcast = upcomingReviews.some(
+    r => isPendingUrl(r.raw.prePodcastUrl) || isPendingUrl(r.raw.postPodcastUrl)
+  );
+
+  useEffect(() => {
+    if (!hasPendingPodcast) return;
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === "visible") fetchReviews();
+    }, 60_000);
+    return () => window.clearInterval(intervalId);
+  }, [hasPendingPodcast, fetchReviews]);
+
+  // The inline "Wirklich löschen?" prompt resets itself if not confirmed.
+  useEffect(() => {
+    if (!confirmingDeleteId) return;
+    const timeoutId = window.setTimeout(() => setConfirmingDeleteId(null), 4000);
+    return () => window.clearTimeout(timeoutId);
+  }, [confirmingDeleteId]);
 
   const handleDeleteModule = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
-    if (confirm("Möchtest du dieses Modul wirklich löschen?")) {
-      try {
-        const res = await fetch(`/api/reviews/${id}`, { method: "DELETE" });
-        if (res.ok) {
-          fetchReviews();
-        } else {
-          alert("Fehler beim Löschen des Moduls.");
-        }
-      } catch (err) {
-        console.error(err);
-        alert("Fehler beim Löschen des Moduls.");
-      }
+    if (deletingIds[id]) return;
+    // Two-step confirmation: first click arms the button, second click deletes.
+    if (confirmingDeleteId !== id) {
+      setConfirmingDeleteId(id);
+      return;
     }
-  };
-
-  const copyToClipboard = (text: string, id: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedId(id);
-    setTimeout(() => setCopiedId(""), 2000);
+    setConfirmingDeleteId(null);
+    setDeletingIds(prev => ({ ...prev, [id]: true }));
+    try {
+      const res = await fetch(`/api/reviews/${id}`, { method: "DELETE" });
+      if (res.ok || res.status === 404) {
+        // 404 = already gone on the server — remove it locally either way.
+        setUpcomingReviews(prev => prev.filter(r => r.id !== id));
+        addToast("success", language === "german" ? "Modul gelöscht." : "Module deleted.");
+      } else {
+        throw new Error(`Server returned status ${res.status}`);
+      }
+    } catch (err) {
+      console.error(err);
+      addToast("error", language === "german" ? "Fehler beim Löschen des Moduls." : "Failed to delete the module.");
+    } finally {
+      setDeletingIds(prev => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+    }
   };
 
   const handleGeneratePodcast = async (e: React.MouseEvent, reviewId: string, podcastType: "pre" | "post") => {
     e.stopPropagation();
     const stateKey = `${reviewId}-${podcastType}`;
+    if (generatingPodcasts[stateKey]) return;
     setGeneratingPodcasts(prev => ({ ...prev, [stateKey]: true }));
     try {
       const res = await fetch("/api/podcast/generate", {
@@ -287,32 +448,94 @@ export default function DashboardClient({ initialItems }: { initialItems: any[] 
         body: JSON.stringify({ itemId: reviewId, podcastType })
       });
       if (!res.ok) {
-        const errData = await res.json();
+        const errData = await res.json().catch(() => ({}));
         throw new Error(errData.error || "Failed to start generation");
       }
-      alert(`Podcast generation started in the background! This takes about 3-5 minutes. You will receive a push notification when it's ready (refresh the page later).`);
-    } catch (err: any) {
-      alert(`Error: ${err.message}`);
+      addToast("success", language === "german"
+        ? "Podcast-Generierung gestartet (ca. 3–5 Minuten). Der Link erscheint automatisch in der Liste."
+        : "Podcast generation started (about 3-5 minutes). The link will appear in the list automatically.");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to start generation";
+      addToast("error", `${language === "german" ? "Fehler" : "Error"}: ${msg}`);
       setGeneratingPodcasts(prev => ({ ...prev, [stateKey]: false }));
     }
   };
 
-  const startQuiz = (review: any) => {
+  /** Persist module presets; shared by add/remove handlers in the settings modal. */
+  const savePresets = (newPresets: string[], onSuccess?: (saved: string[]) => void) => {
+    fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'update_presets', presets: newPresets })
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.error) {
+          addToast("error", `${language === "german" ? "Fehler" : "Error"}: ${data.error}`);
+          return;
+        }
+        setModulePresets(data.modulePresets || []);
+        onSuccess?.(data.modulePresets || []);
+      })
+      .catch(err => {
+        console.error(err);
+        addToast("error", language === "german" ? "Einstellungen konnten nicht gespeichert werden." : "Failed to save settings.");
+      });
+  };
+
+  /** Danger-zone semester actions (new semester / reset), confirmed via two-step buttons. */
+  const runSemesterAction = (action: "new_semester" | "reset_semester") => {
+    if (isSemesterActionBusy) return;
+    setIsSemesterActionBusy(true);
+    fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action })
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.error) {
+          addToast("error", `${language === "german" ? "Fehler" : "Error"}: ${data.error}`);
+          return;
+        }
+        setCurrentSemester(data.currentSemester);
+        setModulePresets(data.modulePresets || []);
+        setSubjectInput("");
+        addToast("success", language === "german"
+          ? `Semester aktualisiert: Semester ${data.currentSemester}.`
+          : `Semester updated: Semester ${data.currentSemester}.`);
+      })
+      .catch(err => {
+        console.error(err);
+        addToast("error", language === "german" ? "Aktion fehlgeschlagen. Bitte erneut versuchen." : "Action failed. Please try again.");
+      })
+      .finally(() => setIsSemesterActionBusy(false));
+  };
+
+  // Reset armed danger-zone confirmations when they expire or the modal closes.
+  useEffect(() => {
+    if (!confirmingNewSemester && !confirmingResetSemester) return;
+    const timeoutId = window.setTimeout(() => {
+      setConfirmingNewSemester(false);
+      setConfirmingResetSemester(false);
+    }, 5000);
+    return () => window.clearTimeout(timeoutId);
+  }, [confirmingNewSemester, confirmingResetSemester]);
+
+  useEffect(() => {
+    if (!showSettingsModal) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reset transient confirm state when the modal closes
+      setConfirmingNewSemester(false);
+      setConfirmingResetSemester(false);
+    }
+  }, [showSettingsModal]);
+
+  const startQuiz = (review: ReviewCard) => {
     setSelectedReview(review);
 
-    // Extract quiz based on level
-    const level = review.level;
-    const quizFields = [
-      review.raw.quiz1DocId,
-      review.raw.quiz2DocId,
-      review.raw.quiz3DocId,
-      review.raw.quiz4DocId,
-      review.raw.quiz5DocId,
-      review.raw.quiz6DocId,
-      review.raw.quiz7DocId
-    ];
-    // For levels 6 and beyond, we keep rolling over the quiz7DocId slot
-    const quizText = (level >= 6 ? review.raw.quiz7DocId : quizFields[level]) || review.raw.quiz1DocId || "";
+    // The server already resolved the level-correct quiz text (incl. quiz-1
+    // fallback and the level>=6 quiz-7 rollover) into `currentQuizText`.
+    const quizText = review.raw.currentQuizText || "";
 
     // Only display/process student questions
     const studentQuizOnly = extractStudentQuiz(quizText);
@@ -340,7 +563,6 @@ export default function DashboardClient({ initialItems }: { initialItems: any[] 
 
     setGradingResult(null);
     setGradingError("");
-    setResultTab("brief");
     setActiveTab("quiz");
   };
 
@@ -352,11 +574,11 @@ export default function DashboardClient({ initialItems }: { initialItems: any[] 
         const review = upcomingReviews.find(r => r.id === quizId);
         if (review) {
           window.history.replaceState({}, document.title, window.location.pathname);
+          // eslint-disable-next-line react-hooks/set-state-in-effect -- ?quizId= deep link (calendar/shortcut) must open the quiz once on load
           startQuiz(review);
         }
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [upcomingReviews]);
 
   const exportQuizForPrint = () => {
@@ -366,9 +588,15 @@ export default function DashboardClient({ initialItems }: { initialItems: any[] 
 
   const handleGenerate = async () => {
     if ((!textInput && uploadedFiles.length === 0) || !subjectInput) return;
+    if (isGenerating) return; // double-submit guard
     setIsGenerating(true);
     setProgressStep(0);
     setProgressMsg("Starting ironclad engine...");
+
+    // Hard timeout so a hung connection can't leave the spinner on forever.
+    const abortController = new AbortController();
+    const timeoutId = window.setTimeout(() => abortController.abort(), STREAM_TIMEOUT_MS);
+    let sawDone = false;
 
     try {
       const formData = new FormData();
@@ -380,7 +608,8 @@ export default function DashboardClient({ initialItems }: { initialItems: any[] 
 
       const res = await fetch("/api/quiz", {
         method: "POST",
-        body: formData
+        body: formData,
+        signal: abortController.signal
       });
 
       if (!res.ok) {
@@ -388,60 +617,56 @@ export default function DashboardClient({ initialItems }: { initialItems: any[] 
         throw new Error(errorData.error || `Server returned status ${res.status}`);
       }
 
-      if (!res.body) throw new Error("No response body");
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let done = false;
-
-      let buffer = "";
-
-      while (!done) {
-        const { value, done: doneReading } = await reader.read();
-        done = doneReading;
-        if (value) {
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\n");
-          buffer = lines.pop() || ""; // Keep the last partial line in the buffer
-
-          for (const line of lines) {
-            if (line.trim()) {
-              try {
-                const data = JSON.parse(line);
-                if (data.event === "progress") {
-                  setProgressStep(data.data.step);
-                  setProgressMsg(data.data.message);
-                } else if (data.event === "done") {
-                  setProgressStep(8);
-                  setProgressMsg("Successfully integrated into your SRS database!");
-                  setTimeout(() => {
-                    setIsGenerating(false);
-                    setActiveTab("dashboard");
-                    setSubjectInput("");
-                    setTextInput("");
-                    setUploadedFiles([]);
-                  }, 3000);
-                } else if (data.event === "error") {
-                  setProgressMsg(data.data.message);
-                  alert(`Generierungsfehler: ${data.data.message}`);
-                  setIsGenerating(false);
-                }
-              } catch (e) {
-                // Ignore incomplete json chunks
-              }
-            }
-          }
+      const sawTerminalEvent = await readNdjsonStream(res, (evt) => {
+        if (evt.event === "progress") {
+          if (typeof evt.data.step === "number") setProgressStep(evt.data.step);
+          setProgressMsg(evt.data.message ?? "");
+        } else if (evt.event === "done") {
+          sawDone = true;
+          setProgressStep(8);
+          setProgressMsg("Successfully integrated into your SRS database!");
+          // `srsItem` here is the FULL created row — never append it to the
+          // slim list state; refetch the slim list instead.
+          fetchReviews();
+          setTimeout(() => {
+            setIsGenerating(false);
+            setActiveTab("dashboard");
+            setSubjectInput("");
+            setTextInput("");
+            setUploadedFiles([]);
+          }, 3000);
+        } else if (evt.event === "error") {
+          const msg = evt.data.message ?? "Unbekannter Fehler";
+          setProgressMsg(msg);
+          addToast("error", `Generierungsfehler: ${msg}`);
         }
+      });
+
+      if (!sawTerminalEvent) {
+        // Stream died silently (network drop / server restart / HMR). The
+        // backend keeps working after a disconnect — results land in the DB.
+        setProgressMsg("Verbindung unterbrochen — Status wird neu geladen…");
+        addToast("error", "Verbindung unterbrochen — Status wird neu geladen…");
+        fetchReviews();
       }
-    } catch (e: any) {
+    } catch (e) {
       console.error(e);
-      setProgressMsg(e.message || "Failed to connect to server.");
-      setIsGenerating(false);
+      const message = e instanceof DOMException && e.name === "AbortError"
+        ? "Zeitüberschreitung — Verbindung unterbrochen. Status wird neu geladen…"
+        : e instanceof Error && e.message ? e.message : "Failed to connect to server.";
+      setProgressMsg(message);
+      addToast("error", message);
+      fetchReviews();
+    } finally {
+      window.clearTimeout(timeoutId);
+      // Always clear the busy state. After `done`, the success screen stays
+      // visible for 3s and its own timer above clears it.
+      if (!sawDone) setIsGenerating(false);
     }
   };
 
   const handleGrade = async () => {
-    if (!selectedReview) return;
+    if (!selectedReview || isGrading) return;
 
     let payloadAnswers = studentAnswers;
     if (parsedTasks.length > 0) {
@@ -458,6 +683,10 @@ export default function DashboardClient({ initialItems }: { initialItems: any[] 
     setGradingMsg("Calling grading agents...");
     setGradingError("");
 
+    // Hard timeout so a hung connection can't leave the spinner on forever.
+    const abortController = new AbortController();
+    const timeoutId = window.setTimeout(() => abortController.abort(), STREAM_TIMEOUT_MS);
+
     try {
       const res = await fetch("/api/grade", {
         method: "POST",
@@ -466,7 +695,8 @@ export default function DashboardClient({ initialItems }: { initialItems: any[] 
           itemId: selectedReview.id,
           studentAnswers: payloadAnswers,
           language: language
-        })
+        }),
+        signal: abortController.signal
       });
 
       if (!res.ok) {
@@ -474,51 +704,52 @@ export default function DashboardClient({ initialItems }: { initialItems: any[] 
         throw new Error(errorData.error || `Server returned status ${res.status}`);
       }
 
-      if (!res.body) throw new Error("No response body");
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let done = false;
-      let buffer = "";
-
-      while (!done) {
-        const { value, done: doneReading } = await reader.read();
-        done = doneReading;
-        if (value) {
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\n");
-          buffer = lines.pop() || "";
-
-          for (const line of lines) {
-            if (line.trim()) {
-              try {
-                const data = JSON.parse(line);
-                if (data.event === "progress") {
-                  setGradingStep(data.data.step);
-                  setGradingMsg(data.data.message);
-                } else if (data.event === "done") {
-                  setGradingStep(5);
-                  setGradingMsg("Grading finished! Scheduling updated.");
-                  setGradingResult(data.data);
-                  setIsGrading(false);
-                } else if (data.event === "error") {
-                  setGradingMsg(data.data.message);
-                  setGradingError(data.data.message);
-                  alert(`Grading Error: ${data.data.message}`);
-                  setIsGrading(false);
-                }
-              } catch (e) {
-                // Ignore chunk parse errors
-              }
-            }
-          }
+      const sawTerminalEvent = await readNdjsonStream(res, (evt) => {
+        if (evt.event === "progress") {
+          if (typeof evt.data.step === "number") setGradingStep(evt.data.step);
+          setGradingMsg(evt.data.message ?? "");
+        } else if (evt.event === "done") {
+          setGradingStep(5);
+          setGradingMsg("Grading finished! Scheduling updated.");
+          // `srsItem` is the FULL updated row — keep only what the result
+          // screen needs and resync the slim list via refetch.
+          const nrd = evt.data.srsItem?.nextReviewDate;
+          setGradingResult({
+            isPass: !!evt.data.isPass,
+            feedback: evt.data.feedback ?? evt.data.srsItem?.lastFeedback ?? "",
+            nextReviewDate: nrd ? new Date(nrd).toISOString() : null,
+            currentLevel: typeof evt.data.srsItem?.currentLevel === "number" ? evt.data.srsItem.currentLevel : null,
+          });
+          fetchReviews();
+        } else if (evt.event === "error") {
+          const msg = evt.data.message ?? "Unbekannter Fehler";
+          setGradingMsg(msg);
+          setGradingError(msg);
+          addToast("error", `Grading-Fehler: ${msg}`);
         }
+      });
+
+      if (!sawTerminalEvent) {
+        // Stream died silently — the backend keeps grading after a
+        // disconnect, so resync the list from the DB.
+        const message = "Verbindung unterbrochen — Status wird neu geladen…";
+        setGradingMsg(message);
+        setGradingError(message);
+        addToast("error", message);
+        fetchReviews();
       }
-    } catch (e: any) {
+    } catch (e) {
       console.error(e);
-      setGradingMsg(e.message || "Failed to connect to grading server.");
-      setGradingError(e.message || "Failed to connect to grading server.");
-      setIsGrading(false);
+      const message = e instanceof DOMException && e.name === "AbortError"
+        ? "Zeitüberschreitung — Verbindung unterbrochen. Status wird neu geladen…"
+        : e instanceof Error && e.message ? e.message : "Failed to connect to grading server.";
+      setGradingMsg(message);
+      setGradingError(message);
+      addToast("error", message);
+      fetchReviews();
+    } finally {
+      window.clearTimeout(timeoutId);
+      setIsGrading(false); // never leave the grading spinner stuck
     }
   };
 
@@ -763,7 +994,6 @@ export default function DashboardClient({ initialItems }: { initialItems: any[] 
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         setActiveFeedbackItem(review.raw);
-                                        setFeedbackTab("brief");
                                       }}
                                       className="mt-4 text-xs bg-white/[0.04] hover:bg-white/[0.07] border border-white/[0.09] hover:border-white/[0.16] text-white/55 hover:text-white/80 px-3.5 py-2 rounded-lg flex items-center gap-2 transition-all cursor-pointer"
                                     >
@@ -774,7 +1004,7 @@ export default function DashboardClient({ initialItems }: { initialItems: any[] 
 
                                   {(() => {
                                     let latestVideoUrl = review.raw.videoUrl;
-                                    let videoHistory: any[] = [];
+                                    let videoHistory: { level: number; url: string; date?: string }[] = [];
                                     let latestVideoLevel = 0;
                                     if (latestVideoUrl && latestVideoUrl.startsWith("[")) {
                                       try {
@@ -782,11 +1012,11 @@ export default function DashboardClient({ initialItems }: { initialItems: any[] 
                                         if (videoHistory.length > 0) {
                                           const lastVid = videoHistory[videoHistory.length - 1];
                                           latestVideoUrl = lastVid.url;
-                                          latestVideoLevel = lastVid.level !== undefined ? lastVid.level : 0;
+                                          latestVideoLevel = lastVid.level ?? 0;
                                         } else {
                                           latestVideoUrl = null;
                                         }
-                                      } catch(e) { }
+                                      } catch { /* malformed history JSON — treat as no videos */ }
                                     } else if (latestVideoUrl && latestVideoUrl.startsWith("http")) {
                                       videoHistory = [{ level: 0, url: latestVideoUrl }];
                                       latestVideoLevel = 0;
@@ -830,10 +1060,16 @@ export default function DashboardClient({ initialItems }: { initialItems: any[] 
                                                   Audio 1
                                                 </a>
                                               ) : (
-                                                <div className="text-[10px] font-medium bg-white/[0.02] border border-dashed border-white/10 text-white/30 px-2 py-2.5 rounded-lg flex items-center gap-2 w-full justify-center text-center">
+                                                <button
+                                                  onClick={(e) => handleGeneratePodcast(e, review.id, "pre")}
+                                                  disabled={!!generatingPodcasts[`${review.id}-pre`]}
+                                                  className="text-[10px] font-medium bg-white/[0.02] hover:bg-amber-400/[0.08] border border-dashed border-white/10 hover:border-amber-400/30 text-white/30 hover:text-white/60 disabled:hover:bg-white/[0.02] disabled:hover:text-white/30 disabled:cursor-wait px-2 py-2.5 rounded-lg flex items-center gap-2 w-full justify-center text-center transition-all cursor-pointer"
+                                                >
                                                   <span className="ember-dot w-1 h-1 rounded-full bg-amber-400/60 shrink-0"></span>
-                                                  {language === 'german' ? 'Wird generiert' : 'Generating'}
-                                                </div>
+                                                  {generatingPodcasts[`${review.id}-pre`]
+                                                    ? (language === 'german' ? 'Gestartet…' : 'Started…')
+                                                    : (language === 'german' ? 'Wird generiert – antippen zum Starten' : 'Generating – tap to (re)start')}
+                                                </button>
                                               )}
                                             </div>
 
@@ -852,10 +1088,16 @@ export default function DashboardClient({ initialItems }: { initialItems: any[] 
                                                   Audio 2
                                                 </a>
                                               ) : (
-                                                <div className="text-[10px] font-medium bg-white/[0.02] border border-dashed border-white/10 text-white/30 px-2 py-2.5 rounded-lg flex items-center gap-2 w-full justify-center text-center">
+                                                <button
+                                                  onClick={(e) => handleGeneratePodcast(e, review.id, "post")}
+                                                  disabled={!!generatingPodcasts[`${review.id}-post`]}
+                                                  className="text-[10px] font-medium bg-white/[0.02] hover:bg-amber-400/[0.08] border border-dashed border-white/10 hover:border-amber-400/30 text-white/30 hover:text-white/60 disabled:hover:bg-white/[0.02] disabled:hover:text-white/30 disabled:cursor-wait px-2 py-2.5 rounded-lg flex items-center gap-2 w-full justify-center text-center transition-all cursor-pointer"
+                                                >
                                                   <span className="ember-dot w-1 h-1 rounded-full bg-amber-400/60 shrink-0"></span>
-                                                  {language === 'german' ? 'Wird generiert' : 'Generating'}
-                                                </div>
+                                                  {generatingPodcasts[`${review.id}-post`]
+                                                    ? (language === 'german' ? 'Gestartet…' : 'Started…')
+                                                    : (language === 'german' ? 'Wird generiert – antippen zum Starten' : 'Generating – tap to (re)start')}
+                                                </button>
                                               )}
                                             </div>
 
@@ -892,13 +1134,29 @@ export default function DashboardClient({ initialItems }: { initialItems: any[] 
                                   <button className="hidden sm:flex w-11 h-11 rounded-full items-center justify-center transition-all bg-white/[0.04] border border-white/[0.07] text-white/40 group-hover:bg-amber-400/15 group-hover:border-amber-400/30 group-hover:text-amber-200 group-hover:scale-110 cursor-pointer">
                                     <ChevronRightIcon className="w-5 h-5" />
                                   </button>
-                                  <button
-                                    onClick={(e) => handleDeleteModule(e, review.id)}
-                                    className="w-10 h-10 sm:w-11 sm:h-11 rounded-full flex items-center justify-center transition-all bg-white/[0.04] border border-white/[0.07] text-white/35 hover:bg-rose-500/15 hover:border-rose-400/30 hover:text-rose-300 cursor-pointer"
-                                    title="Delete Module"
-                                  >
-                                    <TrashIcon className="w-4 h-4" />
-                                  </button>
+                                  {confirmingDeleteId === review.id && !deletingIds[review.id] ? (
+                                    <button
+                                      onClick={(e) => handleDeleteModule(e, review.id)}
+                                      className="px-3 py-2 rounded-full flex items-center justify-center gap-1.5 transition-all bg-rose-500/15 border border-rose-400/40 text-rose-200 hover:bg-rose-500/25 hover:border-rose-400/60 text-[10px] font-bold uppercase tracking-wide whitespace-nowrap cursor-pointer"
+                                      title={language === 'german' ? 'Wirklich löschen?' : 'Really delete?'}
+                                    >
+                                      <TrashIcon className="w-3.5 h-3.5" />
+                                      {language === 'german' ? 'Wirklich löschen?' : 'Really delete?'}
+                                    </button>
+                                  ) : (
+                                    <button
+                                      onClick={(e) => handleDeleteModule(e, review.id)}
+                                      disabled={!!deletingIds[review.id]}
+                                      className="w-10 h-10 sm:w-11 sm:h-11 rounded-full flex items-center justify-center transition-all bg-white/[0.04] border border-white/[0.07] text-white/35 hover:bg-rose-500/15 hover:border-rose-400/30 hover:text-rose-300 cursor-pointer disabled:opacity-60 disabled:cursor-wait"
+                                      title={language === 'german' ? 'Modul löschen' : 'Delete Module'}
+                                    >
+                                      {deletingIds[review.id] ? (
+                                        <ArrowPathIcon className="w-4 h-4 animate-spin text-rose-300" />
+                                      ) : (
+                                        <TrashIcon className="w-4 h-4" />
+                                      )}
+                                    </button>
+                                  )}
                                 </div>
                               </div>
                             </motion.div>
@@ -1069,7 +1327,7 @@ export default function DashboardClient({ initialItems }: { initialItems: any[] 
                     </div>
                     <button
                       onClick={handleGenerate}
-                      disabled={(!textInput && uploadedFiles.length === 0) || !subjectInput}
+                      disabled={isGenerating || (!textInput && uploadedFiles.length === 0) || !subjectInput}
                       className="btn-primary w-full py-4 text-sm flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-40"
                     >
                       <CpuChipIcon className="w-5 h-5" />
@@ -1197,9 +1455,12 @@ export default function DashboardClient({ initialItems }: { initialItems: any[] 
                             ? <>Level <em className="text-gradient italic">Promoted!</em></>
                             : <>Remediation <em className="italic text-rose-200">Scheduled</em></>}
                         </h2>
-                        <p className="text-white/50 mt-3 text-sm">
-                          Next review set to: <strong className="text-amber-200 font-semibold">{new Date(gradingResult.srsItem.nextReviewDate).toLocaleDateString()}</strong> (Level {gradingResult.srsItem.currentLevel + 1})
-                        </p>
+                        {gradingResult.nextReviewDate && (
+                          <p className="text-white/50 mt-3 text-sm">
+                            Next review set to: <strong className="text-amber-200 font-semibold">{new Date(gradingResult.nextReviewDate).toLocaleDateString()}</strong>
+                            {gradingResult.currentLevel !== null && <> (Level {gradingResult.currentLevel + 1})</>}
+                          </p>
+                        )}
                       </div>
                       <button
                         onClick={() => {
@@ -1221,7 +1482,7 @@ export default function DashboardClient({ initialItems }: { initialItems: any[] 
 
                       <div className="p-6 md:p-8">
                         <div className="whitespace-pre-wrap font-sans text-white/65 text-[15px] leading-relaxed">
-                          {gradingResult.srsItem.lastFeedback}
+                          {gradingResult.feedback}
                         </div>
                       </div>
                     </div>
@@ -1280,7 +1541,7 @@ export default function DashboardClient({ initialItems }: { initialItems: any[] 
                             whileHover={{ scale: 1.01 }}
                             whileTap={{ scale: 0.98 }}
                             onClick={handleGrade}
-                            disabled={!parsedTasks.some(task => (individualAnswers[task.id] || "").trim().length > 0)}
+                            disabled={isGrading || !parsedTasks.some(task => (individualAnswers[task.id] || "").trim().length > 0)}
                             className="btn-primary w-full py-5 text-xs font-bold uppercase tracking-[0.14em] flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-40"
                           >
                             <SparklesIcon className="w-5 h-5" />
@@ -1291,20 +1552,8 @@ export default function DashboardClient({ initialItems }: { initialItems: any[] 
                     ) : (
                       <div className="card-surface-elevated p-5 md:p-8 flex flex-col">
                         <div className="bg-black/25 border border-white/[0.06] rounded-2xl p-6 font-sans whitespace-pre-wrap text-white/60 text-sm leading-relaxed mb-6">
-                          {(() => {
-                            const level = selectedReview.level;
-                            const quizFields = [
-                              selectedReview.raw.quiz1DocId,
-                              selectedReview.raw.quiz2DocId,
-                              selectedReview.raw.quiz3DocId,
-                              selectedReview.raw.quiz4DocId,
-                              selectedReview.raw.quiz5DocId,
-                              selectedReview.raw.quiz6DocId,
-                              selectedReview.raw.quiz7DocId
-                            ];
-                            const rawQuiz = (level >= 6 ? selectedReview.raw.quiz7DocId : quizFields[level]) || selectedReview.raw.quiz1DocId || "";
-                            return extractStudentQuiz(rawQuiz);
-                          })()}
+                          {/* Server-computed, level-correct quiz text (slim payload) */}
+                          {extractStudentQuiz(selectedReview.raw.currentQuizText || "")}
                         </div>
 
                         <span className="block text-[10px] font-bold text-white/30 uppercase tracking-[0.2em] mb-3">Your Answer:</span>
@@ -1318,7 +1567,7 @@ export default function DashboardClient({ initialItems }: { initialItems: any[] 
                           whileHover={{ scale: 1.01 }}
                           whileTap={{ scale: 0.98 }}
                           onClick={handleGrade}
-                          disabled={!studentAnswers.trim()}
+                          disabled={isGrading || !studentAnswers.trim()}
                           className="btn-primary w-full py-5 text-xs font-bold uppercase tracking-[0.14em] flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-40"
                         >
                           <SparklesIcon className="w-5 h-5" />
@@ -1573,17 +1822,8 @@ export default function DashboardClient({ initialItems }: { initialItems: any[] 
                           <button
                             onClick={() => {
                               const newPresets = modulePresets.filter((_, i) => i !== idx);
-                              fetch('/api/settings', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ action: 'update_presets', presets: newPresets })
-                              }).then(res => res.json()).then(data => {
-                                if (data.error) {
-                                  alert(`Error: ${data.error}`);
-                                  return;
-                                }
-                                setModulePresets(data.modulePresets || []);
-                                if (subjectInput === preset) setSubjectInput((data.modulePresets && data.modulePresets[0]) || "");
+                              savePresets(newPresets, (saved) => {
+                                if (subjectInput === preset) setSubjectInput(saved[0] || "");
                               });
                             }}
                             className="text-white/30 hover:text-rose-300 transition-colors cursor-pointer"
@@ -1601,18 +1841,9 @@ export default function DashboardClient({ initialItems }: { initialItems: any[] 
                       onChange={e => setNewPresetInput(e.target.value)}
                       onKeyDown={e => {
                         if (e.key === 'Enter' && newPresetInput.trim()) {
-                          const newPresets = [...modulePresets, newPresetInput.trim()];
-                          fetch('/api/settings', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ action: 'update_presets', presets: newPresets })
-                          }).then(res => res.json()).then(data => {
-                            if (data.error) {
-                              alert(`Error: ${data.error}`);
-                              return;
-                            }
-                            setModulePresets(data.modulePresets || []);
-                            if (!subjectInput) setSubjectInput(newPresetInput.trim());
+                          const trimmed = newPresetInput.trim();
+                          savePresets([...modulePresets, trimmed], () => {
+                            if (!subjectInput) setSubjectInput(trimmed);
                             setNewPresetInput("");
                           });
                         }
@@ -1623,18 +1854,9 @@ export default function DashboardClient({ initialItems }: { initialItems: any[] 
                     <button
                       onClick={() => {
                         if (newPresetInput.trim()) {
-                          const newPresets = [...modulePresets, newPresetInput.trim()];
-                          fetch('/api/settings', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ action: 'update_presets', presets: newPresets })
-                          }).then(res => res.json()).then(data => {
-                            if (data.error) {
-                              alert(`Error: ${data.error}`);
-                              return;
-                            }
-                            setModulePresets(data.modulePresets || []);
-                            if (!subjectInput) setSubjectInput(newPresetInput.trim());
+                          const trimmed = newPresetInput.trim();
+                          savePresets([...modulePresets, trimmed], () => {
+                            if (!subjectInput) setSubjectInput(trimmed);
                             setNewPresetInput("");
                           });
                         }
@@ -1656,7 +1878,14 @@ export default function DashboardClient({ initialItems }: { initialItems: any[] 
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({ action: 'update_language', language: 'german' })
                         }).then(res => res.json()).then(data => {
-                          if (!data.error && data.language) setLanguage(data.language);
+                          if (data.error) {
+                            addToast("error", `${language === "german" ? "Fehler" : "Error"}: ${data.error}`);
+                            return;
+                          }
+                          if (data.language) setLanguage(data.language);
+                        }).catch(err => {
+                          console.error(err);
+                          addToast("error", language === "german" ? "Einstellung konnte nicht gespeichert werden." : "Failed to save setting.");
                         });
                       }}
                       className={`flex-1 py-2.5 rounded-lg text-sm transition-colors cursor-pointer ${language === 'german' ? 'bg-amber-400/15 text-amber-100 border border-amber-400/30 font-medium' : 'border border-transparent text-white/45 hover:bg-white/[0.04] hover:text-white/70'}`}
@@ -1670,7 +1899,14 @@ export default function DashboardClient({ initialItems }: { initialItems: any[] 
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({ action: 'update_language', language: 'english' })
                         }).then(res => res.json()).then(data => {
-                          if (!data.error && data.language) setLanguage(data.language);
+                          if (data.error) {
+                            addToast("error", `${language === "german" ? "Fehler" : "Error"}: ${data.error}`);
+                            return;
+                          }
+                          if (data.language) setLanguage(data.language);
+                        }).catch(err => {
+                          console.error(err);
+                          addToast("error", language === "german" ? "Einstellung konnte nicht gespeichert werden." : "Failed to save setting.");
                         });
                       }}
                       className={`flex-1 py-2.5 rounded-lg text-sm transition-colors cursor-pointer ${language === 'english' ? 'bg-amber-400/15 text-amber-100 border border-amber-400/30 font-medium' : 'border border-transparent text-white/45 hover:bg-white/[0.04] hover:text-white/70'}`}
@@ -1702,7 +1938,14 @@ export default function DashboardClient({ initialItems }: { initialItems: any[] 
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({ action: 'update_wrapper_toggle', wrapperMode: "all" })
                         }).then(res => res.json()).then(data => {
-                          if (!data.error && data.wrapperMode) setWrapperMode(data.wrapperMode);
+                          if (data.error) {
+                            addToast("error", `${language === "german" ? "Fehler" : "Error"}: ${data.error}`);
+                            return;
+                          }
+                          if (data.wrapperMode) setWrapperMode(data.wrapperMode);
+                        }).catch(err => {
+                          console.error(err);
+                          addToast("error", language === "german" ? "Einstellung konnte nicht gespeichert werden." : "Failed to save setting.");
                         });
                       }}
                       className={`flex-1 py-2.5 rounded-lg text-xs sm:text-sm transition-colors cursor-pointer ${(isGenerating || isGrading) ? 'opacity-50 cursor-not-allowed' : ''} ${wrapperMode === "all" ? 'bg-amber-400/15 text-amber-100 border border-amber-400/30 font-medium' : 'border border-transparent text-white/45 hover:bg-white/[0.04] hover:text-white/70'}`}
@@ -1717,7 +1960,14 @@ export default function DashboardClient({ initialItems }: { initialItems: any[] 
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({ action: 'update_wrapper_toggle', wrapperMode: "generation_only" })
                         }).then(res => res.json()).then(data => {
-                          if (!data.error && data.wrapperMode) setWrapperMode(data.wrapperMode);
+                          if (data.error) {
+                            addToast("error", `${language === "german" ? "Fehler" : "Error"}: ${data.error}`);
+                            return;
+                          }
+                          if (data.wrapperMode) setWrapperMode(data.wrapperMode);
+                        }).catch(err => {
+                          console.error(err);
+                          addToast("error", language === "german" ? "Einstellung konnte nicht gespeichert werden." : "Failed to save setting.");
                         });
                       }}
                       className={`flex-1 py-2.5 rounded-lg text-xs sm:text-sm transition-colors cursor-pointer ${(isGenerating || isGrading) ? 'opacity-50 cursor-not-allowed' : ''} ${wrapperMode === "generation_only" ? 'bg-amber-400/15 text-amber-100 border border-amber-400/30 font-medium' : 'border border-transparent text-white/45 hover:bg-white/[0.04] hover:text-white/70'}`}
@@ -1732,7 +1982,14 @@ export default function DashboardClient({ initialItems }: { initialItems: any[] 
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({ action: 'update_wrapper_toggle', wrapperMode: "none" })
                         }).then(res => res.json()).then(data => {
-                          if (!data.error && data.wrapperMode) setWrapperMode(data.wrapperMode);
+                          if (data.error) {
+                            addToast("error", `${language === "german" ? "Fehler" : "Error"}: ${data.error}`);
+                            return;
+                          }
+                          if (data.wrapperMode) setWrapperMode(data.wrapperMode);
+                        }).catch(err => {
+                          console.error(err);
+                          addToast("error", language === "german" ? "Einstellung konnte nicht gespeichert werden." : "Failed to save setting.");
                         });
                       }}
                       className={`flex-1 py-2.5 rounded-lg text-xs sm:text-sm transition-colors cursor-pointer ${(isGenerating || isGrading) ? 'opacity-50 cursor-not-allowed' : ''} ${wrapperMode === "none" ? 'bg-amber-400/15 text-amber-100 border border-amber-400/30 font-medium' : 'border border-transparent text-white/45 hover:bg-white/[0.04] hover:text-white/70'}`}
@@ -1747,48 +2004,44 @@ export default function DashboardClient({ initialItems }: { initialItems: any[] 
                   <p className="text-white/40 text-xs mb-4 leading-relaxed">{language === "german" ? "Der Start eines neuen Semesters erhöht den Semesterzähler und löscht deine aktuellen Modul-Voreinstellungen." : "Starting a new semester will increment your semester counter and wipe your current module presets so you can start fresh."}</p>
                   <button
                     onClick={() => {
-                      if (confirm("Are you sure you want to start a new semester? Your presets will be reset.")) {
-                        fetch('/api/settings', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ action: 'new_semester' })
-                        }).then(res => res.json()).then(data => {
-                          if (data.error) {
-                            alert(`Error: ${data.error}`);
-                            return;
-                          }
-                          setCurrentSemester(data.currentSemester);
-                          setModulePresets(data.modulePresets || []);
-                          setSubjectInput("");
-                        });
+                      // Two-step confirmation instead of a blocking confirm().
+                      if (!confirmingNewSemester) {
+                        setConfirmingNewSemester(true);
+                        setConfirmingResetSemester(false);
+                        return;
                       }
+                      setConfirmingNewSemester(false);
+                      runSemesterAction('new_semester');
                     }}
-                    className="w-full py-3.5 bg-rose-500/[0.08] hover:bg-rose-500/[0.16] text-rose-300 border border-rose-400/20 hover:border-rose-400/35 rounded-xl text-sm font-medium transition-colors flex items-center justify-center gap-2 mb-2 cursor-pointer"
+                    disabled={isSemesterActionBusy}
+                    className={`w-full py-3.5 text-rose-300 border rounded-xl text-sm font-medium transition-colors flex items-center justify-center gap-2 mb-2 cursor-pointer disabled:opacity-50 disabled:cursor-wait ${confirmingNewSemester ? 'bg-rose-500/[0.2] border-rose-400/50' : 'bg-rose-500/[0.08] hover:bg-rose-500/[0.16] border-rose-400/20 hover:border-rose-400/35'}`}
                   >
-                    <ExclamationTriangleIcon className="w-4 h-4" />
-                    {language === "german" ? `Neues Semester starten (Semester ${currentSemester + 1})` : `Start New Semester (Semester ${currentSemester + 1})`}
+                    {isSemesterActionBusy ? (
+                      <ArrowPathIcon className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <ExclamationTriangleIcon className="w-4 h-4" />
+                    )}
+                    {confirmingNewSemester
+                      ? (language === "german" ? "Wirklich? Erneut klicken zum Bestätigen" : "Are you sure? Click again to confirm")
+                      : (language === "german" ? `Neues Semester starten (Semester ${currentSemester + 1})` : `Start New Semester (Semester ${currentSemester + 1})`)}
                   </button>
                   <button
                     onClick={() => {
-                      if (confirm("Are you absolutely sure you want to reset back to Semester 1? Your presets will be wiped.")) {
-                        fetch('/api/settings', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ action: 'reset_semester' })
-                        }).then(res => res.json()).then(data => {
-                          if (data.error) {
-                            alert(`Error: ${data.error}`);
-                            return;
-                          }
-                          setCurrentSemester(data.currentSemester);
-                          setModulePresets(data.modulePresets || []);
-                          setSubjectInput("");
-                        });
+                      // Two-step confirmation instead of a blocking confirm().
+                      if (!confirmingResetSemester) {
+                        setConfirmingResetSemester(true);
+                        setConfirmingNewSemester(false);
+                        return;
                       }
+                      setConfirmingResetSemester(false);
+                      runSemesterAction('reset_semester');
                     }}
-                    className="w-full py-2.5 bg-transparent hover:bg-rose-500/[0.08] text-white/40 hover:text-rose-300 border border-transparent hover:border-rose-400/20 rounded-xl text-xs font-medium transition-colors flex items-center justify-center gap-2 cursor-pointer"
+                    disabled={isSemesterActionBusy}
+                    className={`w-full py-2.5 rounded-xl text-xs font-medium transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-wait ${confirmingResetSemester ? 'bg-rose-500/[0.16] text-rose-300 border border-rose-400/40' : 'bg-transparent hover:bg-rose-500/[0.08] text-white/40 hover:text-rose-300 border border-transparent hover:border-rose-400/20'}`}
                   >
-                    {language === "german" ? "Auf Semester 1 zurücksetzen" : "Reset to Semester 1"}
+                    {confirmingResetSemester
+                      ? (language === "german" ? "Wirklich auf Semester 1 zurücksetzen? Erneut klicken" : "Really reset to Semester 1? Click again")
+                      : (language === "german" ? "Auf Semester 1 zurücksetzen" : "Reset to Semester 1")}
                   </button>
                 </div>
               </div>
@@ -1796,6 +2049,9 @@ export default function DashboardClient({ initialItems }: { initialItems: any[] 
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Toast notifications (non-blocking alert replacement) */}
+      <ToastStack toasts={toasts} onDismiss={dismissToast} />
 
     </div>
   );

@@ -4,7 +4,8 @@ import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(req: NextRequest) {
   try {
-    const { endpoint, keys } = await req.json();
+    const body = await req.json().catch(() => null);
+    const { endpoint, keys } = body ?? {};
 
     if (!endpoint || !keys?.p256dh || !keys?.auth) {
       return NextResponse.json({ error: "Invalid subscription" }, { status: 400 });
@@ -18,20 +19,21 @@ export async function POST(req: NextRequest) {
     });
 
     return NextResponse.json({ success: true });
-  } catch (err: any) {
+  } catch (err) {
     console.error("Push subscribe error:", err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json({ error: err instanceof Error ? err.message : "Unknown error" }, { status: 500 });
   }
 }
 
 export async function DELETE(req: NextRequest) {
   try {
-    const { endpoint } = await req.json();
+    const body = await req.json().catch(() => null);
+    const endpoint = body?.endpoint;
     if (endpoint) {
       await prisma.pushSubscription.deleteMany({ where: { endpoint } });
     }
     return NextResponse.json({ success: true });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : "Unknown error" }, { status: 500 });
   }
 }
