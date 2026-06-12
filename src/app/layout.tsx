@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
-import { Outfit, Inter } from "next/font/google";
+import { Fraunces, Inter } from "next/font/google";
 import "./globals.css";
 
-const outfit = Outfit({
-  variable: "--font-outfit",
+const fraunces = Fraunces({
+  variable: "--font-fraunces",
   subsets: ["latin"],
+  style: ["normal", "italic"],
 });
 
 const inter = Inter({
@@ -31,13 +32,13 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${outfit.variable} ${inter.variable} h-full antialiased`}
+      className={`${fraunces.variable} ${inter.variable} h-full antialiased`}
     >
       <head>
         <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta name="theme-color" content="#ffffff" />
+        <meta name="theme-color" content="#0b0908" />
       </head>
-      <body className="min-h-full flex flex-col bg-background text-foreground font-sans selection:bg-white/[0.2] selection:text-white">
+      <body className="min-h-full flex flex-col bg-background text-foreground font-sans selection:bg-amber-400/25 selection:text-amber-50">
         {children}
         <script
           dangerouslySetInnerHTML={{
