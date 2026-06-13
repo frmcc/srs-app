@@ -150,6 +150,10 @@ async function readNdjsonStream(
     const lines = buffer.split("\n");
     buffer = lines.pop() || ""; // keep the trailing fragment for the next chunk
     for (const line of lines) handleLine(line);
+    if (sawTerminalEvent) {
+      try { await reader.cancel(); } catch { /* ignore */ }
+      break;
+    }
   }
   buffer += decoder.decode(); // flush any multi-byte remainder
   if (buffer.trim()) handleLine(buffer); // final line without trailing \n
