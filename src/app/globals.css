@@ -12,6 +12,11 @@
 
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   --font-display: var(--font-fraunces), ui-serif, Georgia, serif;
+
+  /* Make every Tailwind transition-* utility cinematic by default.
+     (Elements with an explicit duration-* keep their duration but inherit this curve.) */
+  --default-transition-duration: 300ms;
+  --default-transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @layer base {
@@ -38,10 +43,17 @@
     --text-primary: #f7f4ef;
     --text-secondary: rgba(247, 244, 239, 0.62);
     --text-tertiary: rgba(247, 244, 239, 0.38);
+
+    /* Motion — cinematic easing (mirrors src/lib/motion.ts) */
+    --ease-cinematic: cubic-bezier(0.16, 1, 0.3, 1);       /* easeOutExpo — glide to rest */
+    --ease-cinematic-soft: cubic-bezier(0.22, 1, 0.36, 1); /* easeOutQuint — gentler */
+    --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);         /* symmetric flow */
+    --dur-hover: 320ms;
   }
 
   html {
     color-scheme: dark;
+    scroll-behavior: smooth;
   }
 
   body {
@@ -92,7 +104,12 @@
   }
 
   a, button, input, textarea, select {
-    transition: all 160ms cubic-bezier(0.4, 0, 0.2, 1);
+    /* Transition only compositor/paint-friendly props (never layout) on a
+       cinematic glide curve — this replaces the generic 160ms Material feel. */
+    transition-property: color, background-color, border-color, box-shadow,
+      transform, opacity, filter, backdrop-filter;
+    transition-duration: var(--dur-hover);
+    transition-timing-function: var(--ease-cinematic);
   }
 
   *:focus-visible {
@@ -111,7 +128,11 @@
     border: 1px solid var(--border-subtle);
     border-radius: 1.25rem;
     box-shadow: inset 0 1px 0 rgba(255, 248, 235, 0.04);
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: transform 0.45s var(--ease-cinematic),
+      border-color 0.4s var(--ease-cinematic),
+      background 0.4s var(--ease-cinematic),
+      box-shadow 0.5s var(--ease-cinematic);
+    will-change: transform;
   }
   .card-surface:hover {
     border-color: var(--border-default);
@@ -125,15 +146,19 @@
     box-shadow:
       inset 0 1px 0 rgba(255, 248, 235, 0.06),
       0 8px 28px -10px rgba(0, 0, 0, 0.65);
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: transform 0.45s var(--ease-cinematic),
+      border-color 0.4s var(--ease-cinematic),
+      background 0.4s var(--ease-cinematic),
+      box-shadow 0.5s var(--ease-cinematic);
+    will-change: transform;
   }
   .card-surface-elevated:hover {
     border-color: var(--border-strong);
     background: linear-gradient(180deg, var(--surface-3), var(--surface-1));
-    transform: translateY(-2px);
+    transform: translateY(-4px);
     box-shadow:
-      inset 0 1px 0 rgba(255, 248, 235, 0.08),
-      0 16px 40px -12px rgba(0, 0, 0, 0.8);
+      inset 0 1px 0 rgba(255, 248, 235, 0.1),
+      0 24px 56px -16px rgba(0, 0, 0, 0.85);
   }
 
   .card-glass {
@@ -198,18 +223,22 @@
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.45),
       0 8px 24px -8px rgba(245, 158, 11, 0.55);
-    transition: all 0.2s;
+    transition: transform 0.4s var(--ease-cinematic),
+      filter 0.35s var(--ease-cinematic),
+      box-shadow 0.45s var(--ease-cinematic);
+    will-change: transform;
   }
   .btn-primary:hover:not(:disabled) {
-    filter: brightness(1.06);
-    transform: translateY(-1px);
+    filter: brightness(1.07);
+    transform: translateY(-2px);
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.5),
-      0 12px 30px -8px rgba(245, 158, 11, 0.65);
+      0 16px 38px -8px rgba(245, 158, 11, 0.7);
   }
   .btn-primary:active:not(:disabled) {
-    transform: translateY(0);
+    transform: translateY(0) scale(0.985);
     filter: brightness(0.98);
+    transition-duration: 0.12s;
   }
   .btn-primary:disabled {
     cursor: not-allowed;
@@ -379,8 +408,15 @@
   .ember-dot {
     animation: none;
   }
-  .card-surface-elevated:hover {
+  .card-surface-elevated:hover,
+  .btn-primary:hover:not(:disabled) {
     transform: none;
+  }
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
 

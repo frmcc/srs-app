@@ -1,6 +1,19 @@
 "use client";
 
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, MotionConfig } from "framer-motion";
+import {
+  pageVariants,
+  riseChild,
+  staggerContainer,
+  accordion,
+  overlayMotion,
+  modalPanel,
+  pressable,
+  EASE_OUT,
+  DUR,
+  springSoft,
+  springTactile,
+} from "@/lib/motion";
 import {
   CpuChipIcon,
   BookOpenIcon,
@@ -868,6 +881,7 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
   };
 
   return (
+    <MotionConfig reducedMotion="user">
     <div className="min-h-screen bg-transparent flex font-sans">
 
       {/* Print-Only Wrapper */}
@@ -942,7 +956,7 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
         <motion.aside
           initial={{ x: -300, opacity: 0 }}
           animate={{ x: 0, opacity: 1 }}
-          transition={{ duration: 0.5, ease: "easeOut" }}
+          transition={{ duration: 0.7, ease: EASE_OUT }}
           className={`${showMobileMenu ? 'flex' : 'hidden'} md:flex w-full md:w-[268px] sidebar-gradient border-r border-white/[0.07] flex-col px-5 py-6 sticky md:top-0 h-[calc(100vh-69px)] md:h-screen z-40 overflow-y-auto custom-scrollbar`}
         >
           <div className="hidden md:flex items-center gap-3.5 mb-10 px-1">
@@ -1014,16 +1028,17 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
 
         {/* Main Content */}
         <main className={`${showMobileMenu ? "hidden" : "block"} md:block flex-1 px-4 py-8 md:px-12 md:py-12 overflow-y-auto relative h-[calc(100vh-69px)] md:h-screen`}>
-          <AnimatePresence mode="sync">
+          <AnimatePresence mode="wait">
             {activeTab === "dashboard" && (
               <motion.div
                 key="dash"
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0, transition: { duration: 0.22, ease: [0.25, 0.46, 0.45, 0.94] } }}
-                exit={{ opacity: 0, y: -5, transition: { duration: 0.14, ease: [0.55, 0, 1, 0.45] } }}
+                variants={pageVariants}
+                initial="initial"
+                animate="animate"
+                exit="exit"
                 className="max-w-5xl mx-auto"
               >
-                <header className="mb-8 md:mb-14 flex justify-between items-end">
+                <motion.header variants={riseChild} className="mb-8 md:mb-14 flex justify-between items-end">
                   <div>
                     <p className="eyebrow mb-3">{language === 'german' ? 'Willkommen zurück' : 'Welcome back'}</p>
                     <h1 className="font-display text-3xl sm:text-[2.75rem] font-medium tracking-tight text-white leading-[1.08] mb-3">
@@ -1033,9 +1048,9 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
                     </h1>
                     <p className="text-white/45 text-sm sm:text-base">{language === 'german' ? `Du hast ${upcomingReviews.filter(r => r.isDue).length} Wiederholungen heute.` : `You have ${upcomingReviews.filter(r => r.isDue).length} reviews due today.`}</p>
                   </div>
-                </header>
+                </motion.header>
 
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 md:gap-8">
+                <motion.div variants={riseChild} className="grid grid-cols-1 lg:grid-cols-3 gap-5 md:gap-8">
                   {/* Reviews List */}
                   <div className="lg:col-span-2 flex flex-col gap-4">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-3 gap-3">
@@ -1062,22 +1077,27 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
 
                       if (itemsToRender.length === 0) {
                         return (
-                          <div className="card-surface p-8 md:p-14 text-center text-white/40 text-sm leading-relaxed">
+                          <motion.div
+                            initial={{ opacity: 0, y: 24, filter: "blur(8px)" }}
+                            animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                            transition={{ duration: DUR.base, ease: EASE_OUT }}
+                            className="card-surface p-8 md:p-14 text-center text-white/40 text-sm leading-relaxed"
+                          >
                             {language === 'german' ? 'Keine Wiederholungen gefunden. Lade Vorlesungsmaterial hoch, um dein erstes Quiz zu erstellen!' : 'No reviews found. Upload lecture material to generate your first quiz!'}
-                          </div>
+                          </motion.div>
                         );
                       }
 
                       return (
-                        <>
-                          {itemsToRender.map((review, i) => (
+                        <motion.div variants={staggerContainer} initial="initial" animate="animate" className="flex flex-col gap-4">
+                          {itemsToRender.map((review) => (
                             <motion.div
                               key={review.id}
-                              initial={{ opacity: 0, y: 14 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              transition={{ duration: 0.4, delay: Math.min(i, 8) * 0.05, ease: "easeOut" }}
+                              variants={riseChild}
+                              whileHover={{ y: -4 }}
+                              transition={springSoft}
                               onClick={() => startQuiz(review)}
-                              className={`card-surface-elevated p-5 sm:p-6 transition-all duration-300 group cursor-pointer relative overflow-hidden ${review.isDue ? 'border-amber-400/30 hover:border-amber-300/50 shadow-[0_0_28px_-8px_rgba(245,158,11,0.3)] hover:shadow-[0_0_48px_-8px_rgba(245,158,11,0.5)]' : 'hover:shadow-[0_8px_32px_-12px_rgba(255,250,240,0.07)]'}`}
+                              className={`card-surface-elevated p-5 sm:p-6 group cursor-pointer relative overflow-hidden ${review.isDue ? 'border-amber-400/30 hover:border-amber-300/50 shadow-[0_0_28px_-8px_rgba(245,158,11,0.3)] hover:shadow-[0_0_48px_-8px_rgba(245,158,11,0.5)]' : 'hover:shadow-[0_8px_32px_-12px_rgba(255,250,240,0.07)]'}`}
                             >
                               {/* Ember spine — lit when due, faint on hover otherwise */}
                               <div className={`absolute left-0 top-0 bottom-0 w-[3px] rounded-r transition-opacity duration-300 ${review.isDue ? 'bg-gradient-to-b from-amber-200 via-amber-400 to-amber-600 opacity-100' : 'bg-white/30 opacity-0 group-hover:opacity-50'}`}></div>
@@ -1169,7 +1189,7 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
                                           >
                                             <motion.span
                                               animate={{ rotate: expandedCards.has(review.id) ? 180 : 0 }}
-                                              transition={{ duration: 0.2, ease: "easeOut" }}
+                                              transition={springTactile}
                                               className="text-white/25 group-hover:text-white/45"
                                             >
                                               <ChevronDownIcon className="w-3.5 h-3.5" />
@@ -1181,10 +1201,10 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
                                             {expandedCards.has(review.id) && (
                                               <motion.div
                                                 key="materials"
-                                                initial={{ height: 0, opacity: 0 }}
-                                                animate={{ height: "auto", opacity: 1 }}
-                                                exit={{ height: 0, opacity: 0 }}
-                                                transition={{ duration: 0.28, ease: [0.25, 0.46, 0.45, 0.94] }}
+                                                variants={accordion}
+                                                initial="initial"
+                                                animate="animate"
+                                                exit="exit"
                                                 style={{ overflow: "hidden" }}
                                               >
                                                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 p-3 bg-black/30 rounded-2xl border border-white/[0.05] mt-2.5">
@@ -1317,14 +1337,14 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
                               {language === 'german' ? `Alle ${scheduledItems.length} anstehenden anzeigen` : `Show all ${scheduledItems.length} upcoming`}
                             </button>
                           )}
-                        </>
+                        </motion.div>
                       );
                     })()}
                   </div>
 
                   {/* Quick Actions */}
                   <div className="flex flex-col gap-6">
-                    <motion.div className="card-surface-elevated gradient-border p-6 cursor-pointer transition-colors" onClick={() => { setActiveTab("upload"); setShowMobileMenu(false); }}>
+                    <motion.div whileHover={{ y: -4 }} whileTap={{ scale: 0.99 }} transition={springSoft} className="card-surface-elevated gradient-border p-6 cursor-pointer transition-colors" onClick={() => { setActiveTab("upload"); setShowMobileMenu(false); }}>
                       <p className="eyebrow mb-3">Pipeline</p>
                       <h3 className="font-display text-xl font-medium mb-2 text-white">{language === 'german' ? 'Material hochladen' : 'Upload Material'}</h3>
                       <p className="text-sm text-white/40 leading-relaxed mb-6">{language === 'german' ? 'Füttere die KI mit einem neuen Modul, um den generativen 6-Stufen-Prozess zu starten.' : 'Feed the engine a new module to start the 6-stage generative AI pipeline.'}</p>
@@ -1334,16 +1354,17 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
                       </button>
                     </motion.div>
                   </div>
-                </div>
+                </motion.div>
               </motion.div>
             )}
 
             {activeTab === "upload" && (
               <motion.div
                 key="upload"
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0, transition: { duration: 0.22, ease: [0.25, 0.46, 0.45, 0.94] } }}
-                exit={{ opacity: 0, y: -5, transition: { duration: 0.14, ease: [0.55, 0, 1, 0.45] } }}
+                variants={pageVariants}
+                initial="initial"
+                animate="animate"
+                exit="exit"
                 className="max-w-3xl mx-auto"
               >
                 <header className="mb-10">
@@ -1365,7 +1386,7 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
                         className="progress-fill h-full"
                         initial={{ width: 0 }}
                         animate={{ width: `${(progressStep / 8) * 100}%` }}
-                        transition={{ duration: 0.5 }}
+                        transition={{ duration: 0.8, ease: EASE_OUT }}
                       />
                     </div>
                     <div className="w-full max-w-md mt-8 text-left space-y-3.5">
@@ -1492,9 +1513,10 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
             {activeTab === "library" && (
               <motion.div
                 key="library"
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0, transition: { duration: 0.22, ease: [0.25, 0.46, 0.45, 0.94] } }}
-                exit={{ opacity: 0, y: -5, transition: { duration: 0.14, ease: [0.55, 0, 1, 0.45] } }}
+                variants={pageVariants}
+                initial="initial"
+                animate="animate"
+                exit="exit"
                 className="max-w-5xl mx-auto"
               >
                 {/* ── Library header ─────────────────────────────────────── */}
@@ -1545,7 +1567,7 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
                         })}
                         className="w-full flex items-center gap-3 py-2 group cursor-pointer"
                       >
-                        <motion.div animate={{ rotate: semOpen ? 90 : 0 }} transition={{ duration: 0.2 }}>
+                        <motion.div animate={{ rotate: semOpen ? 90 : 0 }} transition={springTactile}>
                           <ChevronRightIcon className="w-4 h-4 text-amber-300/60 group-hover:text-amber-300 transition-colors shrink-0" />
                         </motion.div>
                         <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/35 group-hover:text-white/55 transition-colors whitespace-nowrap">
@@ -1570,10 +1592,10 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
                         {semOpen && (
                           <motion.div
                             key="sem-body"
-                            initial={{ height: 0, opacity: 0 }}
-                            animate={{ height: "auto", opacity: 1 }}
-                            exit={{ height: 0, opacity: 0 }}
-                            transition={{ duration: 0.26, ease: [0.25, 0.46, 0.45, 0.94] }}
+                            variants={accordion}
+                            initial="initial"
+                            animate="animate"
+                            exit="exit"
                             style={{ overflow: "hidden" }}
                           >
                             <div className="pt-2 space-y-2 pb-2">
@@ -1592,7 +1614,7 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
                                       })}
                                       className="w-full flex items-center gap-3 px-5 py-4 group cursor-pointer"
                                     >
-                                      <motion.div animate={{ rotate: modOpen ? 90 : 0 }} transition={{ duration: 0.2 }}>
+                                      <motion.div animate={{ rotate: modOpen ? 90 : 0 }} transition={springTactile}>
                                         <ChevronRightIcon className="w-3.5 h-3.5 text-white/25 group-hover:text-white/55 transition-colors shrink-0" />
                                       </motion.div>
                                       <FolderOpenIcon className="w-4 h-4 text-amber-300/50 shrink-0" />
@@ -1609,10 +1631,10 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
                                       {modOpen && (
                                         <motion.div
                                           key="mod-body"
-                                          initial={{ height: 0 }}
-                                          animate={{ height: "auto" }}
-                                          exit={{ height: 0 }}
-                                          transition={{ duration: 0.22, ease: [0.25, 0.46, 0.45, 0.94] }}
+                                          variants={accordion}
+                                          initial="initial"
+                                          animate="animate"
+                                          exit="exit"
                                           style={{ overflow: "hidden" }}
                                         >
                                           <div className="border-t border-white/[0.05]">
@@ -1666,7 +1688,7 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
                                                     <span className="text-[10px] text-white/25 font-medium shrink-0 w-8 text-right">
                                                       L{item.currentLevel + 1}
                                                     </span>
-                                                    <motion.div animate={{ rotate: itemOpen ? 180 : 0 }} transition={{ duration: 0.2 }}>
+                                                    <motion.div animate={{ rotate: itemOpen ? 180 : 0 }} transition={springTactile}>
                                                       <ChevronDownIcon className="w-3.5 h-3.5 text-white/20 group-hover:text-white/45 transition-colors shrink-0" />
                                                     </motion.div>
                                                   </button>
@@ -1676,10 +1698,10 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
                                                     {itemOpen && (
                                                       <motion.div
                                                         key="item-body"
-                                                        initial={{ height: 0, opacity: 0 }}
-                                                        animate={{ height: "auto", opacity: 1 }}
-                                                        exit={{ height: 0, opacity: 0 }}
-                                                        transition={{ duration: 0.22, ease: [0.25, 0.46, 0.45, 0.94] }}
+                                                        variants={accordion}
+                                                        initial="initial"
+                                                        animate="animate"
+                                                        exit="exit"
                                                         style={{ overflow: "hidden" }}
                                                       >
                                                         <div className="px-5 pb-5 pt-1 bg-black/20 space-y-5">
@@ -1914,9 +1936,10 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
             {activeTab === "quiz" && selectedReview && (
               <motion.div
                 key="quiz"
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0, transition: { duration: 0.22, ease: [0.25, 0.46, 0.45, 0.94] } }}
-                exit={{ opacity: 0, y: -5, transition: { duration: 0.14, ease: [0.55, 0, 1, 0.45] } }}
+                variants={pageVariants}
+                initial="initial"
+                animate="animate"
+                exit="exit"
                 className="max-w-4xl mx-auto"
               >
                 <button
@@ -1943,8 +1966,7 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
                     </div>
                     {parsedTasks.length > 0 && (
                       <motion.button
-                        whileHover={{ scale: 1.04 }}
-                        whileTap={{ scale: 0.96 }}
+                        {...pressable}
                         onClick={exportQuizForPrint}
                         className="btn-secondary flex items-center gap-2 px-4 py-2.5 text-xs font-semibold cursor-pointer shrink-0"
                       >
@@ -1983,7 +2005,7 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
                         className="progress-fill h-full"
                         initial={{ width: 0 }}
                         animate={{ width: `${Math.min(100, (gradingStep / 4) * 100)}%` }}
-                        transition={{ duration: 0.5 }}
+                        transition={{ duration: 0.8, ease: EASE_OUT }}
                       />
                     </div>
                     <div className="w-full max-w-md mt-8 text-left space-y-3.5">
@@ -2060,9 +2082,9 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
                           return (
                             <motion.div
                               key={task.id}
-                              initial={{ opacity: 0, y: 15 }}
+                              initial={{ opacity: 0, y: 20 }}
                               animate={{ opacity: 1, y: 0 }}
-                              transition={{ delay: idx * 0.05 }}
+                              transition={{ delay: idx * 0.06, duration: DUR.base, ease: EASE_OUT }}
                               className="card-surface-elevated p-5 md:p-8"
                             >
                               <div className="flex items-center gap-3 mb-5">
@@ -2094,8 +2116,7 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
 
                         <div className="pt-4">
                           <motion.button
-                            whileHover={{ scale: 1.01 }}
-                            whileTap={{ scale: 0.98 }}
+                            {...pressable}
                             onClick={handleGrade}
                             disabled={isGrading || !parsedTasks.some(task => (individualAnswers[task.id] || "").trim().length > 0)}
                             className="btn-primary w-full py-5 text-xs font-bold uppercase tracking-[0.14em] flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-40"
@@ -2120,8 +2141,7 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
                           className="input-dark flex-1 w-full p-5 text-sm leading-relaxed resize-none min-h-[300px] mb-6"
                         />
                         <motion.button
-                          whileHover={{ scale: 1.01 }}
-                          whileTap={{ scale: 0.98 }}
+                          {...pressable}
                           onClick={handleGrade}
                           disabled={isGrading || !studentAnswers.trim()}
                           className="btn-primary w-full py-5 text-xs font-bold uppercase tracking-[0.14em] flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-40"
@@ -2140,11 +2160,13 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
           {/* Archive Modal */}
           <AnimatePresence>
             {archiveModalData && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md">
+              <motion.div
+                {...overlayMotion}
+                key="archive-overlay"
+                className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md"
+              >
                 <motion.div
-                  initial={{ scale: 0.95, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  exit={{ scale: 0.95, opacity: 0 }}
+                  {...modalPanel}
                   className="card-glass w-full max-w-lg overflow-hidden flex flex-col max-h-[85vh] border border-white/[0.1]"
                 >
                   <div className="p-6 border-b border-white/[0.06] flex justify-between items-center">
@@ -2176,7 +2198,7 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
                     ))}
                   </div>
                 </motion.div>
-              </div>
+              </motion.div>
             )}
           </AnimatePresence>
 
@@ -2185,11 +2207,13 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
         {/* Historical Feedback Modal */}
         <AnimatePresence>
           {activeFeedbackItem && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md">
+            <motion.div
+              {...overlayMotion}
+              key="feedback-overlay"
+              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md"
+            >
               <motion.div
-                initial={{ scale: 0.95, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.95, opacity: 0 }}
+                {...modalPanel}
                 className="card-glass w-full max-w-4xl overflow-hidden flex flex-col max-h-[85vh] border border-white/[0.1]"
               >
                 {/* Header */}
@@ -2219,7 +2243,7 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
                   </div>
                 </div>
               </motion.div>
-            </div>
+            </motion.div>
           )}
         </AnimatePresence>
 
@@ -2227,16 +2251,12 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
         <AnimatePresence>
           {showCalendarModal && (
             <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
+              {...overlayMotion}
               className="fixed inset-0 bg-black/75 backdrop-blur-md z-50 flex items-center justify-center p-4"
               onClick={() => setShowCalendarModal(false)}
             >
               <motion.div
-                initial={{ scale: 0.9, opacity: 0, y: 20 }}
-                animate={{ scale: 1, opacity: 1, y: 0 }}
-                exit={{ scale: 0.9, opacity: 0, y: 20 }}
+                {...modalPanel}
                 className="card-glass p-6 md:p-7 max-w-lg w-full border border-white/[0.1] max-h-[90vh] overflow-y-auto custom-scrollbar"
                 onClick={(e) => e.stopPropagation()}
               >
@@ -2332,15 +2352,11 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
       <AnimatePresence>
         {showSettingsModal && (
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+            {...overlayMotion}
             className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50 backdrop-blur-md"
           >
             <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
+              {...modalPanel}
               className="card-glass p-6 md:p-7 w-full max-w-lg border border-white/[0.1] max-h-[90vh] overflow-y-auto custom-scrollbar"
             >
               <div className="flex justify-between items-center mb-7">
@@ -2614,15 +2630,12 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
       <AnimatePresence>
         {promptModal && (
           <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            {...overlayMotion}
             className="fixed inset-0 z-[90] flex items-end sm:items-center justify-center p-4 bg-black/70 backdrop-blur-md"
             onClick={() => setPromptModal(null)}
           >
             <motion.div
-              initial={{ opacity: 0, y: 20, scale: 0.97 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 12, scale: 0.97 }}
-              transition={{ duration: 0.25, ease: [0.25, 0.46, 0.45, 0.94] }}
+              {...modalPanel}
               onClick={(e) => e.stopPropagation()}
               className="card-glass border border-white/[0.1] w-full max-w-2xl max-h-[80vh] flex flex-col overflow-hidden"
             >
@@ -2661,5 +2674,6 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
       </AnimatePresence>
 
     </div>
+    </MotionConfig>
   );
 }

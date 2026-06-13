@@ -2,6 +2,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { toastMotion } from "@/lib/motion";
 import { CheckCircleIcon, ExclamationTriangleIcon, XMarkIcon } from "@heroicons/react/24/outline";
 
 export type ToastVariant = "success" | "error";
@@ -44,10 +45,7 @@ export function ToastStack({ toasts, onDismiss }: { toasts: ToastItem[]; onDismi
           <motion.div
             key={toast.id}
             layout
-            initial={{ opacity: 0, y: 14, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 8, scale: 0.97 }}
-            transition={{ duration: 0.25, ease: "easeOut" }}
+            {...toastMotion}
             role="status"
             className={`pointer-events-auto w-full flex items-start gap-3 px-4 py-3.5 rounded-2xl border backdrop-blur-xl shadow-[0_12px_40px_-12px_rgba(0,0,0,0.7)] text-sm leading-relaxed ${
               toast.variant === "success"
