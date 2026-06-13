@@ -64,7 +64,7 @@ export function ToastStack({ toasts, onDismiss }: { toasts: ToastItem[]; onDismi
             <button
               onClick={() => onDismiss(toast.id)}
               className="shrink-0 text-white/40 hover:text-white transition-colors cursor-pointer p-0.5"
-              aria-label="Schließen"
+              aria-label="Close"
             >
               <XMarkIcon className="w-4 h-4" />
             </button>

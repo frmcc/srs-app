@@ -22,6 +22,10 @@ const LIST_SELECT = {
   postPodcastUrl: true,
   videoUrl: true,
   tutorPromptDocId: true,
+  prePodcastPrompt: true,
+  postPodcastPrompt: true,
+  lastVideoPrompt1: true,
+  lastVideoPrompt2: true,
   // Needed to compute currentQuizText; stripped before the payload ships.
   quiz1DocId: true,
   quiz2DocId: true,
@@ -45,6 +49,11 @@ export interface ReviewListItem {
   postPodcastUrl: string | null;
   videoUrl: string | null;
   tutorPromptDocId: string | null;
+  prePodcastPrompt: string | null;
+  postPodcastPrompt: string | null;
+  lastVideoPrompt1: string | null;
+  lastVideoPrompt2: string | null;
+  generatedLevels: [boolean, boolean, boolean, boolean, boolean, boolean, boolean];
   /** The quiz text for the item's CURRENT level (the only one the UI shows). */
   currentQuizText: string;
 }
@@ -69,6 +78,14 @@ export async function fetchReviewList(): Promise<ReviewListItem[]> {
     postPodcastUrl: row.postPodcastUrl,
     videoUrl: row.videoUrl,
     tutorPromptDocId: row.tutorPromptDocId,
+    prePodcastPrompt: row.prePodcastPrompt,
+    postPodcastPrompt: row.postPodcastPrompt,
+    lastVideoPrompt1: row.lastVideoPrompt1,
+    lastVideoPrompt2: row.lastVideoPrompt2,
+    generatedLevels: [
+      !!row.quiz1DocId, !!row.quiz2DocId, !!row.quiz3DocId, !!row.quiz4DocId,
+      !!row.quiz5DocId, !!row.quiz6DocId, !!row.quiz7DocId,
+    ] as [boolean, boolean, boolean, boolean, boolean, boolean, boolean],
     currentQuizText: currentQuizText(row),
   }));
 }

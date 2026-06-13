@@ -27,12 +27,17 @@ import {
   BellSlashIcon,
   SpeakerWaveIcon,
   VideoCameraIcon,
-  LockClosedIcon
+  LockClosedIcon,
+  FolderOpenIcon,
+  LinkIcon,
 } from "@heroicons/react/24/outline";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo, useTransition } from "react";
 
 import { useToasts, ToastStack } from "./components/Toast";
+
+const LIB_LEVEL_SHORT = ["T1", "T3", "T7", "T21", "T60", "T180", "T365"] as const;
+const LIB_LEVEL_FULL  = ["Tag 1", "Tag 3", "Tag 7", "Tag 21", "Tag 60", "Tag 180", "Tag 365"] as const;
 
 /**
  * Slim list item served by the server page (`initialItems`) and GET /api/reviews.
@@ -54,6 +59,11 @@ interface RawReviewItem {
   postPodcastUrl: string | null;
   videoUrl: string | null;
   tutorPromptDocId: string | null;
+  prePodcastPrompt: string | null;
+  postPodcastPrompt: string | null;
+  lastVideoPrompt1: string | null;
+  lastVideoPrompt2: string | null;
+  generatedLevels: [boolean, boolean, boolean, boolean, boolean, boolean, boolean];
   /** Level-correct quiz text, computed server-side (incl. quiz-1 fallback and level>=6 rollover). */
   currentQuizText: string;
 }
@@ -209,7 +219,17 @@ const formatItems = (data: RawReviewItem[]): ReviewCard[] => {
 };
 
 export default function DashboardClient({ initialItems }: { initialItems: RawReviewItem[] }) {
+  // `startTransition` marks background refetch state updates as non-urgent so
+  // React never interrupts an ongoing animation to apply them — no more blink.
+  const [, startTransition] = useTransition();
+
   const [upcomingReviews, setUpcomingReviews] = useState<ReviewCard[]>(initialItems ? formatItems(initialItems) : []);
+  /** Full raw items — kept in sync with every fetchReviews() so the Library always shows live data. */
+  const [rawItems, setRawItems] = useState<RawReviewItem[]>(initialItems ?? []);
+  /** True only on first mount when we have no SSR items — shows skeleton cards while the first API fetch runs. */
+  const [isLoadingReviews, setIsLoadingReviews] = useState(initialItems.length === 0);
+  /** Cards whose study-materials section is expanded. */
+  const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState("dashboard");
   const [isGenerating, setIsGenerating] = useState(false);
   const [progressStep, setProgressStep] = useState(0);
@@ -280,6 +300,14 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
   // Podcast State
   const [generatingPodcasts, setGeneratingPodcasts] = useState<Record<string, boolean>>({});
 
+  // Prompt viewer modal (podcast prompts + video scripts)
+  const [promptModal, setPromptModal] = useState<{ title: string; content: string } | null>(null);
+
+  // Library tab — accordion state (populated reactively by the rawItems useEffect below)
+  const [expandedLibrarySemesters, setExpandedLibrarySemesters] = useState<Set<number>>(new Set());
+  const [expandedLibraryModules, setExpandedLibraryModules] = useState<Set<string>>(new Set());
+  const [expandedLibraryItems, setExpandedLibraryItems] = useState<Set<string>>(new Set());
+
   // Push notification state
   const [pushPermission, setPushPermission] = useState<string>("default");
   const [pushSubscribed, setPushSubscribed] = useState(false);
@@ -349,6 +377,10 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
   // Guards against overlapping refetches (mount + focus + interval can race).
   const fetchInFlightRef = useRef(false);
 
+  // Ensures the ?quizId= deep-link is consumed exactly once — not on every
+  // subsequent upcomingReviews update (focus-refetch, post-grade refresh, etc).
+  const processedQuizIdRef = useRef(false);
+
   const fetchReviews = useCallback(async () => {
     if (fetchInFlightRef.current) return;
     fetchInFlightRef.current = true;
@@ -357,15 +389,19 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
       if (!res.ok) throw new Error(`Server returned status ${res.status}`);
       const data = await res.json();
       if (Array.isArray(data)) {
-        setUpcomingReviews(formatItems(data));
+        startTransition(() => {
+          setUpcomingReviews(formatItems(data));
+          setRawItems(data);
+        });
       }
     } catch (err) {
       // Background resync — stay quiet, the next focus/interval retries.
       console.error("Failed to refresh reviews:", err);
     } finally {
       fetchInFlightRef.current = false;
+      setIsLoadingReviews(false);
     }
-  }, []);
+  }, [startTransition]);
 
   // Always refetch on mount and whenever the tab regains focus/visibility.
   useEffect(() => {
@@ -383,6 +419,53 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
     };
   }, [fetchReviews]);
 
+  /**
+   * Auto-grow textarea: expand to fit content, never scroll.
+   * Attach to both `ref` and `onInput` callbacks.
+   */
+  const autoGrow = (el: HTMLTextAreaElement | null) => {
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  };
+
+  /** Library: items grouped by semester → module → lecture, always derived from latest fetch. */
+  const libraryBySemester = useMemo(() => {
+    const result = new Map<number, Map<string, RawReviewItem[]>>();
+    const sorted = [...rawItems].sort((a, b) => {
+      if (a.semester !== b.semester) return a.semester - b.semester;
+      if (a.subjectMain !== b.subjectMain) return a.subjectMain.localeCompare(b.subjectMain);
+      return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+    });
+    for (const item of sorted) {
+      if (!result.has(item.semester)) result.set(item.semester, new Map());
+      const modMap = result.get(item.semester)!;
+      if (!modMap.has(item.subjectMain)) modMap.set(item.subjectMain, []);
+      modMap.get(item.subjectMain)!.push(item);
+    }
+    return result;
+  }, [rawItems]);
+
+  // Keep accordion expansion sets in sync: newly uploaded lectures auto-expand
+  // their semester and module without collapsing anything the user already closed.
+  useEffect(() => {
+    setExpandedLibrarySemesters(prev => {
+      let changed = false;
+      const next = new Set(prev);
+      rawItems.forEach(item => { if (!next.has(item.semester)) { next.add(item.semester); changed = true; } });
+      return changed ? next : prev;
+    });
+    setExpandedLibraryModules(prev => {
+      let changed = false;
+      const next = new Set(prev);
+      rawItems.forEach(item => {
+        const key = `${item.semester}__${item.subjectMain}`;
+        if (!next.has(key)) { next.add(key); changed = true; }
+      });
+      return changed ? next : prev;
+    });
+  }, [rawItems]);
+
   // While any podcast is still rendering server-side ("Wird generiert"), poll
   // every 60s (only while the tab is visible) so links appear without a reload.
   const isPendingUrl = (url: string | null) => !url || !url.startsWith("http");
@@ -397,6 +480,20 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
     }, 60_000);
     return () => window.clearInterval(intervalId);
   }, [hasPendingPodcast, fetchReviews]);
+
+  // Global Escape key — closes whichever modal is currently on top.
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (promptModal) { setPromptModal(null); return; }
+      if (showCalendarModal) { setShowCalendarModal(false); return; }
+      if (showSettingsModal) { setShowSettingsModal(false); return; }
+      if (activeFeedbackItem) { setActiveFeedbackItem(null); return; }
+      if (archiveModalData) { setArchiveModalData(null); return; }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [promptModal, showCalendarModal, showSettingsModal, activeFeedbackItem, archiveModalData]);
 
   // The inline "Wirklich löschen?" prompt resets itself if not confirmed.
   useEffect(() => {
@@ -420,6 +517,7 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
       if (res.ok || res.status === 404) {
         // 404 = already gone on the server — remove it locally either way.
         setUpcomingReviews(prev => prev.filter(r => r.id !== id));
+        setRawItems(prev => prev.filter(r => r.id !== id));
         addToast("success", language === "german" ? "Modul gelöscht." : "Module deleted.");
       } else {
         throw new Error(`Server returned status ${res.status}`);
@@ -487,6 +585,8 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
   const runSemesterAction = (action: "new_semester" | "reset_semester") => {
     if (isSemesterActionBusy) return;
     setIsSemesterActionBusy(true);
+    setConfirmingNewSemester(false);
+    setConfirmingResetSemester(false);
     fetch('/api/settings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -564,19 +664,27 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
     setGradingResult(null);
     setGradingError("");
     setActiveTab("quiz");
+    setShowMobileMenu(false); // close the mobile menu if open
+    // Always start at the top so the quiz header is immediately visible.
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
   };
 
   useEffect(() => {
+    if (processedQuizIdRef.current) return;
     if (upcomingReviews.length > 0 && typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       const quizId = params.get("quizId");
       if (quizId) {
         const review = upcomingReviews.find(r => r.id === quizId);
         if (review) {
+          processedQuizIdRef.current = true;
           window.history.replaceState({}, document.title, window.location.pathname);
-          // eslint-disable-next-line react-hooks/set-state-in-effect -- ?quizId= deep link (calendar/shortcut) must open the quiz once on load
           startQuiz(review);
         }
+      } else {
+        processedQuizIdRef.current = true;
       }
     }
   }, [upcomingReviews]);
@@ -591,7 +699,7 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
     if (isGenerating) return; // double-submit guard
     setIsGenerating(true);
     setProgressStep(0);
-    setProgressMsg("Starting ironclad engine...");
+    setProgressMsg(language === "german" ? "Starte KI-Pipeline…" : "Starting AI pipeline…");
 
     // Hard timeout so a hung connection can't leave the spinner on forever.
     const abortController = new AbortController();
@@ -600,8 +708,8 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
 
     try {
       const formData = new FormData();
-      formData.append("subjectMain", subjectInput);
-      formData.append("subjectSub", topicInput || "Module");
+      formData.append("subjectMain", subjectInput.trim());
+      formData.append("subjectSub", topicInput.trim() || (language === "german" ? "Modul" : "Module"));
       formData.append("language", language);
       if (textInput) formData.append("content", textInput);
       uploadedFiles.forEach(file => formData.append("files", file));
@@ -624,36 +732,40 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
         } else if (evt.event === "done") {
           sawDone = true;
           setProgressStep(8);
-          setProgressMsg("Successfully integrated into your SRS database!");
+          setProgressMsg(language === "german" ? "Erfolgreich in deine SRS-Datenbank integriert!" : "Successfully integrated into your SRS database!");
           // `srsItem` here is the FULL created row — never append it to the
           // slim list state; refetch the slim list instead.
           fetchReviews();
           setTimeout(() => {
             setIsGenerating(false);
             setActiveTab("dashboard");
-            setSubjectInput("");
+            setTopicInput("");
+            setSubjectInput(modulePresets[0] ?? "");
             setTextInput("");
             setUploadedFiles([]);
           }, 3000);
         } else if (evt.event === "error") {
           const msg = evt.data.message ?? "Unbekannter Fehler";
           setProgressMsg(msg);
-          addToast("error", `Generierungsfehler: ${msg}`);
+          addToast("error", `${language === "german" ? "Generierungsfehler" : "Generation error"}: ${msg}`);
         }
       });
 
       if (!sawTerminalEvent) {
         // Stream died silently (network drop / server restart / HMR). The
         // backend keeps working after a disconnect — results land in the DB.
-        setProgressMsg("Verbindung unterbrochen — Status wird neu geladen…");
-        addToast("error", "Verbindung unterbrochen — Status wird neu geladen…");
+        const disconnectMsg = language === "german"
+          ? "Verbindung unterbrochen — Status wird neu geladen…"
+          : "Connection lost — reloading status…";
+        setProgressMsg(disconnectMsg);
+        addToast("error", disconnectMsg);
         fetchReviews();
       }
     } catch (e) {
       console.error(e);
       const message = e instanceof DOMException && e.name === "AbortError"
-        ? "Zeitüberschreitung — Verbindung unterbrochen. Status wird neu geladen…"
-        : e instanceof Error && e.message ? e.message : "Failed to connect to server.";
+        ? (language === "german" ? "Zeitüberschreitung — Verbindung unterbrochen. Status wird neu geladen…" : "Timeout — connection lost. Reloading status…")
+        : e instanceof Error && e.message ? e.message : (language === "german" ? "Verbindung zum Server fehlgeschlagen." : "Failed to connect to server.");
       setProgressMsg(message);
       addToast("error", message);
       fetchReviews();
@@ -680,7 +792,7 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
 
     setIsGrading(true);
     setGradingStep(0);
-    setGradingMsg("Calling grading agents...");
+    setGradingMsg(language === "german" ? "Starte Bewertungs-Pipeline…" : "Starting grading pipeline…");
     setGradingError("");
 
     // Hard timeout so a hung connection can't leave the spinner on forever.
@@ -710,7 +822,7 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
           setGradingMsg(evt.data.message ?? "");
         } else if (evt.event === "done") {
           setGradingStep(5);
-          setGradingMsg("Grading finished! Scheduling updated.");
+          setGradingMsg(language === "german" ? "Bewertung abgeschlossen! Zeitplan aktualisiert." : "Grading finished! Scheduling updated.");
           // `srsItem` is the FULL updated row — keep only what the result
           // screen needs and resync the slim list via refetch.
           const nrd = evt.data.srsItem?.nextReviewDate;
@@ -725,14 +837,16 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
           const msg = evt.data.message ?? "Unbekannter Fehler";
           setGradingMsg(msg);
           setGradingError(msg);
-          addToast("error", `Grading-Fehler: ${msg}`);
+          addToast("error", `${language === "german" ? "Bewertungsfehler" : "Grading error"}: ${msg}`);
         }
       });
 
       if (!sawTerminalEvent) {
         // Stream died silently — the backend keeps grading after a
         // disconnect, so resync the list from the DB.
-        const message = "Verbindung unterbrochen — Status wird neu geladen…";
+        const message = language === "german"
+          ? "Verbindung unterbrochen — Status wird neu geladen…"
+          : "Connection lost — reloading status…";
         setGradingMsg(message);
         setGradingError(message);
         addToast("error", message);
@@ -741,8 +855,8 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
     } catch (e) {
       console.error(e);
       const message = e instanceof DOMException && e.name === "AbortError"
-        ? "Zeitüberschreitung — Verbindung unterbrochen. Status wird neu geladen…"
-        : e instanceof Error && e.message ? e.message : "Failed to connect to grading server.";
+        ? (language === "german" ? "Zeitüberschreitung — Verbindung unterbrochen. Status wird neu geladen…" : "Timeout — connection lost. Reloading status…")
+        : e instanceof Error && e.message ? e.message : (language === "german" ? "Verbindung zum Server fehlgeschlagen." : "Failed to connect to grading server.");
       setGradingMsg(message);
       setGradingError(message);
       addToast("error", message);
@@ -900,13 +1014,13 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
 
         {/* Main Content */}
         <main className={`${showMobileMenu ? "hidden" : "block"} md:block flex-1 px-4 py-8 md:px-12 md:py-12 overflow-y-auto relative h-[calc(100vh-69px)] md:h-screen`}>
-          <AnimatePresence mode="wait">
+          <AnimatePresence mode="sync">
             {activeTab === "dashboard" && (
               <motion.div
                 key="dash"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0, transition: { duration: 0.22, ease: [0.25, 0.46, 0.45, 0.94] } }}
+                exit={{ opacity: 0, y: -5, transition: { duration: 0.14, ease: [0.55, 0, 1, 0.45] } }}
                 className="max-w-5xl mx-auto"
               >
                 <header className="mb-8 md:mb-14 flex justify-between items-end">
@@ -963,7 +1077,7 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
                               animate={{ opacity: 1, y: 0 }}
                               transition={{ duration: 0.4, delay: Math.min(i, 8) * 0.05, ease: "easeOut" }}
                               onClick={() => startQuiz(review)}
-                              className={`card-surface-elevated p-5 sm:p-6 transition-all duration-300 group cursor-pointer relative overflow-hidden ${review.isDue ? 'border-amber-400/30 hover:border-amber-300/50 shadow-[0_0_28px_-8px_rgba(245,158,11,0.3)]' : ''}`}
+                              className={`card-surface-elevated p-5 sm:p-6 transition-all duration-300 group cursor-pointer relative overflow-hidden ${review.isDue ? 'border-amber-400/30 hover:border-amber-300/50 shadow-[0_0_28px_-8px_rgba(245,158,11,0.3)] hover:shadow-[0_0_48px_-8px_rgba(245,158,11,0.5)]' : 'hover:shadow-[0_8px_32px_-12px_rgba(255,250,240,0.07)]'}`}
                             >
                               {/* Ember spine — lit when due, faint on hover otherwise */}
                               <div className={`absolute left-0 top-0 bottom-0 w-[3px] rounded-r transition-opacity duration-300 ${review.isDue ? 'bg-gradient-to-b from-amber-200 via-amber-400 to-amber-600 opacity-100' : 'bg-white/30 opacity-0 group-hover:opacity-50'}`}></div>
@@ -1036,93 +1150,125 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
                                             className="mt-2 text-xs bg-indigo-400/[0.07] hover:bg-indigo-400/[0.14] border border-indigo-400/20 text-indigo-300 px-3.5 py-2 rounded-lg flex items-center gap-2 transition-all cursor-pointer"
                                           >
                                             <ClockIcon className="w-4 h-4" />
-                                            View Video Archive ({archiveVideos.length})
+                                            {language === "german" ? `Video-Archiv ansehen (${archiveVideos.length})` : `View Video Archive (${archiveVideos.length})`}
                                           </button>
                                         )}
 
-                                        <div className="mt-6">
-                                          <div className="text-[10px] font-bold text-white/30 uppercase mb-2.5 pl-0.5 tracking-[0.2em]">
+                                        <div className="mt-5">
+                                          {/* Collapsible toggle */}
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setExpandedCards(prev => {
+                                                const next = new Set(prev);
+                                                if (next.has(review.id)) { next.delete(review.id); } else { next.add(review.id); }
+                                                return next;
+                                              });
+                                            }}
+                                            className="flex items-center gap-2 text-[10px] font-bold text-white/30 hover:text-white/55 uppercase tracking-[0.2em] transition-colors cursor-pointer group mb-0"
+                                          >
+                                            <motion.span
+                                              animate={{ rotate: expandedCards.has(review.id) ? 180 : 0 }}
+                                              transition={{ duration: 0.2, ease: "easeOut" }}
+                                              className="text-white/25 group-hover:text-white/45"
+                                            >
+                                              <ChevronDownIcon className="w-3.5 h-3.5" />
+                                            </motion.span>
                                             {language === 'german' ? 'Lernmaterialien' : 'Study Materials'}
-                                          </div>
-                                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 p-3 bg-black/30 rounded-2xl border border-white/[0.05]">
-                                            {/* PRE-PODCAST */}
-                                            <div className="flex-1 min-w-0">
-                                              <h5 className="text-[10px] font-bold text-white/30 uppercase tracking-[0.14em] mb-2 truncate">{language === "german" ? "Vorbereitung" : "Pre-Lecture"}</h5>
-                                              {review.raw.prePodcastUrl && review.raw.prePodcastUrl.startsWith("http") ? (
-                                                <a
-                                                  href={review.raw.prePodcastUrl}
-                                                  target="_blank"
-                                                  rel="noopener noreferrer"
-                                                  onClick={(e) => e.stopPropagation()}
-                                                  className="text-xs bg-white/[0.06] hover:bg-amber-400/[0.12] border border-white/10 hover:border-amber-400/35 text-white px-2 py-2.5 rounded-lg flex items-center justify-center gap-2 transition-all w-full font-medium truncate"
-                                                >
-                                                  <SpeakerWaveIcon className="w-4 h-4 shrink-0 text-amber-300" />
-                                                  Audio 1
-                                                </a>
-                                              ) : (
-                                                <button
-                                                  onClick={(e) => handleGeneratePodcast(e, review.id, "pre")}
-                                                  disabled={!!generatingPodcasts[`${review.id}-pre`]}
-                                                  className="text-[10px] font-medium bg-white/[0.02] hover:bg-amber-400/[0.08] border border-dashed border-white/10 hover:border-amber-400/30 text-white/30 hover:text-white/60 disabled:hover:bg-white/[0.02] disabled:hover:text-white/30 disabled:cursor-wait px-2 py-2.5 rounded-lg flex items-center gap-2 w-full justify-center text-center transition-all cursor-pointer"
-                                                >
-                                                  <span className="ember-dot w-1 h-1 rounded-full bg-amber-400/60 shrink-0"></span>
-                                                  {generatingPodcasts[`${review.id}-pre`]
-                                                    ? (language === 'german' ? 'Gestartet…' : 'Started…')
-                                                    : (language === 'german' ? 'Wird generiert – antippen zum Starten' : 'Generating – tap to (re)start')}
-                                                </button>
-                                              )}
-                                            </div>
+                                          </button>
 
-                                            {/* POST-PODCAST */}
-                                            <div className="flex-1 min-w-0">
-                                              <h5 className="text-[10px] font-bold text-white/30 uppercase tracking-[0.14em] mb-2 truncate">{language === "german" ? "Nachbereitung" : "Post-Lecture"}</h5>
-                                              {review.raw.postPodcastUrl && review.raw.postPodcastUrl.startsWith("http") ? (
-                                                <a
-                                                  href={review.raw.postPodcastUrl}
-                                                  target="_blank"
-                                                  rel="noopener noreferrer"
-                                                  onClick={(e) => e.stopPropagation()}
-                                                  className="text-xs bg-white/[0.06] hover:bg-amber-400/[0.12] border border-white/10 hover:border-amber-400/35 text-white px-2 py-2.5 rounded-lg flex items-center justify-center gap-2 transition-all w-full font-medium truncate"
-                                                >
-                                                  <SpeakerWaveIcon className="w-4 h-4 shrink-0 text-amber-300" />
-                                                  Audio 2
-                                                </a>
-                                              ) : (
-                                                <button
-                                                  onClick={(e) => handleGeneratePodcast(e, review.id, "post")}
-                                                  disabled={!!generatingPodcasts[`${review.id}-post`]}
-                                                  className="text-[10px] font-medium bg-white/[0.02] hover:bg-amber-400/[0.08] border border-dashed border-white/10 hover:border-amber-400/30 text-white/30 hover:text-white/60 disabled:hover:bg-white/[0.02] disabled:hover:text-white/30 disabled:cursor-wait px-2 py-2.5 rounded-lg flex items-center gap-2 w-full justify-center text-center transition-all cursor-pointer"
-                                                >
-                                                  <span className="ember-dot w-1 h-1 rounded-full bg-amber-400/60 shrink-0"></span>
-                                                  {generatingPodcasts[`${review.id}-post`]
-                                                    ? (language === 'german' ? 'Gestartet…' : 'Started…')
-                                                    : (language === 'german' ? 'Wird generiert – antippen zum Starten' : 'Generating – tap to (re)start')}
-                                                </button>
-                                              )}
-                                            </div>
+                                          <AnimatePresence initial={false}>
+                                            {expandedCards.has(review.id) && (
+                                              <motion.div
+                                                key="materials"
+                                                initial={{ height: 0, opacity: 0 }}
+                                                animate={{ height: "auto", opacity: 1 }}
+                                                exit={{ height: 0, opacity: 0 }}
+                                                transition={{ duration: 0.28, ease: [0.25, 0.46, 0.45, 0.94] }}
+                                                style={{ overflow: "hidden" }}
+                                              >
+                                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 p-3 bg-black/30 rounded-2xl border border-white/[0.05] mt-2.5">
+                                                  {/* PRE-PODCAST */}
+                                                  <div className="flex-1 min-w-0">
+                                                    <h5 className="text-[10px] font-bold text-white/30 uppercase tracking-[0.14em] mb-2 truncate">{language === "german" ? "Vorbereitung" : "Pre-Lecture"}</h5>
+                                                    {review.raw.prePodcastUrl && review.raw.prePodcastUrl.startsWith("http") ? (
+                                                      <a
+                                                        href={review.raw.prePodcastUrl}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        className="text-xs bg-white/[0.06] hover:bg-amber-400/[0.12] border border-white/10 hover:border-amber-400/35 text-white px-2 py-2.5 rounded-lg flex items-center justify-center gap-2 transition-all w-full font-medium truncate"
+                                                      >
+                                                        <SpeakerWaveIcon className="w-4 h-4 shrink-0 text-amber-300" />
+                                                        Audio 1
+                                                      </a>
+                                                    ) : (
+                                                      <button
+                                                        onClick={(e) => handleGeneratePodcast(e, review.id, "pre")}
+                                                        disabled={!!generatingPodcasts[`${review.id}-pre`]}
+                                                        className="text-[10px] font-medium bg-white/[0.02] hover:bg-amber-400/[0.08] border border-dashed border-white/10 hover:border-amber-400/30 text-white/30 hover:text-white/60 disabled:hover:bg-white/[0.02] disabled:hover:text-white/30 disabled:cursor-wait px-2 py-2.5 rounded-lg flex items-center gap-2 w-full justify-center text-center transition-all cursor-pointer"
+                                                      >
+                                                        <span className="ember-dot w-1 h-1 rounded-full bg-amber-400/60 shrink-0"></span>
+                                                        {generatingPodcasts[`${review.id}-pre`]
+                                                          ? (language === 'german' ? 'Gestartet…' : 'Started…')
+                                                          : (language === 'german' ? 'Wird generiert – antippen zum Starten' : 'Generating – tap to (re)start')}
+                                                      </button>
+                                                    )}
+                                                  </div>
 
-                                            {/* VIDEO STUDIO */}
-                                            <div className="flex-1 min-w-0">
-                                              <h5 className="text-[10px] font-bold text-white/30 uppercase tracking-[0.14em] mb-2 truncate">{language === "german" ? "Videostudio" : "Video Studio"}</h5>
-                                              {!isWaitingForNewVideo && latestVideoUrl && latestVideoUrl.startsWith("http") ? (
-                                                <a
-                                                  href={latestVideoUrl}
-                                                  target="_blank"
-                                                  rel="noopener noreferrer"
-                                                  onClick={(e) => e.stopPropagation()}
-                                                  className="text-xs bg-emerald-400/[0.08] hover:bg-emerald-400/[0.16] border border-emerald-400/25 hover:border-emerald-300/45 text-emerald-200 px-2 py-2.5 rounded-lg flex items-center justify-center gap-2 transition-all w-full font-medium truncate"
-                                                >
-                                                  <VideoCameraIcon className="w-4 h-4 shrink-0" />
-                                                  Video
-                                                </a>
-                                              ) : (
-                                                <div className="text-[10px] font-medium bg-white/[0.02] border border-dashed border-white/10 text-white/30 px-2 py-2.5 rounded-lg flex items-center gap-2 w-full justify-center text-center">
-                                                  <span className="ember-dot w-1 h-1 rounded-full bg-amber-400/60 shrink-0"></span>
-                                                  {language === 'german' ? 'Wird generiert...' : 'Generating...'}
+                                                  {/* POST-PODCAST */}
+                                                  <div className="flex-1 min-w-0">
+                                                    <h5 className="text-[10px] font-bold text-white/30 uppercase tracking-[0.14em] mb-2 truncate">{language === "german" ? "Nachbereitung" : "Post-Lecture"}</h5>
+                                                    {review.raw.postPodcastUrl && review.raw.postPodcastUrl.startsWith("http") ? (
+                                                      <a
+                                                        href={review.raw.postPodcastUrl}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        className="text-xs bg-white/[0.06] hover:bg-amber-400/[0.12] border border-white/10 hover:border-amber-400/35 text-white px-2 py-2.5 rounded-lg flex items-center justify-center gap-2 transition-all w-full font-medium truncate"
+                                                      >
+                                                        <SpeakerWaveIcon className="w-4 h-4 shrink-0 text-amber-300" />
+                                                        Audio 2
+                                                      </a>
+                                                    ) : (
+                                                      <button
+                                                        onClick={(e) => handleGeneratePodcast(e, review.id, "post")}
+                                                        disabled={!!generatingPodcasts[`${review.id}-post`]}
+                                                        className="text-[10px] font-medium bg-white/[0.02] hover:bg-amber-400/[0.08] border border-dashed border-white/10 hover:border-amber-400/30 text-white/30 hover:text-white/60 disabled:hover:bg-white/[0.02] disabled:hover:text-white/30 disabled:cursor-wait px-2 py-2.5 rounded-lg flex items-center gap-2 w-full justify-center text-center transition-all cursor-pointer"
+                                                      >
+                                                        <span className="ember-dot w-1 h-1 rounded-full bg-amber-400/60 shrink-0"></span>
+                                                        {generatingPodcasts[`${review.id}-post`]
+                                                          ? (language === 'german' ? 'Gestartet…' : 'Started…')
+                                                          : (language === 'german' ? 'Wird generiert – antippen zum Starten' : 'Generating – tap to (re)start')}
+                                                      </button>
+                                                    )}
+                                                  </div>
+
+                                                  {/* VIDEO STUDIO */}
+                                                  <div className="flex-1 min-w-0">
+                                                    <h5 className="text-[10px] font-bold text-white/30 uppercase tracking-[0.14em] mb-2 truncate">{language === "german" ? "Videostudio" : "Video Studio"}</h5>
+                                                    {!isWaitingForNewVideo && latestVideoUrl && latestVideoUrl.startsWith("http") ? (
+                                                      <a
+                                                        href={latestVideoUrl}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        className="text-xs bg-emerald-400/[0.08] hover:bg-emerald-400/[0.16] border border-emerald-400/25 hover:border-emerald-300/45 text-emerald-200 px-2 py-2.5 rounded-lg flex items-center justify-center gap-2 transition-all w-full font-medium truncate"
+                                                      >
+                                                        <VideoCameraIcon className="w-4 h-4 shrink-0" />
+                                                        Video
+                                                      </a>
+                                                    ) : (
+                                                      <div className="text-[10px] font-medium bg-white/[0.02] border border-dashed border-white/10 text-white/30 px-2 py-2.5 rounded-lg flex items-center gap-2 w-full justify-center text-center">
+                                                        <span className="ember-dot w-1 h-1 rounded-full bg-amber-400/60 shrink-0"></span>
+                                                        {language === 'german' ? 'Wird generiert...' : 'Generating...'}
+                                                      </div>
+                                                    )}
+                                                  </div>
                                                 </div>
-                                              )}
-                                            </div>
-                                          </div>
+                                              </motion.div>
+                                            )}
+                                          </AnimatePresence>
                                         </div>
                                       </>
                                     );
@@ -1195,9 +1341,9 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
             {activeTab === "upload" && (
               <motion.div
                 key="upload"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0, transition: { duration: 0.22, ease: [0.25, 0.46, 0.45, 0.94] } }}
+                exit={{ opacity: 0, y: -5, transition: { duration: 0.14, ease: [0.55, 0, 1, 0.45] } }}
                 className="max-w-3xl mx-auto"
               >
                 <header className="mb-10">
@@ -1226,7 +1372,7 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
                       {[1,2,3,4,5,6,7].map(step => (
                         <div key={step} className={`flex items-center gap-3.5 text-sm ${progressStep > step ? 'text-emerald-300' : progressStep === step ? 'text-amber-200 font-medium' : 'text-white/20'}`}>
                           {progressStep > step ? <CheckCircleIcon className="w-5 h-5 shrink-0" /> : progressStep === step ? <span className="ember-dot w-5 h-5 rounded-full border-2 border-amber-300 shrink-0 flex items-center justify-center"><span className="w-1.5 h-1.5 rounded-full bg-amber-300"></span></span> : <div className="w-5 h-5 rounded-full border-2 border-current shrink-0" />}
-                          {step === 1 ? "Blueprint Engine" : step === 7 ? "Tutor Prompt Engine" : `Quiz Agent (Level ${step-1})`}
+                          {step === 1 ? "Blueprint Engine" : step === 5 ? "NotebookLM Setup" : step === 7 ? "Tutor Prompt Engine" : `Quiz Agent (Level ${step-1})`}
                         </div>
                       ))}
                     </div>
@@ -1277,7 +1423,11 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
                           e.preventDefault();
                           setIsDragging(false);
                           if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-                            setUploadedFiles(prev => [...prev, ...Array.from(e.dataTransfer.files)]);
+                            const incoming = Array.from(e.dataTransfer.files);
+                            setUploadedFiles(prev => {
+                              const existingNames = new Set(prev.map(f => f.name));
+                              return [...prev, ...incoming.filter(f => !existingNames.has(f.name))];
+                            });
                           }
                         }}
                       >
@@ -1297,6 +1447,7 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
                             if (e.target.files && e.target.files.length > 0) {
                               setUploadedFiles(prev => [...prev, ...Array.from(e.target.files!)]);
                             }
+                            e.target.value = "";
                           }}
                         />
                         <label htmlFor="file-upload" className="btn-secondary px-4 py-2 text-sm cursor-pointer">
@@ -1341,28 +1492,431 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
             {activeTab === "library" && (
               <motion.div
                 key="library"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0, transition: { duration: 0.22, ease: [0.25, 0.46, 0.45, 0.94] } }}
+                exit={{ opacity: 0, y: -5, transition: { duration: 0.14, ease: [0.55, 0, 1, 0.45] } }}
                 className="max-w-5xl mx-auto"
               >
-                <header className="mb-8 md:mb-14">
-                  <p className="eyebrow mb-3">Archive</p>
-                  <h1 className="font-display text-3xl sm:text-4xl font-medium tracking-tight text-white mb-3">{language === "german" ? "Meine Bibliothek" : "My Library"}</h1>
-                  <p className="text-white/45 text-sm sm:text-base">{language === "german" ? "Überprüfe deine gespeicherten Module, Tutor-Prompts und Lernpläne." : "Review your stored modules, tutor prompts, and generating schedules."}</p>
+                {/* ── Library header ─────────────────────────────────────── */}
+                <header className="mb-8 md:mb-10">
+                  <p className="eyebrow mb-3">{language === "german" ? "Archiv" : "Archive"}</p>
+                  <h1 className="font-display text-3xl sm:text-4xl font-medium tracking-tight text-white mb-3">
+                    {language === "german" ? "Meine Bibliothek" : "My Library"}
+                  </h1>
+                  <p className="text-white/45 text-sm sm:text-base">
+                    {language === "german"
+                      ? "Alle Vorlesungen, Quizze und Lernmaterialien — nach Semester und Modul sortiert."
+                      : "All lectures, quizzes, and study materials — sorted by semester and module."}
+                  </p>
                 </header>
-                <div className="card-surface p-8 md:p-14 text-center text-white/40 text-sm leading-relaxed">
-                  {language === "german" ? "Alle generierten Kurse und Details werden hier angezeigt." : "All generated courses and details will reflect here as we build custom features!"}
-                </div>
+
+                {/* ── Empty state ─────────────────────────────────────────── */}
+                {rawItems.length === 0 && !isLoadingReviews && (
+                  <div className="card-surface p-12 md:p-16 flex flex-col items-center text-center">
+                    <div className="w-16 h-16 rounded-2xl bg-white/[0.04] border border-white/[0.08] flex items-center justify-center mb-6">
+                      <BookOpenIcon className="w-8 h-8 text-white/25" />
+                    </div>
+                    <p className="eyebrow mb-3">{language === "german" ? "Noch leer" : "Still empty"}</p>
+                    <h3 className="font-display text-xl font-medium text-white mb-2">
+                      {language === "german" ? "Keine Vorlesungen vorhanden" : "No lectures yet"}
+                    </h3>
+                    <p className="text-white/35 text-sm leading-relaxed max-w-sm">
+                      {language === "german"
+                        ? "Lade dein erstes Vorlesungsmaterial hoch, um deine Bibliothek aufzubauen."
+                        : "Upload your first lecture material to start building your library."}
+                    </p>
+                  </div>
+                )}
+
+                {/* ── Semester accordion list ─────────────────────────────── */}
+                {Array.from(libraryBySemester.entries()).map(([sem, modules]) => {
+                  const semOpen = expandedLibrarySemesters.has(sem);
+                  const totalLectures = Array.from(modules.values()).reduce((n, arr) => n + arr.length, 0);
+                  const isCurrentSemester = sem === currentSemester;
+
+                  return (
+                    <div key={sem} className="mb-5">
+                      {/* Semester header row */}
+                      <button
+                        onClick={() => setExpandedLibrarySemesters(prev => {
+                          const next = new Set(prev);
+                          if (next.has(sem)) next.delete(sem); else next.add(sem);
+                          return next;
+                        })}
+                        className="w-full flex items-center gap-3 py-2 group cursor-pointer"
+                      >
+                        <motion.div animate={{ rotate: semOpen ? 90 : 0 }} transition={{ duration: 0.2 }}>
+                          <ChevronRightIcon className="w-4 h-4 text-amber-300/60 group-hover:text-amber-300 transition-colors shrink-0" />
+                        </motion.div>
+                        <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/35 group-hover:text-white/55 transition-colors whitespace-nowrap">
+                          {language === "german" ? "Semester" : "Semester"}
+                        </span>
+                        <span className="font-display text-2xl font-medium leading-none text-white group-hover:text-gradient transition-all">
+                          {sem}
+                        </span>
+                        {isCurrentSemester && (
+                          <span className="text-[9px] font-bold uppercase tracking-[0.12em] px-2 py-0.5 rounded-full bg-amber-400/[0.12] border border-amber-400/25 text-amber-300">
+                            {language === "german" ? "Aktiv" : "Active"}
+                          </span>
+                        )}
+                        <div className="flex-1 h-px bg-white/[0.06] mx-1" />
+                        <span className="text-[10px] text-white/20 font-medium whitespace-nowrap">
+                          {modules.size} {language === "german" ? "Module" : "modules"} · {totalLectures} {language === "german" ? "Vorlesungen" : "lectures"}
+                        </span>
+                      </button>
+
+                      {/* Semester body */}
+                      <AnimatePresence initial={false}>
+                        {semOpen && (
+                          <motion.div
+                            key="sem-body"
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: "auto", opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            transition={{ duration: 0.26, ease: [0.25, 0.46, 0.45, 0.94] }}
+                            style={{ overflow: "hidden" }}
+                          >
+                            <div className="pt-2 space-y-2 pb-2">
+                              {Array.from(modules.entries()).map(([moduleName, lectures]) => {
+                                const modKey = `${sem}__${moduleName}`;
+                                const modOpen = expandedLibraryModules.has(modKey);
+
+                                return (
+                                  <div key={modKey} className="card-surface overflow-hidden">
+                                    {/* Module header */}
+                                    <button
+                                      onClick={() => setExpandedLibraryModules(prev => {
+                                        const next = new Set(prev);
+                                        if (next.has(modKey)) next.delete(modKey); else next.add(modKey);
+                                        return next;
+                                      })}
+                                      className="w-full flex items-center gap-3 px-5 py-4 group cursor-pointer"
+                                    >
+                                      <motion.div animate={{ rotate: modOpen ? 90 : 0 }} transition={{ duration: 0.2 }}>
+                                        <ChevronRightIcon className="w-3.5 h-3.5 text-white/25 group-hover:text-white/55 transition-colors shrink-0" />
+                                      </motion.div>
+                                      <FolderOpenIcon className="w-4 h-4 text-amber-300/50 shrink-0" />
+                                      <span className="font-display text-base font-medium text-white/85 group-hover:text-white transition-colors flex-1 text-left truncate">
+                                        {moduleName}
+                                      </span>
+                                      <span className="text-[10px] text-white/25 font-medium shrink-0">
+                                        {lectures.length} {language === "german" ? (lectures.length === 1 ? "Vorlesung" : "Vorlesungen") : (lectures.length === 1 ? "lecture" : "lectures")}
+                                      </span>
+                                    </button>
+
+                                    {/* Lecture rows */}
+                                    <AnimatePresence initial={false}>
+                                      {modOpen && (
+                                        <motion.div
+                                          key="mod-body"
+                                          initial={{ height: 0 }}
+                                          animate={{ height: "auto" }}
+                                          exit={{ height: 0 }}
+                                          transition={{ duration: 0.22, ease: [0.25, 0.46, 0.45, 0.94] }}
+                                          style={{ overflow: "hidden" }}
+                                        >
+                                          <div className="border-t border-white/[0.05]">
+                                            {lectures.map((item, idx) => {
+                                              const itemOpen = expandedLibraryItems.has(item.id);
+                                              const _dueDate = new Date(item.nextReviewDate);
+                                              const _now = new Date();
+                                              const _todayUTC = new Date(Date.UTC(_now.getUTCFullYear(), _now.getUTCMonth(), _now.getUTCDate()));
+                                              const _itemUTC = new Date(Date.UTC(_dueDate.getUTCFullYear(), _dueDate.getUTCMonth(), _dueDate.getUTCDate()));
+                                              const isDue = _itemUTC <= _todayUTC;
+                                              const hasStudyMaterials = !!(item.tutorPromptDocId || item.prePodcastPrompt || item.postPodcastPrompt || item.lastVideoPrompt1 || item.lastVideoPrompt2 || item.prePodcastUrl || item.postPodcastUrl);
+
+                                              return (
+                                                <div key={item.id} className={`${idx > 0 ? "border-t border-white/[0.04]" : ""}`}>
+                                                  {/* Collapsed lecture row */}
+                                                  <button
+                                                    onClick={() => setExpandedLibraryItems(prev => {
+                                                      const next = new Set(prev);
+                                                      if (next.has(item.id)) next.delete(item.id); else next.add(item.id);
+                                                      return next;
+                                                    })}
+                                                    className="w-full flex items-center gap-3 px-5 py-3.5 group cursor-pointer hover:bg-white/[0.02] transition-colors"
+                                                  >
+                                                    <DocumentTextIcon className="w-3.5 h-3.5 text-white/20 shrink-0 group-hover:text-white/40 transition-colors" />
+                                                    <span className="text-sm text-white/70 group-hover:text-white/90 transition-colors flex-1 text-left leading-snug">
+                                                      {item.subjectSub}
+                                                    </span>
+                                                    {isDue && (
+                                                      <span className="hidden sm:inline text-[9px] font-bold uppercase tracking-[0.12em] px-2 py-0.5 rounded-full badge-due shrink-0">
+                                                        {language === "german" ? "Fällig" : "Due"}
+                                                      </span>
+                                                    )}
+                                                    {/* 7-dot level progress */}
+                                                    <div className="hidden sm:flex items-center gap-0.5 shrink-0">
+                                                      {item.generatedLevels.map((generated, l) => (
+                                                        <div
+                                                          key={l}
+                                                          title={`Level ${l+1} (${LIB_LEVEL_FULL[l]}): ${l < item.currentLevel ? (language === "german" ? "Bestanden" : "Passed") : l === item.currentLevel ? (language === "german" ? "Aktuell" : "Current") : generated ? (language === "german" ? "Generiert" : "Generated") : (language === "german" ? "Ausstehend" : "Pending")}`}
+                                                          className={`w-2 h-2 rounded-full transition-all ${
+                                                            l < item.currentLevel
+                                                              ? "bg-amber-400"
+                                                              : l === item.currentLevel
+                                                                ? "bg-amber-300/50 ring-1 ring-amber-300/60"
+                                                                : generated
+                                                                  ? "bg-white/[0.15]"
+                                                                  : "bg-white/[0.06]"
+                                                          }`}
+                                                        />
+                                                      ))}
+                                                    </div>
+                                                    <span className="text-[10px] text-white/25 font-medium shrink-0 w-8 text-right">
+                                                      L{item.currentLevel + 1}
+                                                    </span>
+                                                    <motion.div animate={{ rotate: itemOpen ? 180 : 0 }} transition={{ duration: 0.2 }}>
+                                                      <ChevronDownIcon className="w-3.5 h-3.5 text-white/20 group-hover:text-white/45 transition-colors shrink-0" />
+                                                    </motion.div>
+                                                  </button>
+
+                                                  {/* Expanded lecture detail */}
+                                                  <AnimatePresence initial={false}>
+                                                    {itemOpen && (
+                                                      <motion.div
+                                                        key="item-body"
+                                                        initial={{ height: 0, opacity: 0 }}
+                                                        animate={{ height: "auto", opacity: 1 }}
+                                                        exit={{ height: 0, opacity: 0 }}
+                                                        transition={{ duration: 0.22, ease: [0.25, 0.46, 0.45, 0.94] }}
+                                                        style={{ overflow: "hidden" }}
+                                                      >
+                                                        <div className="px-5 pb-5 pt-1 bg-black/20 space-y-5">
+
+                                                          {/* Level progress detail */}
+                                                          <div>
+                                                            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/25 mb-3">
+                                                              {language === "german" ? "Level-Fortschritt" : "Level Progress"}
+                                                            </p>
+                                                            <div className="flex items-start gap-2 sm:gap-3">
+                                                              {item.generatedLevels.map((generated, l) => (
+                                                                <div key={l} className="flex flex-col items-center gap-1.5 flex-1 min-w-0">
+                                                                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
+                                                                    l < item.currentLevel
+                                                                      ? "bg-amber-400 border-amber-400"
+                                                                      : l === item.currentLevel
+                                                                        ? "bg-transparent border-amber-300 shadow-[0_0_10px_rgba(245,158,11,0.35)]"
+                                                                        : generated
+                                                                          ? "bg-white/[0.06] border-white/[0.18]"
+                                                                          : "bg-transparent border-white/[0.08]"
+                                                                  }`}>
+                                                                    {l < item.currentLevel && (
+                                                                      <CheckIcon className="w-3 h-3 text-stone-900" strokeWidth={3} />
+                                                                    )}
+                                                                    {l === item.currentLevel && (
+                                                                      <div className="w-1.5 h-1.5 rounded-full bg-amber-300" />
+                                                                    )}
+                                                                  </div>
+                                                                  <span className="text-[8px] font-medium text-white/20 leading-none text-center">
+                                                                    {LIB_LEVEL_SHORT[l]}
+                                                                  </span>
+                                                                </div>
+                                                              ))}
+                                                            </div>
+                                                          </div>
+
+                                                          {/* Quiz generation status */}
+                                                          <div>
+                                                            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/25 mb-2">
+                                                              {language === "german" ? "Quiz-Generierung" : "Quiz Generation"}
+                                                            </p>
+                                                            <div className="flex flex-wrap gap-1.5">
+                                                              {item.generatedLevels.map((generated, l) => (
+                                                                <span
+                                                                  key={l}
+                                                                  className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border transition-all ${
+                                                                    l < item.currentLevel
+                                                                      ? "bg-amber-400/[0.1] border-amber-400/25 text-amber-300"
+                                                                      : generated
+                                                                        ? "bg-white/[0.05] border-white/[0.12] text-white/45"
+                                                                        : "bg-transparent border-white/[0.05] text-white/15"
+                                                                  }`}
+                                                                >
+                                                                  L{l+1} {l < item.currentLevel ? "✓" : generated ? "·" : "○"}
+                                                                </span>
+                                                              ))}
+                                                            </div>
+                                                            <p className="text-[10px] text-white/20 mt-2">
+                                                              {language === "german"
+                                                                ? `${item.generatedLevels.filter(Boolean).length} von 7 Quizzen generiert`
+                                                                : `${item.generatedLevels.filter(Boolean).length} of 7 quizzes generated`}
+                                                            </p>
+                                                          </div>
+
+                                                          {/* Study materials */}
+                                                          {hasStudyMaterials && (
+                                                            <div>
+                                                              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/25 mb-2">
+                                                                {language === "german" ? "Lernmaterialien" : "Study Materials"}
+                                                              </p>
+                                                              <div className="flex flex-wrap gap-2">
+                                                                {item.tutorPromptDocId && (
+                                                                  <a
+                                                                    href={`/tutor/${item.tutorPromptDocId}`}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    className="flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg bg-amber-400/[0.07] border border-amber-400/[0.18] text-amber-300/80 hover:text-amber-200 hover:bg-amber-400/[0.12] transition-all"
+                                                                  >
+                                                                    <AcademicCapIcon className="w-3 h-3" />
+                                                                    {language === "german" ? "Tutor-Prompt" : "Tutor Prompt"}
+                                                                  </a>
+                                                                )}
+                                                                {/* Podcast links — show actual links when available, otherwise generation buttons */}
+                                                                {item.prePodcastUrl && item.prePodcastUrl.startsWith("http") ? (
+                                                                  <a
+                                                                    href={item.prePodcastUrl}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    className="flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg bg-white/[0.04] border border-white/[0.1] text-white/55 hover:text-white/90 hover:bg-white/[0.07] transition-all"
+                                                                  >
+                                                                    <SpeakerWaveIcon className="w-3 h-3" />
+                                                                    {language === "german" ? "Audio 1" : "Audio 1"}
+                                                                  </a>
+                                                                ) : item.prePodcastPrompt ? (
+                                                                  <button
+                                                                    onClick={(e) => { e.stopPropagation(); handleGeneratePodcast(e, item.id, "pre"); }}
+                                                                    disabled={!!generatingPodcasts[`${item.id}-pre`]}
+                                                                    className="flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg bg-white/[0.04] border border-dashed border-white/[0.1] text-white/35 hover:text-white/70 hover:bg-white/[0.06] transition-all cursor-pointer disabled:cursor-wait"
+                                                                  >
+                                                                    <SpeakerWaveIcon className="w-3 h-3" />
+                                                                    {generatingPodcasts[`${item.id}-pre`]
+                                                                      ? (language === "german" ? "Gestartet…" : "Started…")
+                                                                      : (language === "german" ? "Podcast 1 generieren" : "Generate Podcast 1")}
+                                                                  </button>
+                                                                ) : null}
+                                                                {item.postPodcastUrl && item.postPodcastUrl.startsWith("http") ? (
+                                                                  <a
+                                                                    href={item.postPodcastUrl}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    className="flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg bg-white/[0.04] border border-white/[0.1] text-white/55 hover:text-white/90 hover:bg-white/[0.07] transition-all"
+                                                                  >
+                                                                    <SpeakerWaveIcon className="w-3 h-3" />
+                                                                    {language === "german" ? "Audio 2" : "Audio 2"}
+                                                                  </a>
+                                                                ) : item.postPodcastPrompt ? (
+                                                                  <button
+                                                                    onClick={(e) => { e.stopPropagation(); handleGeneratePodcast(e, item.id, "post"); }}
+                                                                    disabled={!!generatingPodcasts[`${item.id}-post`]}
+                                                                    className="flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg bg-white/[0.04] border border-dashed border-white/[0.1] text-white/35 hover:text-white/70 hover:bg-white/[0.06] transition-all cursor-pointer disabled:cursor-wait"
+                                                                  >
+                                                                    <SpeakerWaveIcon className="w-3 h-3" />
+                                                                    {generatingPodcasts[`${item.id}-post`]
+                                                                      ? (language === "german" ? "Gestartet…" : "Started…")
+                                                                      : (language === "german" ? "Podcast 2 generieren" : "Generate Podcast 2")}
+                                                                  </button>
+                                                                ) : null}
+                                                                {item.prePodcastPrompt && (
+                                                                  <button
+                                                                    onClick={() => setPromptModal({
+                                                                      title: language === "german" ? `Podcast Pre-Prompt — ${item.subjectSub}` : `Pre-Podcast Prompt — ${item.subjectSub}`,
+                                                                      content: item.prePodcastPrompt!,
+                                                                    })}
+                                                                    className="flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg bg-white/[0.04] border border-white/[0.1] text-white/55 hover:text-white/90 hover:bg-white/[0.07] transition-all cursor-pointer"
+                                                                  >
+                                                                    <DocumentTextIcon className="w-3 h-3" />
+                                                                    {language === "german" ? "Podcast Pre-Prompt" : "Pre-Podcast Prompt"}
+                                                                  </button>
+                                                                )}
+                                                                {item.postPodcastPrompt && (
+                                                                  <button
+                                                                    onClick={() => setPromptModal({
+                                                                      title: language === "german" ? `Podcast Post-Prompt — ${item.subjectSub}` : `Post-Podcast Prompt — ${item.subjectSub}`,
+                                                                      content: item.postPodcastPrompt!,
+                                                                    })}
+                                                                    className="flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg bg-white/[0.04] border border-white/[0.1] text-white/55 hover:text-white/90 hover:bg-white/[0.07] transition-all cursor-pointer"
+                                                                  >
+                                                                    <DocumentTextIcon className="w-3 h-3" />
+                                                                    {language === "german" ? "Podcast Post-Prompt" : "Post-Podcast Prompt"}
+                                                                  </button>
+                                                                )}
+                                                                {item.lastVideoPrompt1 && (
+                                                                  <button
+                                                                    onClick={() => setPromptModal({
+                                                                      title: language === "german" ? `Video-Skript 1 — ${item.subjectSub}` : `Video Script 1 — ${item.subjectSub}`,
+                                                                      content: item.lastVideoPrompt1!,
+                                                                    })}
+                                                                    className="flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg bg-white/[0.04] border border-white/[0.1] text-white/55 hover:text-white/90 hover:bg-white/[0.07] transition-all cursor-pointer"
+                                                                  >
+                                                                    <VideoCameraIcon className="w-3 h-3" />
+                                                                    {language === "german" ? "Video-Skript 1" : "Video Script 1"}
+                                                                  </button>
+                                                                )}
+                                                                {item.lastVideoPrompt2 && (
+                                                                  <button
+                                                                    onClick={() => setPromptModal({
+                                                                      title: language === "german" ? `Video-Skript 2 — ${item.subjectSub}` : `Video Script 2 — ${item.subjectSub}`,
+                                                                      content: item.lastVideoPrompt2!,
+                                                                    })}
+                                                                    className="flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg bg-white/[0.04] border border-white/[0.1] text-white/55 hover:text-white/90 hover:bg-white/[0.07] transition-all cursor-pointer"
+                                                                  >
+                                                                    <VideoCameraIcon className="w-3 h-3" />
+                                                                    {language === "german" ? "Video-Skript 2" : "Video Script 2"}
+                                                                  </button>
+                                                                )}
+                                                              </div>
+                                                            </div>
+                                                          )}
+
+                                                          {/* Last feedback snippet */}
+                                                          {item.lastFeedback && (
+                                                            <div>
+                                                              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/25 mb-2">
+                                                                {language === "german" ? "Letztes Feedback" : "Last Assessment"}
+                                                              </p>
+                                                              <div className="bg-black/30 rounded-xl border border-white/[0.05] p-3.5 max-h-28 overflow-y-auto custom-scrollbar">
+                                                                <p className="text-xs text-white/45 leading-relaxed whitespace-pre-wrap">{item.lastFeedback}</p>
+                                                              </div>
+                                                            </div>
+                                                          )}
+
+                                                          {/* Meta row */}
+                                                          <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[11px] text-white/25 pt-1 border-t border-white/[0.04]">
+                                                            <span className="flex items-center gap-1.5">
+                                                              <CalendarDaysIcon className="w-3.5 h-3.5" />
+                                                              {language === "german" ? "Erstellt: " : "Created: "}
+                                                              <span className="text-white/40">{new Date(item.createdAt).toLocaleDateString()}</span>
+                                                            </span>
+                                                            <span className="flex items-center gap-1.5">
+                                                              <ClockIcon className="w-3.5 h-3.5" />
+                                                              {language === "german" ? "Nächste Wdh.: " : "Next review: "}
+                                                              <span className={isDue ? "text-amber-300/80" : "text-white/40"}>
+                                                                {new Date(item.nextReviewDate).toLocaleDateString()}
+                                                              </span>
+                                                            </span>
+                                                          </div>
+
+                                                        </div>
+                                                      </motion.div>
+                                                    )}
+                                                  </AnimatePresence>
+                                                </div>
+                                              );
+                                            })}
+                                          </div>
+                                        </motion.div>
+                                      )}
+                                    </AnimatePresence>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  );
+                })}
               </motion.div>
             )}
 
             {activeTab === "quiz" && selectedReview && (
               <motion.div
                 key="quiz"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0, transition: { duration: 0.22, ease: [0.25, 0.46, 0.45, 0.94] } }}
+                exit={{ opacity: 0, y: -5, transition: { duration: 0.14, ease: [0.55, 0, 1, 0.45] } }}
                 className="max-w-4xl mx-auto"
               >
                 <button
@@ -1371,9 +1925,9 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
                     setSelectedReview(null);
                     setGradingResult(null);
                   }}
-                  className="flex items-center gap-2 text-sm text-white/40 hover:text-amber-200 mb-8 transition-colors cursor-pointer"
+                  className="flex items-center gap-2 text-sm text-white/40 hover:text-white/80 mb-8 transition-all cursor-pointer group"
                 >
-                  <ArrowLeftIcon className="w-4 h-4" />
+                  <ArrowLeftIcon className="w-4 h-4 transition-transform duration-200 group-hover:-translate-x-0.5" />
                   {language === "german" ? "Zurück zum Dashboard" : "Back to Dashboard"}
                 </button>
 
@@ -1395,7 +1949,7 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
                         className="btn-secondary flex items-center gap-2 px-4 py-2.5 text-xs font-semibold cursor-pointer shrink-0"
                       >
                         <PrinterIcon className="w-4 h-4 text-amber-300" />
-                        Exportieren
+                        {language === "german" ? "Exportieren" : "Export"}
                       </motion.button>
                     )}
                   </div>
@@ -1421,7 +1975,7 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
                     <div className="w-16 h-16 rounded-2xl bg-amber-400/10 border border-amber-400/25 flex items-center justify-center mb-6">
                       <ArrowPathIcon className="w-8 h-8 text-amber-300 animate-spin" />
                     </div>
-                    <h3 className="font-display text-2xl font-medium mb-2 text-white">Grading Submission...</h3>
+                    <h3 className="font-display text-2xl font-medium mb-2 text-white">{language === "german" ? "Einreichung wird bewertet..." : "Grading Submission..."}</h3>
                     <p className="text-white/50 mb-10 text-base">{gradingMsg}</p>
 
                     <div className="progress-track w-full max-w-md h-2.5">
@@ -1448,7 +2002,9 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
                     <div className={`card-surface-elevated p-6 md:p-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 ${gradingResult.isPass ? 'border-emerald-400/25 glow-success' : 'border-rose-400/25 glow-danger'}`}>
                       <div>
                         <span className={`text-[10px] font-bold uppercase tracking-[0.16em] px-3.5 py-1.5 rounded-full ${gradingResult.isPass ? 'bg-emerald-400/12 text-emerald-300 border border-emerald-400/25' : 'bg-rose-400/12 text-rose-300 border border-rose-400/25'}`}>
-                          {gradingResult.isPass ? "PASS (Bestanden)" : "REPEAT (Wiederholen)"}
+                          {gradingResult.isPass
+                            ? (language === "german" ? "BESTANDEN" : "PASSED")
+                            : (language === "german" ? "WIEDERHOLEN" : "REPEAT")}
                         </span>
                         <h2 className="font-display text-3xl sm:text-4xl font-medium text-white mt-5 tracking-tight">
                           {gradingResult.isPass
@@ -1702,7 +2258,7 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
                 <div className="mb-5">
                   <h3 className="text-xs font-bold uppercase tracking-[0.14em] mb-2.5 flex items-center gap-2 text-white/70">🍎 Apple Calendar (Mac/iPhone)</h3>
                   <a
-                    href={`webcal://${typeof window !== 'undefined' ? window.location.host : 'localhost:3000'}/api/calendar`}
+                    href={`webcal://${typeof window !== 'undefined' ? window.location.host : 'localhost:3000'}/api/calendar?lang=${language}`}
                     className="btn-secondary flex items-center justify-center gap-2 w-full py-3.5 text-sm"
                   >
                     <CalendarDaysIcon className="w-4 h-4 text-amber-300" />
@@ -1719,12 +2275,13 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
                   <div className="flex gap-2">
                     <input
                       readOnly
-                      value={`${typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000'}/api/calendar`}
+                      value={`${typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000'}/api/calendar?lang=${language}`}
                       className="input-dark flex-1 px-4 py-2.5 text-xs font-mono truncate"
                     />
                     <button
                       onClick={() => {
-                        navigator.clipboard.writeText(`${window.location.origin}/api/calendar`);
+                        navigator.clipboard.writeText(`${window.location.origin}/api/calendar?lang=${language}`)
+                          .catch(() => addToast("error", language === "german" ? "Kopieren fehlgeschlagen." : "Copy failed."));
                         setCalendarUrlCopied(true);
                         setTimeout(() => setCalendarUrlCopied(false), 2000);
                       }}
@@ -2052,6 +2609,56 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
 
       {/* Toast notifications (non-blocking alert replacement) */}
       <ToastStack toasts={toasts} onDismiss={dismissToast} />
+
+      {/* Prompt viewer modal — podcast prompts & video scripts */}
+      <AnimatePresence>
+        {promptModal && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[90] flex items-end sm:items-center justify-center p-4 bg-black/70 backdrop-blur-md"
+            onClick={() => setPromptModal(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 20, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 12, scale: 0.97 }}
+              transition={{ duration: 0.25, ease: [0.25, 0.46, 0.45, 0.94] }}
+              onClick={(e) => e.stopPropagation()}
+              className="card-glass border border-white/[0.1] w-full max-w-2xl max-h-[80vh] flex flex-col overflow-hidden"
+            >
+              {/* Header */}
+              <div className="flex items-start justify-between gap-4 px-6 py-5 border-b border-white/[0.07]">
+                <div className="min-w-0">
+                  <p className="eyebrow mb-1">{language === "german" ? "Prompt" : "Prompt"}</p>
+                  <h3 className="font-display text-base font-medium text-white truncate">{promptModal.title}</h3>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(promptModal.content)
+                        .then(() => addToast("success", language === "german" ? "Kopiert!" : "Copied!"))
+                        .catch(() => addToast("error", language === "german" ? "Kopieren fehlgeschlagen." : "Copy failed."));
+                    }}
+                    className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-amber-400/[0.1] hover:bg-amber-400/[0.2] border border-amber-400/25 hover:border-amber-400/40 text-amber-300 transition-all cursor-pointer"
+                  >
+                    {language === "german" ? "Kopieren" : "Copy"}
+                  </button>
+                  <button
+                    onClick={() => setPromptModal(null)}
+                    className="w-8 h-8 flex items-center justify-center rounded-lg bg-white/[0.05] hover:bg-white/[0.1] text-white/40 hover:text-white transition-all cursor-pointer"
+                  >
+                    <XMarkIcon className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+              {/* Body */}
+              <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
+                <pre className="text-sm text-white/70 leading-relaxed whitespace-pre-wrap font-sans">{promptModal.content}</pre>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
     </div>
   );

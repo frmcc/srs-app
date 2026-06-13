@@ -23,6 +23,8 @@ export async function GET(req: NextRequest) {
     },
   });
 
+  const url = req.nextUrl;
+  const lang = url.searchParams.get("lang") === "english" ? "english" : "german";
   const now = new Date();
   const baseUrl = req.nextUrl.origin;
   const eventLines: string[] = [];
@@ -32,10 +34,19 @@ export async function GET(req: NextRequest) {
     const endDate = new Date(reviewDate);
     endDate.setDate(endDate.getDate() + 1);
 
+    const interval = intervalLabelFor(item.currentLevel);
+    const levelNum = item.currentLevel;
     const subjectLabel = item.subjectSub?.trim() ? `${item.subjectMain} - ${item.subjectSub}` : item.subjectMain;
-    const tutorUrl = item.tutorPromptDocId ? `${baseUrl}/tutor/${item.tutorPromptDocId}` : "Keine";
-    const description = [
-      `Dein Review für ${intervalLabelFor(item.currentLevel)} (Level ${item.currentLevel})`,
+    const tutorUrl = item.tutorPromptDocId ? `${baseUrl}/tutor/${item.tutorPromptDocId}` : (lang === "english" ? "None" : "Keine");
+    const description = lang === "english" ? [
+      `Your review for ${interval} (Level ${levelNum + 1})`,
+      "",
+      "📝 Your quiz for today:",
+      `${baseUrl}/?quizId=${item.id}`,
+      "",
+      `🤖 Tutor Doc ID (do not delete): ${tutorUrl}`,
+    ].join("\n") : [
+      `Dein Review für ${interval} (Level ${levelNum + 1})`,
       "",
       "📝 Dein Quiz für heute:",
       `${baseUrl}/?quizId=${item.id}`,
