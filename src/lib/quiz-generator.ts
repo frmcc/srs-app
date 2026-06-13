@@ -224,13 +224,23 @@ export async function runQuizGeneration(params: {
     // ---- Step 8: Podcast uploads (workers read filePaths from disk) ----
     // MUST finish before the finally-block deletes the temp files.
     progress(8, "Uploading sources to NotebookLM podcasts...");
-    const podcastTasks: Promise<unknown>[] = [];
-    if (preNotebookId) podcastTasks.push(generatePodcastWorker(createdItem.id, "pre", preNotebookId, dynamicTextContent, filePaths));
-    if (postNotebookId) podcastTasks.push(generatePodcastWorker(createdItem.id, "post", postNotebookId, dynamicTextContent, filePaths));
-    if (podcastTasks.length > 0) {
-      const results = await Promise.allSettled(podcastTasks);
-      for (const r of results) {
-        if (r.status === "rejected") console.error("[quiz-gen] Podcast worker failed:", r.reason);
+    // Run the two podcast workers SEQUENTIALLY — never in parallel. The NotebookLM
+    // automation drives a single browser session, so asking two notebooks at the
+    // same time makes the second "ask" (post) collide with the first and silently
+    // drop: the notebook + source get created, but no podcast is ever triggered.
+    // Pre must fully finish (upload → index wait → ask → save) before post starts.
+    if (preNotebookId) {
+      try {
+        await generatePodcastWorker(createdItem.id, "pre", preNotebookId, dynamicTextContent, filePaths);
+      } catch (e) {
+        console.error("[quiz-gen] Pre podcast worker failed:", e);
+      }
+    }
+    if (postNotebookId) {
+      try {
+        await generatePodcastWorker(createdItem.id, "post", postNotebookId, dynamicTextContent, filePaths);
+      } catch (e) {
+        console.error("[quiz-gen] Post podcast worker failed:", e);
       }
     }
 

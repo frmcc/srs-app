@@ -1057,7 +1057,11 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
                         ? <>Bereit für das <em className="text-gradient not-italic font-display italic">nächste Level</em>?</>
                         : <>Ready to <em className="text-gradient not-italic font-display italic">level up</em>?</>}
                     </h1>
-                    <p className="text-white/45 text-sm sm:text-base">{language === 'german' ? `Du hast ${upcomingReviews.filter(r => r.isDue).length} Wiederholungen heute.` : `You have ${upcomingReviews.filter(r => r.isDue).length} reviews due today.`}</p>
+                    <p className="text-white/45 text-sm sm:text-base">
+                      {language === 'german'
+                        ? <>Du hast <span className="text-gradient font-semibold">{upcomingReviews.filter(r => r.isDue).length}</span> Wiederholungen heute.</>
+                        : <>You have <span className="text-gradient font-semibold">{upcomingReviews.filter(r => r.isDue).length}</span> reviews due today.</>}
+                    </p>
                   </div>
                 </motion.header>
 
@@ -1228,16 +1232,16 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
                                                         target="_blank"
                                                         rel="noopener noreferrer"
                                                         onClick={(e) => e.stopPropagation()}
-                                                        className="text-xs bg-white/[0.06] hover:bg-amber-400/[0.12] border border-white/10 hover:border-amber-400/35 text-white px-2 py-2.5 rounded-lg flex items-center justify-center gap-2 transition-all w-full font-medium truncate"
+                                                        className="text-[10px] font-medium bg-white/[0.04] hover:bg-amber-400/[0.1] border border-white/[0.09] hover:border-amber-400/30 text-white/50 hover:text-amber-200 px-2 py-2.5 rounded-lg flex items-center justify-center gap-2 w-full text-center transition-all cursor-pointer truncate"
                                                       >
-                                                        <SpeakerWaveIcon className="w-4 h-4 shrink-0 text-amber-300" />
+                                                        <SpeakerWaveIcon className="w-3.5 h-3.5 shrink-0 text-amber-400/60" />
                                                         Audio 1
                                                       </a>
                                                     ) : (
                                                       <button
                                                         onClick={(e) => handleGeneratePodcast(e, review.id, "pre")}
                                                         disabled={!!generatingPodcasts[`${review.id}-pre`]}
-                                                        className="text-[10px] font-medium bg-white/[0.02] hover:bg-amber-400/[0.08] border border-dashed border-white/10 hover:border-amber-400/30 text-white/30 hover:text-white/60 disabled:hover:bg-white/[0.02] disabled:hover:text-white/30 disabled:cursor-wait px-2 py-2.5 rounded-lg flex items-center gap-2 w-full justify-center text-center transition-all cursor-pointer"
+                                                        className="text-[10px] font-medium bg-white/[0.02] hover:bg-amber-400/[0.08] border border-white/[0.08] hover:border-amber-400/25 text-white/35 hover:text-amber-200/80 disabled:hover:bg-white/[0.02] disabled:hover:text-white/35 disabled:cursor-wait px-2 py-2.5 rounded-lg flex items-center gap-2 w-full justify-center text-center transition-all cursor-pointer"
                                                       >
                                                         <span className="ember-dot w-1 h-1 rounded-full bg-amber-400/60 shrink-0"></span>
                                                         {generatingPodcasts[`${review.id}-pre`]
@@ -1256,16 +1260,16 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
                                                         target="_blank"
                                                         rel="noopener noreferrer"
                                                         onClick={(e) => e.stopPropagation()}
-                                                        className="text-xs bg-white/[0.06] hover:bg-amber-400/[0.12] border border-white/10 hover:border-amber-400/35 text-white px-2 py-2.5 rounded-lg flex items-center justify-center gap-2 transition-all w-full font-medium truncate"
+                                                        className="text-[10px] font-medium bg-white/[0.04] hover:bg-amber-400/[0.1] border border-white/[0.09] hover:border-amber-400/30 text-white/50 hover:text-amber-200 px-2 py-2.5 rounded-lg flex items-center justify-center gap-2 w-full text-center transition-all cursor-pointer truncate"
                                                       >
-                                                        <SpeakerWaveIcon className="w-4 h-4 shrink-0 text-amber-300" />
+                                                        <SpeakerWaveIcon className="w-3.5 h-3.5 shrink-0 text-amber-400/60" />
                                                         Audio 2
                                                       </a>
                                                     ) : (
                                                       <button
                                                         onClick={(e) => handleGeneratePodcast(e, review.id, "post")}
                                                         disabled={!!generatingPodcasts[`${review.id}-post`]}
-                                                        className="text-[10px] font-medium bg-white/[0.02] hover:bg-amber-400/[0.08] border border-dashed border-white/10 hover:border-amber-400/30 text-white/30 hover:text-white/60 disabled:hover:bg-white/[0.02] disabled:hover:text-white/30 disabled:cursor-wait px-2 py-2.5 rounded-lg flex items-center gap-2 w-full justify-center text-center transition-all cursor-pointer"
+                                                        className="text-[10px] font-medium bg-white/[0.02] hover:bg-amber-400/[0.08] border border-white/[0.08] hover:border-amber-400/25 text-white/35 hover:text-amber-200/80 disabled:hover:bg-white/[0.02] disabled:hover:text-white/35 disabled:cursor-wait px-2 py-2.5 rounded-lg flex items-center gap-2 w-full justify-center text-center transition-all cursor-pointer"
                                                       >
                                                         <span className="ember-dot w-1 h-1 rounded-full bg-amber-400/60 shrink-0"></span>
                                                         {generatingPodcasts[`${review.id}-post`]
@@ -1284,14 +1288,14 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
                                                         target="_blank"
                                                         rel="noopener noreferrer"
                                                         onClick={(e) => e.stopPropagation()}
-                                                        className="text-xs bg-emerald-400/[0.08] hover:bg-emerald-400/[0.16] border border-emerald-400/25 hover:border-emerald-300/45 text-emerald-200 px-2 py-2.5 rounded-lg flex items-center justify-center gap-2 transition-all w-full font-medium truncate"
+                                                        className="text-[10px] font-medium bg-white/[0.04] hover:bg-emerald-400/[0.1] border border-white/[0.09] hover:border-emerald-400/30 text-white/50 hover:text-emerald-200 px-2 py-2.5 rounded-lg flex items-center justify-center gap-2 w-full text-center transition-all cursor-pointer truncate"
                                                       >
-                                                        <VideoCameraIcon className="w-4 h-4 shrink-0" />
+                                                        <VideoCameraIcon className="w-3.5 h-3.5 shrink-0 text-emerald-400/60" />
                                                         Video
                                                       </a>
                                                     ) : (
-                                                      <div className="text-[10px] font-medium bg-white/[0.02] border border-dashed border-white/10 text-white/30 px-2 py-2.5 rounded-lg flex items-center gap-2 w-full justify-center text-center">
-                                                        <span className="ember-dot w-1 h-1 rounded-full bg-amber-400/60 shrink-0"></span>
+                                                      <div className="text-[10px] font-medium bg-white/[0.01] border border-white/[0.05] text-white/[0.22] px-2 py-2.5 rounded-lg flex items-center gap-2 w-full justify-center text-center">
+                                                        <span className="ember-dot w-1 h-1 rounded-full bg-amber-400/50 shrink-0"></span>
                                                         {language === 'german' ? 'Wird generiert...' : 'Generating...'}
                                                       </div>
                                                     )}
@@ -1358,7 +1362,7 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
                     <motion.div whileHover={{ y: -4 }} whileTap={{ scale: 0.99 }} transition={springSoft} className="card-surface-elevated gradient-border p-6 cursor-pointer transition-colors" onClick={() => { setActiveTab("upload"); setShowMobileMenu(false); }}>
                       <p className="eyebrow mb-3">Pipeline</p>
                       <h3 className="font-display text-xl font-medium mb-2 text-white">{language === 'german' ? 'Material hochladen' : 'Upload Material'}</h3>
-                      <p className="text-sm text-white/40 leading-relaxed mb-6">{language === 'german' ? 'Füttere die KI mit einem neuen Modul, um den generativen 6-Stufen-Prozess zu starten.' : 'Feed the engine a new module to start the 6-stage generative AI pipeline.'}</p>
+                      <p className="text-sm text-white/40 leading-relaxed mb-6">{language === 'german' ? 'Füttere die KI mit einem neuen Modul, um den generativen Prozess zu starten.' : 'Feed the engine a new module to start the generative AI pipeline.'}</p>
                       <button className="btn-primary w-full py-3.5 px-4 text-sm flex items-center justify-center gap-2 cursor-pointer">
                         <CloudArrowUpIcon className="w-5 h-5" />
                         {language === 'german' ? 'Jetzt hochladen' : 'Upload Now'}
@@ -1810,7 +1814,7 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
                                                                   <button
                                                                     onClick={(e) => { e.stopPropagation(); handleGeneratePodcast(e, item.id, "pre"); }}
                                                                     disabled={!!generatingPodcasts[`${item.id}-pre`]}
-                                                                    className="flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg bg-white/[0.04] border border-dashed border-white/[0.1] text-white/35 hover:text-white/70 hover:bg-white/[0.06] transition-all cursor-pointer disabled:cursor-wait"
+                                                                    className="flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg bg-white/[0.04] border border-white/[0.1] text-white/35 hover:text-amber-200/80 hover:bg-white/[0.06] transition-all cursor-pointer disabled:cursor-wait"
                                                                   >
                                                                     <SpeakerWaveIcon className="w-3 h-3" />
                                                                     {generatingPodcasts[`${item.id}-pre`]
@@ -1832,7 +1836,7 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
                                                                   <button
                                                                     onClick={(e) => { e.stopPropagation(); handleGeneratePodcast(e, item.id, "post"); }}
                                                                     disabled={!!generatingPodcasts[`${item.id}-post`]}
-                                                                    className="flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg bg-white/[0.04] border border-dashed border-white/[0.1] text-white/35 hover:text-white/70 hover:bg-white/[0.06] transition-all cursor-pointer disabled:cursor-wait"
+                                                                    className="flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg bg-white/[0.04] border border-white/[0.1] text-white/35 hover:text-amber-200/80 hover:bg-white/[0.06] transition-all cursor-pointer disabled:cursor-wait"
                                                                   >
                                                                     <SpeakerWaveIcon className="w-3 h-3" />
                                                                     {generatingPodcasts[`${item.id}-post`]
