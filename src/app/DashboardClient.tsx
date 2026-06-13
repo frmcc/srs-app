@@ -1293,10 +1293,14 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
                                                         <VideoCameraIcon className="w-3.5 h-3.5 shrink-0 text-emerald-400/60" />
                                                         Video
                                                       </a>
-                                                    ) : (
+                                                    ) : isWaitingForNewVideo ? (
                                                       <div className="text-[10px] font-medium bg-white/[0.01] border border-white/[0.05] text-white/[0.22] px-2 py-2.5 rounded-lg flex items-center gap-2 w-full justify-center text-center">
                                                         <span className="ember-dot w-1 h-1 rounded-full bg-amber-400/50 shrink-0"></span>
-                                                        {language === 'german' ? 'Wird generiert...' : 'Generating...'}
+                                                        {language === 'german' ? 'Wird erstellt…' : 'Rendering…'}
+                                                      </div>
+                                                    ) : (
+                                                      <div className="text-[10px] font-medium bg-white/[0.01] border border-white/[0.05] text-white/[0.18] px-2 py-2.5 rounded-lg flex items-center gap-2 w-full justify-center text-center">
+                                                        {language === 'german' ? 'Nach Bewertung' : 'After grading'}
                                                       </div>
                                                     )}
                                                   </div>
