@@ -2295,9 +2295,7 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
                     <CalendarDaysIcon className="w-4 h-4 text-amber-300" />
                     Subscribe in Apple Calendar
                   </a>
-                  <p className="text-xs text-white/30 mt-2.5 ml-1 leading-relaxed">
-                    <strong className="text-white/50">Hinweis für lokales Testen:</strong> Apple blockiert 1-Click Abos ohne HTTPS. Für ein Live-Abo füge <code className="bg-white/[0.06] px-1.5 py-0.5 rounded text-amber-200/70">http://localhost:3000/api/calendar</code> manuell in Apple Calendar ein. Im Live-Betrieb funktioniert der Button automatisch.
-                  </p>
+
                 </div>
 
                 {/* Google Calendar */}
