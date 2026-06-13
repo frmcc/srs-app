@@ -335,6 +335,13 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
     if (typeof window !== "undefined" && "Notification" in window) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time external API read, SSR-safe
       setPushPermission(Notification.permission);
+      if (Notification.permission === "granted" && "serviceWorker" in navigator) {
+        navigator.serviceWorker.ready.then((reg) => {
+          reg.pushManager.getSubscription().then((sub) => {
+            if (sub) setPushSubscribed(true);
+          }).catch(() => {});
+        }).catch(() => {});
+      }
     }
   }, []);
 
