@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
   }
   const itemId = match[1];
 
-  const srsItem = await prisma.sRSItem.findUnique({ where: { id: itemId }, select: { id: true } });
+  const srsItem = await prisma.sRSItem.findUnique({ where: { id: itemId }, select: { id: true, subjectMain: true, subjectSub: true } });
   if (!srsItem) {
     return NextResponse.json({ error: "SRS item not found for ID: " + itemId }, { status: 404 });
   }
@@ -49,6 +49,15 @@ export async function POST(req: NextRequest) {
   const mimeType = file.type || "application/pdf";
 
   after(async () => {
+    // Tell the user grading has started. The PASS/REPEAT (and failure) push is
+    // sent later by runGradingPipeline.
+    sendPushNotification({
+      title: "📝 Bewertung läuft",
+      body: `Dein Quiz „${srsItem.subjectMain} – ${srsItem.subjectSub}" wird ausgewertet …`,
+      tag: `grade-start-${itemId}`,
+      url: "/",
+    }).catch((e) => console.error("Grade-start push failed:", e));
+
     try {
       console.log(`[Shortcut Grade] Starting background grading for item ${itemId}`);
       const result = await runGradingPipeline({

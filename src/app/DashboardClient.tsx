@@ -53,6 +53,22 @@ const LIB_LEVEL_SHORT = ["T1", "T3", "T7", "T21", "T60", "T180", "T365"] as cons
 const LIB_LEVEL_FULL  = ["Tag 1", "Tag 3", "Tag 7", "Tag 21", "Tag 60", "Tag 180", "Tag 365"] as const;
 
 /**
+ * Convert a base64url VAPID public key into the Uint8Array that the Push API
+ * needs for `applicationServerKey`. iOS Safari rejects the raw base64 string
+ * (the cause of "enabling notifications does nothing on iPhone"); Chrome was
+ * lenient, which hid the bug.
+ */
+function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(base64);
+  const buffer = new ArrayBuffer(raw.length);
+  const output = new Uint8Array(buffer);
+  for (let i = 0; i < raw.length; i++) output[i] = raw.charCodeAt(i);
+  return output;
+}
+
+/**
  * Slim list item served by the server page (`initialItems`) and GET /api/reviews.
  * Dates arrive as Date objects from the server component and as ISO strings
  * from the JSON API. The full row (quiz columns, blueprint, …) is only
@@ -347,19 +363,39 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
 
   const subscribeToPush = useCallback(async () => {
     try {
+      if (typeof window === "undefined" || !("Notification" in window) || !("serviceWorker" in navigator) || !("PushManager" in window)) {
+        addToast("error", language === "german" ? "Push wird in diesem Browser nicht unterstützt." : "Push isn't supported in this browser.");
+        return;
+      }
+
+      // iOS/iPadOS only deliver web push to a PWA added to the Home Screen.
+      const nav = window.navigator as Navigator & { standalone?: boolean };
+      const isStandalone = window.matchMedia("(display-mode: standalone)").matches || nav.standalone === true;
+      const isIosLike = /iphone|ipad|ipod/i.test(nav.userAgent) || (nav.platform === "MacIntel" && (nav.maxTouchPoints ?? 0) > 1);
+      if (isIosLike && !isStandalone) {
+        addToast("error", language === "german"
+          ? "Auf dem iPhone/iPad zuerst über Teilen → Zum Home-Bildschirm hinzufügen, dann hier Mitteilungen aktivieren."
+          : "On iPhone/iPad, add the app to your Home Screen first (Share → Add to Home Screen), then enable notifications here.");
+        return;
+      }
+
       const permission = await Notification.requestPermission();
       setPushPermission(permission);
-      if (permission !== "granted") return;
+      if (permission !== "granted") {
+        addToast("error", language === "german" ? "Mitteilungen wurden nicht erlaubt." : "Notification permission was denied.");
+        return;
+      }
 
       const reg = await navigator.serviceWorker.ready;
       const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
-      if (!vapidKey) { console.error("No VAPID key"); return; }
+      if (!vapidKey) { addToast("error", "VAPID key not configured."); return; }
 
       let sub = await reg.pushManager.getSubscription();
       if (!sub) {
         sub = await reg.pushManager.subscribe({
           userVisibleOnly: true,
-          applicationServerKey: vapidKey,
+          // iOS requires a Uint8Array here, not the raw base64 string.
+          applicationServerKey: urlBase64ToUint8Array(vapidKey),
         });
       }
 
@@ -370,10 +406,12 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
         body: JSON.stringify({ endpoint: subJson.endpoint, keys: subJson.keys }),
       });
       setPushSubscribed(true);
+      addToast("success", language === "german" ? "Mitteilungen aktiviert." : "Notifications enabled.");
     } catch (err) {
       console.error("Push subscribe error:", err);
+      addToast("error", language === "german" ? "Mitteilungen konnten nicht aktiviert werden." : "Couldn't enable notifications.");
     }
-  }, []);
+  }, [addToast, language]);
 
   const togglePush = useCallback(async () => {
     if (pushSubscribed) {
@@ -390,13 +428,15 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
           });
         }
         setPushSubscribed(false);
+        addToast("success", language === "german" ? "Mitteilungen deaktiviert." : "Notifications disabled.");
       } catch (err) {
         console.error("Push unsubscribe error:", err);
+        addToast("error", language === "german" ? "Mitteilungen konnten nicht deaktiviert werden." : "Couldn't disable notifications.");
       }
     } else {
       subscribeToPush();
     }
-  }, [pushSubscribed, subscribeToPush]);
+  }, [pushSubscribed, subscribeToPush, addToast, language]);
 
   // Guards against overlapping refetches (mount + focus + interval can race).
   const fetchInFlightRef = useRef(false);
@@ -893,7 +933,7 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
 
   return (
     <MotionConfig reducedMotion="user">
-    <div className="min-h-screen bg-transparent flex font-sans">
+    <div className="min-h-[100dvh] bg-transparent flex font-sans">
 
       {/* Print-Only Wrapper */}
       {activeTab === "quiz" && selectedReview && parsedTasks.length > 0 && (
@@ -951,7 +991,7 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
       <div className="flex flex-col md:flex-row w-full print:hidden">
 
         {/* Mobile Top Bar */}
-        <div className="md:hidden flex items-center justify-between px-5 py-4 border-b border-white/[0.07] bg-[#0e0c0a]/90 backdrop-blur-xl sticky top-0 z-50">
+        <div className="md:hidden flex items-center justify-between px-5 pb-4 pt-[max(1rem,env(safe-area-inset-top))] border-b border-white/[0.07] bg-[#0e0c0a]/90 backdrop-blur-xl sticky top-0 z-50">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-300 to-amber-600 flex items-center justify-center shadow-[0_4px_16px_-4px_rgba(245,158,11,0.6)]">
               <CpuChipIcon className="text-stone-950 w-4.5 h-4.5" strokeWidth={2} />
@@ -968,7 +1008,7 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
           initial={{ x: -300, opacity: 0 }}
           animate={{ x: 0, opacity: 1 }}
           transition={{ duration: 0.7, ease: EASE_OUT }}
-          className={`${showMobileMenu ? 'flex' : 'hidden'} md:flex w-full md:w-[268px] sidebar-gradient border-r border-white/[0.07] flex-col px-5 py-6 sticky md:top-0 h-[calc(100vh-69px)] md:h-screen z-40 overflow-y-auto custom-scrollbar`}
+          className={`${showMobileMenu ? 'flex' : 'hidden'} md:flex w-full md:w-[268px] sidebar-gradient border-r border-white/[0.07] flex-col px-5 pt-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] md:sticky md:top-0 min-h-[calc(100dvh_-_69px)] md:min-h-0 md:h-[100dvh] z-40 overflow-y-auto custom-scrollbar`}
         >
           <div className="hidden md:flex items-center gap-3.5 mb-10 px-1">
             <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-amber-300 to-amber-600 flex items-center justify-center shadow-[0_6px_20px_-6px_rgba(245,158,11,0.65)] ring-1 ring-amber-200/40">
@@ -1038,7 +1078,9 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
         </motion.aside>
 
         {/* Main Content */}
-        <main className={`${showMobileMenu ? "hidden" : "block"} md:block flex-1 px-4 py-8 md:px-12 md:py-12 overflow-y-auto relative h-[calc(100vh-69px)] md:h-screen`}>
+        {/* Mobile: page scrolls naturally (URL bar can collapse, native momentum).
+            md+: fixed app-shell — sidebar stays put, main scrolls internally. */}
+        <main className={`${showMobileMenu ? "hidden" : "block"} md:block flex-1 relative px-4 md:px-8 lg:px-12 pt-8 md:pt-12 pb-[max(2rem,env(safe-area-inset-bottom))] md:pb-[max(3rem,env(safe-area-inset-bottom))] md:h-[100dvh] md:overflow-y-auto`}>
           <AnimatePresence mode="wait">
             {activeTab === "dashboard" && (
               <motion.div
@@ -2186,7 +2228,7 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
               >
                 <motion.div
                   {...modalPanel}
-                  className="card-glass w-full max-w-lg overflow-hidden flex flex-col max-h-[85vh] border border-white/[0.1]"
+                  className="card-glass w-full max-w-lg overflow-hidden flex flex-col max-h-[85dvh] border border-white/[0.1]"
                 >
                   <div className="p-6 border-b border-white/[0.06] flex justify-between items-center">
                     <h3 className="font-display text-xl font-medium text-white">Video Archive</h3>
@@ -2233,7 +2275,7 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
             >
               <motion.div
                 {...modalPanel}
-                className="card-glass w-full max-w-4xl overflow-hidden flex flex-col max-h-[85vh] border border-white/[0.1]"
+                className="card-glass w-full max-w-4xl overflow-hidden flex flex-col max-h-[85dvh] border border-white/[0.1]"
               >
                 {/* Header */}
                 <div className="p-6 border-b border-white/[0.06] flex justify-between items-center">
@@ -2276,7 +2318,7 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
             >
               <motion.div
                 {...modalPanel}
-                className="card-glass p-6 md:p-7 max-w-lg w-full border border-white/[0.1] max-h-[90vh] overflow-y-auto custom-scrollbar"
+                className="card-glass p-5 sm:p-6 md:p-7 max-w-lg w-full border border-white/[0.1] max-h-[90dvh] overflow-y-auto custom-scrollbar"
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="flex items-center justify-between mb-2">
@@ -2374,7 +2416,7 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
           >
             <motion.div
               {...modalPanel}
-              className="card-glass p-6 md:p-7 w-full max-w-lg border border-white/[0.1] max-h-[90vh] overflow-y-auto custom-scrollbar"
+              className="card-glass p-5 sm:p-6 md:p-7 w-full max-w-lg border border-white/[0.1] max-h-[90dvh] overflow-y-auto custom-scrollbar"
             >
               <div className="flex justify-between items-center mb-7">
                 <h3 className="font-display text-xl font-medium text-white flex items-center gap-2.5">
@@ -2654,7 +2696,7 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
             <motion.div
               {...modalPanel}
               onClick={(e) => e.stopPropagation()}
-              className="card-glass border border-white/[0.1] w-full max-w-2xl max-h-[80vh] flex flex-col overflow-hidden"
+              className="card-glass border border-white/[0.1] w-full max-w-2xl max-h-[80dvh] flex flex-col overflow-hidden"
             >
               {/* Header */}
               <div className="flex items-start justify-between gap-4 px-6 py-5 border-b border-white/[0.07]">

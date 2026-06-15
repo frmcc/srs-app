@@ -54,6 +54,11 @@
   html {
     color-scheme: dark;
     scroll-behavior: smooth;
+    /* Stop iOS Safari from inflating font sizes in landscape. */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    /* Cleaner touch feedback (we style our own :active states). */
+    -webkit-tap-highlight-color: transparent;
   }
 
   body {
@@ -66,6 +71,16 @@
     letter-spacing: -0.011em;
     position: relative;
     min-height: 100%;
+    /* A stray wide child should never make the whole page scroll sideways on a
+       phone. `clip` (unlike `hidden`) doesn't turn body into a scroll container,
+       so sticky headers keep working. */
+    overflow-x: clip;
+  }
+
+  /* Long unbroken strings (URLs, German compound words) wrap instead of forcing
+     horizontal overflow on narrow screens. */
+  p, span, a, h1, h2, h3, h4, h5, h6, li, button, label, div {
+    overflow-wrap: break-word;
   }
 
   /* Ambient atmosphere: lamplight top-left, cool dusk bottom-right, faint grain */

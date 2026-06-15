@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Fraunces, Inter } from "next/font/google";
 import "./globals.css";
 
@@ -22,6 +22,15 @@ export const metadata: Metadata = {
     statusBarStyle: "default",
     title: "SRS Quiz",
   },
+};
+
+// Mobile + iPad: real device width, allow pinch-zoom (a11y), and extend under
+// notches/home indicators so we can pad with safe-area insets in CSS.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#0b0908",
 };
 
 export default function RootLayout({

@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { NextRequest, NextResponse, after } from "next/server";
 import { runQuizGeneration } from "@/lib/quiz-generator";
+import { sendPushNotification } from "@/lib/push";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
@@ -27,8 +28,10 @@ export async function POST(req: NextRequest) {
 
   try {
     const formData = await req.formData();
-    const subjectMain = (formData.get("subjectMain") as string) || "";
-    const subjectSub = (formData.get("subjectSub") as string) || "Module";
+    // Course name + lecture topic from the Shortcut — trimmed so stray spaces
+    // don't break the title, with a sensible fallback for the topic.
+    const subjectMain = ((formData.get("subjectMain") as string) || "").trim();
+    const subjectSub = ((formData.get("subjectSub") as string) || "").trim() || "Modul";
     const textContent = (formData.get("content") as string) || "";
     const files = formData.getAll("files") as File[];
 
@@ -61,6 +64,15 @@ export async function POST(req: NextRequest) {
     });
 
     after(async () => {
+      // Let the user know the upload landed and is being processed. The "done"
+      // (and error) push is sent later by runQuizGeneration.
+      sendPushNotification({
+        title: "📤 Vorlesung wird verarbeitet",
+        body: `„${subjectMain} – ${subjectSub}" wird hochgeladen und generiert …`,
+        tag: `upload-start-${job.id}`,
+        url: "/",
+      }).catch((e) => console.error("Upload-start push failed:", e));
+
       try {
         await runQuizGeneration({
           subjectMain,
