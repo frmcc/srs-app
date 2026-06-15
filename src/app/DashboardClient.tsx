@@ -1010,7 +1010,7 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
           initial={{ x: -300, opacity: 0 }}
           animate={{ x: 0, opacity: 1 }}
           transition={{ duration: 0.7, ease: EASE_OUT }}
-          className={`${showMobileMenu ? 'flex' : 'hidden'} md:flex w-full md:w-[268px] sidebar-gradient border-r border-white/[0.07] flex-col px-5 pt-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] md:sticky md:top-0 min-h-[calc(100dvh_-_69px)] md:min-h-0 md:h-[100dvh] z-40 overflow-y-auto custom-scrollbar`}
+          className={`${showMobileMenu ? 'flex' : 'hidden'} app-shell-sidebar md:flex w-full md:w-[268px] sidebar-gradient border-r border-white/[0.07] flex-col px-5 pt-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] md:sticky md:top-0 min-h-[calc(100dvh_-_69px)] md:min-h-0 md:h-[100dvh] z-40 overflow-y-auto custom-scrollbar`}
         >
           <div className="hidden md:flex items-center gap-3.5 mb-10 px-1">
             <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-amber-300 to-amber-600 flex items-center justify-center shadow-[0_6px_20px_-6px_rgba(245,158,11,0.65)] ring-1 ring-amber-200/40">
@@ -1082,7 +1082,7 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
         {/* Main Content */}
         {/* Mobile: page scrolls naturally (URL bar can collapse, native momentum).
             md+: fixed app-shell — sidebar stays put, main scrolls internally. */}
-        <main className={`${showMobileMenu ? "hidden" : "block"} md:block flex-1 relative px-4 md:px-8 lg:px-12 pt-8 md:pt-12 pb-[max(2rem,env(safe-area-inset-bottom))] md:pb-[max(3rem,env(safe-area-inset-bottom))] md:h-[100dvh] md:overflow-y-auto`}>
+        <main className={`${showMobileMenu ? "hidden" : "block"} app-shell-main md:block flex-1 relative px-4 md:px-8 lg:px-12 pt-8 md:pt-12 pb-[max(2rem,env(safe-area-inset-bottom))] md:pb-[max(3rem,env(safe-area-inset-bottom))] md:h-[100dvh] md:overflow-y-auto`}>
           <AnimatePresence mode="wait">
             {activeTab === "dashboard" && (
               <motion.div

@@ -58,6 +58,9 @@
        area behind Safari's top/bottom bars stay seamless — no white flash or
        visible "edge" where the app starts/ends. */
     background-color: var(--background);
+    /* Kill the rubber-band bounce so you can never drag past the content and
+       reveal a flat strip beyond the atmospheric background (installed PWA). */
+    overscroll-behavior: none;
     /* Stop iOS Safari from inflating font sizes in landscape. */
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
@@ -79,6 +82,7 @@
        phone. `clip` (unlike `hidden`) doesn't turn body into a scroll container,
        so sticky headers keep working. */
     overflow-x: clip;
+    overscroll-behavior: none;
   }
 
   /* Long unbroken strings (URLs, German compound words) wrap instead of forcing
@@ -420,6 +424,24 @@
 }
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(245, 177, 74, 0.35);
+}
+
+/* Short viewports — chiefly large phones in landscape, which are wide enough to
+   hit the md breakpoint and switch to the fixed app-shell. A 100dvh-tall shell
+   on a ~430px screen made iOS rubber-band the whole cropped app instead of
+   scrolling. On short screens, unlock the shell so the page flows and scrolls
+   naturally. (Tablets are taller than this, so they keep the fixed shell.) */
+@media (max-height: 600px) {
+  .app-shell-sidebar {
+    position: static;
+    height: auto;
+    min-height: 0;
+  }
+  .app-shell-main {
+    height: auto;
+    min-height: 0;
+    overflow: visible;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
