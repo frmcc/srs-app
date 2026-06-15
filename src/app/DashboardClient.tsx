@@ -251,7 +251,7 @@ const formatItems = (data: RawReviewItem[]): ReviewCard[] => {
   return formatted;
 };
 
-export default function DashboardClient({ initialItems }: { initialItems: RawReviewItem[] }) {
+export default function DashboardClient({ initialItems, vapidPublicKey }: { initialItems: RawReviewItem[]; vapidPublicKey?: string | null }) {
   // `startTransition` marks background refetch state updates as non-urgent so
   // React never interrupts an ongoing animation to apply them — no more blink.
   const [, startTransition] = useTransition();
@@ -387,7 +387,9 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
       }
 
       const reg = await navigator.serviceWorker.ready;
-      const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+      // Read at runtime from the server prop (works on Cloud Run without needing
+      // the var inlined at build time, which is the usual cause of this error).
+      const vapidKey = vapidPublicKey;
       if (!vapidKey) { addToast("error", "VAPID key not configured."); return; }
 
       let sub = await reg.pushManager.getSubscription();
@@ -411,7 +413,7 @@ export default function DashboardClient({ initialItems }: { initialItems: RawRev
       console.error("Push subscribe error:", err);
       addToast("error", language === "german" ? "Mitteilungen konnten nicht aktiviert werden." : "Couldn't enable notifications.");
     }
-  }, [addToast, language]);
+  }, [addToast, language, vapidPublicKey]);
 
   const togglePush = useCallback(async () => {
     if (pushSubscribed) {

@@ -19,7 +19,9 @@ export const metadata: Metadata = {
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
-    statusBarStyle: "default",
+    // Translucent so the dark app bar extends under the status bar (no visible
+    // seam at the top). The mobile top bar pads with safe-area-inset-top.
+    statusBarStyle: "black-translucent",
     title: "SRS Quiz",
   },
 };

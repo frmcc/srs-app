@@ -54,6 +54,10 @@
   html {
     color-scheme: dark;
     scroll-behavior: smooth;
+    /* Paint the root the app's dark colour so iOS rubber-band overscroll and the
+       area behind Safari's top/bottom bars stay seamless — no white flash or
+       visible "edge" where the app starts/ends. */
+    background-color: var(--background);
     /* Stop iOS Safari from inflating font sizes in landscape. */
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
