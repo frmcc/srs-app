@@ -71,6 +71,8 @@
     text-size-adjust: 100%;
     /* Cleaner touch feedback (we style our own :active states). */
     -webkit-tap-highlight-color: transparent;
+    /* Prevent horizontal overflow at the root level */
+    overflow-x: clip;
   }
 
   body {
@@ -83,10 +85,6 @@
     letter-spacing: -0.011em;
     position: relative;
     min-height: 100%;
-    /* A stray wide child should never make the whole page scroll sideways on a
-       phone. `clip` (unlike `hidden`) doesn't turn body into a scroll container,
-       so sticky headers keep working. */
-    overflow-x: clip;
   }
 
   /* Long unbroken strings (URLs, German compound words) wrap instead of forcing
@@ -99,19 +97,22 @@
   body::before {
     content: "";
     position: fixed;
-    inset: 0;
+    /* Extend 100vh past top and bottom to seamlessly cover iOS overscroll area */
+    inset: -100vh 0;
     z-index: -1;
     pointer-events: none;
+    /* Adjusted positions with absolute vh to account for the -100vh top offset */
     background:
-      radial-gradient(900px 600px at 12% -8%, rgba(245, 158, 11, 0.085), transparent 60%),
-      radial-gradient(800px 600px at 110% 110%, rgba(99, 102, 241, 0.06), transparent 60%),
-      radial-gradient(1200px 800px at 50% 120%, rgba(245, 158, 11, 0.03), transparent 55%);
+      radial-gradient(900px 600px at 12% 92vh, rgba(245, 158, 11, 0.085), transparent 60%),
+      radial-gradient(800px 600px at 110% 210vh, rgba(99, 102, 241, 0.06), transparent 60%),
+      radial-gradient(1200px 800px at 50% 220vh, rgba(245, 158, 11, 0.03), transparent 55%);
   }
 
   body::after {
     content: "";
     position: fixed;
-    inset: 0;
+    /* Extend 100vh past top and bottom to seamlessly cover iOS overscroll area */
+    inset: -100vh 0;
     z-index: -1;
     pointer-events: none;
     opacity: 0.5;
