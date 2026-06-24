@@ -993,7 +993,7 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
       <div className="flex flex-col md:flex-row w-full print:hidden">
 
         {/* Mobile Top Bar */}
-        <div className="md:hidden flex items-center justify-between px-5 pb-4 pt-[max(1rem,env(safe-area-inset-top))] border-b border-white/[0.07] bg-[#0e0c0a]/90 backdrop-blur-xl sticky top-0 z-50">
+        <div className="md:hidden flex items-center justify-between px-5 pb-4 pt-[max(1rem,env(safe-area-inset-top))] border-b border-white/[0.07] bg-[#0e0c0a]/90 backdrop-blur-xl fixed top-0 left-0 right-0 z-50">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-300 to-amber-600 flex items-center justify-center shadow-[0_4px_16px_-4px_rgba(245,158,11,0.6)]">
               <CpuChipIcon className="text-stone-950 w-4.5 h-4.5" strokeWidth={2} />
@@ -1003,6 +1003,11 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
           <button onClick={() => setShowMobileMenu(!showMobileMenu)} className="p-2 text-white/50 hover:text-white cursor-pointer">
             {showMobileMenu ? <XMarkIcon className="w-6 h-6" /> : <Bars3Icon className="w-6 h-6" />}
           </button>
+        </div>
+
+        {/* Spacer for fixed Mobile Top Bar */}
+        <div className="md:hidden px-5 pb-4 pt-[max(1rem,env(safe-area-inset-top))] opacity-0 pointer-events-none">
+          <div className="h-9"></div>
         </div>
 
         {/* Sidebar */}
