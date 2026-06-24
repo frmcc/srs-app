@@ -2418,6 +2418,7 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
       <AnimatePresence>
         {showSettingsModal && (
           <motion.div
+            key="settings-overlay"
             {...overlayMotion}
             className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50 backdrop-blur-md"
           >
