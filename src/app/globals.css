@@ -54,13 +54,18 @@
   html {
     color-scheme: dark;
     scroll-behavior: smooth;
-    /* Paint the root the app's dark colour so iOS rubber-band overscroll and the
-       area behind Safari's top/bottom bars stay seamless — no white flash or
-       visible "edge" where the app starts/ends. */
+    /* The atmospheric gradient lives on the ROOT (not only the fixed body::before
+       overlay) so it also fills the iOS rubber-band overscroll region — iOS only
+       paints the root's background there. Viewport-anchored (fixed) so it lines
+       up exactly with body::before: drag past the top/bottom and you keep seeing
+       the same gradient instead of a flat edge. */
     background-color: var(--background);
-    /* Kill the rubber-band bounce so you can never drag past the content and
-       reveal a flat strip beyond the atmospheric background (installed PWA). */
-    overscroll-behavior: none;
+    background-image:
+      radial-gradient(900px 600px at 12% -8%, rgba(245, 158, 11, 0.085), transparent 60%),
+      radial-gradient(800px 600px at 110% 110%, rgba(99, 102, 241, 0.06), transparent 60%),
+      radial-gradient(1200px 800px at 50% 120%, rgba(245, 158, 11, 0.03), transparent 55%);
+    background-attachment: fixed;
+    background-repeat: no-repeat;
     /* Stop iOS Safari from inflating font sizes in landscape. */
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
@@ -82,7 +87,6 @@
        phone. `clip` (unlike `hidden`) doesn't turn body into a scroll container,
        so sticky headers keep working. */
     overflow-x: clip;
-    overscroll-behavior: none;
   }
 
   /* Long unbroken strings (URLs, German compound words) wrap instead of forcing
