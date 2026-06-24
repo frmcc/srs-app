@@ -1042,7 +1042,7 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
               <BookOpenIcon className="w-5 h-5 shrink-0" />
               <span className="text-sm font-medium whitespace-nowrap">{language === 'german' ? 'Bibliothek' : 'Library'}</span>
             </button>
-            <button onClick={() => { setShowSettingsModal(true); setShowMobileMenu(false); }} className="flex items-center gap-3.5 px-4 py-3 transition-all duration-200 cursor-pointer nav-item-idle">
+            <button onClick={() => { setShowMobileMenu(false); setTimeout(() => setShowSettingsModal(true), 250); }} className="flex items-center gap-3.5 px-4 py-3 transition-all duration-200 cursor-pointer nav-item-idle">
               <Cog8ToothIcon className="w-5 h-5 shrink-0" />
               <span className="text-sm font-medium whitespace-nowrap">{language === 'german' ? 'Einstellungen' : 'Settings'}</span>
             </button>
@@ -1472,7 +1472,7 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                       <div className="flex-1 flex flex-col justify-end">
                         <div className="flex items-start justify-between mb-2 gap-2">
                           <label className="text-xs font-semibold uppercase tracking-[0.12em] text-white/45 leading-tight">{language === "german" ? `Modul (Semester ${currentSemester})` : `Module (Semester ${currentSemester})`}</label>
-                          <button onClick={() => { setShowSettingsModal(true); setShowMobileMenu(false); }} className="text-xs text-amber-300/80 hover:text-amber-200 transition-colors shrink-0 cursor-pointer">{language === "german" ? "Verwalten" : "Manage Presets"}</button>
+                          <button onClick={() => { setShowMobileMenu(false); setTimeout(() => setShowSettingsModal(true), 250); }} className="text-xs text-amber-300/80 hover:text-amber-200 transition-colors shrink-0 cursor-pointer">{language === "german" ? "Verwalten" : "Manage Presets"}</button>
                         </div>
                         {modulePresets.length > 0 ? (
                           <select
@@ -1487,7 +1487,7 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                         ) : (
                           <div className="input-dark w-full px-4 py-3.5 text-white/45 text-sm flex items-center justify-between gap-2">
                             {language === "german" ? `Keine Module für Semester ${currentSemester} definiert` : `No modules defined for Semester ${currentSemester}`}
-                            <button onClick={() => { setShowSettingsModal(true); setShowMobileMenu(false); }} className="text-amber-300 hover:text-amber-200 font-medium cursor-pointer shrink-0">{language === "german" ? "Hinzufügen" : "Add Presets"}</button>
+                            <button onClick={() => { setShowMobileMenu(false); setTimeout(() => setShowSettingsModal(true), 250); }} className="text-amber-300 hover:text-amber-200 font-medium cursor-pointer shrink-0">{language === "german" ? "Hinzufügen" : "Add Presets"}</button>
                           </div>
                         )}
                       </div>
