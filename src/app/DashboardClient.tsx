@@ -994,12 +994,12 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
 
         {/* Mobile Top Bar */}
         <div className="md:hidden flex items-center justify-between px-5 pb-4 pt-[max(1rem,env(safe-area-inset-top))] border-b border-white/[0.07] bg-[#0e0c0a]/90 backdrop-blur-xl fixed top-0 left-0 right-0 z-50">
-          <div className="flex items-center gap-3">
+          <button onClick={() => { setActiveTab("dashboard"); setShowMobileMenu(false); }} className="flex items-center gap-3 cursor-pointer text-left transition-opacity hover:opacity-80">
             <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-300 to-amber-600 flex items-center justify-center shadow-[0_4px_16px_-4px_rgba(245,158,11,0.6)]">
               <CpuChipIcon className="text-stone-950 w-4.5 h-4.5" strokeWidth={2} />
             </div>
             <h1 className="font-display text-xl font-medium tracking-tight text-white">SRS<span className="text-gradient italic">Master</span></h1>
-          </div>
+          </button>
           <button onClick={() => setShowMobileMenu(!showMobileMenu)} className="p-2 text-white/50 hover:text-white cursor-pointer">
             {showMobileMenu ? <XMarkIcon className="w-6 h-6" /> : <Bars3Icon className="w-6 h-6" />}
           </button>
@@ -1017,7 +1017,7 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
           transition={{ duration: 0.7, ease: EASE_OUT }}
           className={`${showMobileMenu ? 'flex' : 'hidden'} app-shell-sidebar md:flex w-full md:w-[268px] sidebar-gradient border-r border-white/[0.07] flex-col px-5 pt-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] md:sticky md:top-0 min-h-[calc(100dvh_-_69px)] md:min-h-0 md:h-[100dvh] z-40 overflow-y-auto custom-scrollbar`}
         >
-          <div className="hidden md:flex items-center gap-3.5 mb-10 px-1">
+          <button onClick={() => { setActiveTab("dashboard"); setShowMobileMenu(false); }} className="hidden md:flex items-center gap-3.5 mb-10 px-1 cursor-pointer text-left transition-opacity hover:opacity-80">
             <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-amber-300 to-amber-600 flex items-center justify-center shadow-[0_6px_20px_-6px_rgba(245,158,11,0.65)] ring-1 ring-amber-200/40">
               <CpuChipIcon className="text-stone-950 w-5 h-5" strokeWidth={2} />
             </div>
@@ -1027,7 +1027,7 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                 Semester {currentSemester}
               </div>
             </div>
-          </div>
+          </button>
 
           <nav className="flex flex-col gap-1.5">
             <button onClick={() => { setActiveTab("dashboard"); setShowMobileMenu(false); }} className={`flex items-center gap-3.5 px-4 py-3 transition-all duration-200 cursor-pointer ${activeTab === 'dashboard' ? 'nav-item-active' : 'nav-item-idle'}`}>
