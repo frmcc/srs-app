@@ -325,11 +325,19 @@ export async function runGradingPipeline(opts: {
   }
 
   if (agentMode && nextQuizText.trim()) {
-    progress(3.5, "Agent Mode: Reflecting on draft and self-correcting...");
+    progress(3.3, "Agent Mode: Schreibe detaillierte Kritik des Folge-Quizzes...");
+    const critiqueRes = await generateContentWithRetry(ai, modelName, {
+      contents: [{ role: "user", parts: [{ text: `Original Draft:\n${nextQuizText}\n\nBlueprint:\n${srsItem.blueprint || "N/A"}\n\nBitte schreibe einen detaillierten Kritik-Bericht über dieses Folge-Quiz. Prüfe hart: Ist das Niveau universitär (Bachelor Psychologie)? Geht das Quiz auf die spezifischen Fehler des Studenten ein? Sind die falschen Antworten plausibel, aber eindeutig falsch? Schreibe nur die Kritik.` }] }],
+      config: { systemInstruction: `Du bist ein strenger Prüfungsdidaktiker. Deine einzige Aufgabe ist es, den Entwurf schonungslos zu kritisieren, um die Qualität zu maximieren.` + languageInstruction },
+    }, (msg) => progress(3.3, msg), "Next Quiz Agent Critique", useAiWrapper);
+
+    const critiqueText = critiqueRes.text || "Keine Kritik generiert.";
+
+    progress(3.6, "Agent Mode: Überarbeite Folge-Quiz basierend auf Kritik...");
     const agentRes = await generateContentWithRetry(ai, modelName, {
-      contents: [{ role: "user", parts: [{ text: `Original Draft:\n${nextQuizText}\n\nBlueprint:\n${srsItem.blueprint || "N/A"}\n\nPlease critically review your drafted quiz. Check if the wrong answers are plausible but strictly incorrect, if the difficulty is appropriate for university level, and if the concepts from the blueprint are deeply covered. Fix any flaws and output your result in the EXACT SAME FORMAT as the original draft. Keep all markdown formatting, all ===MARKER=== blocks, and exact text structures exactly as they were in the draft. Do not convert the quiz to JSON.` }] }],
-      config: { systemInstruction: `You are an expert educational agent. Your task is to critique and refine the drafted quiz. Maintain the exact formatting rules of the original draft, including all section markers (===...===). Do NOT output JSON.` + languageInstruction },
-    }, (msg) => progress(3.5, msg), "Next Quiz Agent Reflection", useAiWrapper);
+      contents: [{ role: "user", parts: [{ text: `Original Draft:\n${nextQuizText}\n\nBlueprint:\n${srsItem.blueprint || "N/A"}\n\nKritik-Bericht:\n${critiqueText}\n\nBitte überarbeite den Original-Draft basierend auf der Kritik. Behebe alle gefundenen Schwächen. Gib dein finales, verbessertes Quiz aus. WICHTIG: Behalte EXAKT das ursprüngliche Markdown-Format des Original-Drafts bei, inklusive aller ===MARKER=== Blöcke. Generiere auf KEINEN Fall ein reines JSON-Objekt.` }] }],
+      config: { systemInstruction: `Du bist ein brillanter Quiz-Autor. Überarbeite den Entwurf basierend auf der Kritik. Das finale Output muss im identischen Markdown-Format wie der Original-Draft formatiert sein. Nutze zwingend alle Section-Marker (===...===).` + languageInstruction },
+    }, (msg) => progress(3.6, msg), "Next Quiz Agent Revision", useAiWrapper);
     
     if (agentRes.text?.trim()) {
       nextQuizText = agentRes.text;
