@@ -4,6 +4,7 @@ import { PROMPTS, podcast_prompts } from "../app/api/quiz/prompts";
 import { sendPushNotification } from "./push";
 import { generatePodcastWorker, createNotebook } from "./notebooklm";
 import { generateContentWithRetry } from "./gemini-retry";
+import { generateQuizWithAgent } from "./agent";
 import { getOrCreateDriveFolder, uploadToDrive, createGoogleDoc } from "./google-drive";
 import { extractSection } from "./markers";
 import { pdfToText } from "./pdf-text";
@@ -11,7 +12,7 @@ import type { SRSItem } from "@prisma/client";
 import fs from "fs/promises";
 import path from "path";
 
-const DEFAULT_MODEL = "gemini-3.1-flash-lite";
+const DEFAULT_MODEL = "gemini-3.5-flash";
 
 /**
  * THE quiz generation pipeline. Used by both:
@@ -50,8 +51,8 @@ export async function runQuizGeneration(params: {
     const appConfig = await prisma.appConfig.findUnique({ where: { id: 1 } });
     const wrapperMode = appConfig?.wrapperMode || "all";
     const useAiWrapper = wrapperMode === "all" || wrapperMode === "generation_only";
-    const agentMode = appConfig?.agentMode || false;
     const currentSemester = appConfig?.currentSemester || 1;
+    const agentMode = appConfig?.agentMode ?? false;
     const language = appConfig?.language || "german";
     const languageInstruction = `\n\nCRITICAL: You must generate ALL text, output, and responses strictly in ${language.toUpperCase()}. This applies to every section of the generated content.`;
 
@@ -99,45 +100,40 @@ export async function runQuizGeneration(params: {
     const blueprint = blueprintRes.text;
 
     // ---- Step 2: Quiz 1 (later quizzes are generated on-demand after grading) ----
-    progress(2, "Generating Quiz 1...");
-    const quiz1Res = await generateContentWithRetry(ai, modelName, {
-      contents: [{ role: "user", parts: [...masterContextParts, { text: "Hier sind die Materialien. Bitte führe deine System-Instruktionen aus." }] }],
-      config: { systemInstruction: PROMPTS.quiz_tag_1 + `\n\nModul/Vorlesungsthema:\n${subjectMain}\n\nBlueprint:\n${blueprint}` + languageInstruction },
-    }, (msg) => progress(2, msg), "Quiz 1", useAiWrapper);
+    // Same system prompt for both paths. In Agent Mode the managed agent GENERATES
+    // the quiz (grounded in the lecture text); otherwise — or if the agent fails or
+    // is unavailable — the normal gemini-3.5-flash call does, as a safe fallback.
+    const quiz1Instruction = PROMPTS.quiz_tag_1 + `\n\nModul/Vorlesungsthema:\n${subjectMain}\n\nBlueprint:\n${blueprint}` + languageInstruction;
+    let quiz1Text = "";
 
-    const quiz1Text = quiz1Res.text || "";
+    if (agentMode) {
+      const agentQuiz = await generateQuizWithAgent({
+        instruction: quiz1Instruction,
+        material: dynamicTextContent,
+        label: "Quiz 1",
+        onProgress: (m) => progress(2, m),
+      });
+      if (agentQuiz) quiz1Text = agentQuiz;
+    }
+
+    if (!quiz1Text.trim()) {
+      // Agent off, or agent failed/unavailable → normal gemini-3.5-flash generation.
+      progress(2, "Generating Quiz 1...");
+      const quiz1Res = await generateContentWithRetry(ai, modelName, {
+        contents: [{ role: "user", parts: [...masterContextParts, { text: "Hier sind die Materialien. Bitte führe deine System-Instruktionen aus." }] }],
+        config: { systemInstruction: quiz1Instruction },
+      }, (msg) => progress(2, msg), "Quiz 1", useAiWrapper);
+      quiz1Text = quiz1Res.text || "";
+    }
+
     // A module with an empty Quiz 1 is unusable: the student opens it to no quiz
     // and can never advance (currentQuizText falls back to an empty quiz1DocId).
-    // Fail here — before the tutor/podcast calls and before persisting — so the
-    // error path cleans up and the user simply retries, instead of saving a
-    // broken module. Mirrors the grading-pipeline guard against empty next-quizzes.
+    // Fail before the tutor/podcast calls and before persisting.
     if (!quiz1Text.trim()) {
       throw new Error("Quiz 1 wurde leer generiert — es wurde nichts gespeichert. Bitte versuche es erneut.");
     }
-    
-    let finalQuiz1Text = quiz1Text;
-    if (agentMode) {
-      progress(2.3, "Agent Mode: Schreibe detaillierte Kritik des Entwurfs...");
-      const critiqueRes = await generateContentWithRetry(ai, modelName, {
-        contents: [{ role: "user", parts: [{ text: `Original Draft:\n${quiz1Text}\n\nBlueprint:\n${blueprint}\n\nBitte schreibe einen detaillierten Kritik-Bericht über dieses Quiz. Gehe Aufgabe für Aufgabe durch. Prüfe hart: Ist das Niveau universitär (Bachelor Psychologie)? Sind die falschen Antworten plausibel, aber eindeutig falsch? Sind die Aufgabenformate abwechslungsreich? Welche Lücken zum Blueprint bestehen? Schreibe nur die Kritik.` }] }],
-        config: { systemInstruction: `Du bist ein strenger Prüfungsdidaktiker. Deine einzige Aufgabe ist es, den Entwurf schonungslos zu kritisieren, um die Qualität zu maximieren.` + languageInstruction },
-      }, (msg) => progress(2.3, msg), "Quiz 1 Agent Critique", useAiWrapper);
 
-      const critiqueText = critiqueRes.text || "Keine Kritik generiert.";
-
-      progress(2.6, "Agent Mode: Überarbeite Quiz basierend auf Kritik...");
-      const agentRes = await generateContentWithRetry(ai, modelName, {
-        contents: [{ role: "user", parts: [{ text: `Original Draft:\n${quiz1Text}\n\nBlueprint:\n${blueprint}\n\nKritik-Bericht:\n${critiqueText}\n\nBitte überarbeite den Original-Draft basierend auf der Kritik. Behebe alle gefundenen Schwächen. Gib dein finales, verbessertes Quiz aus. WICHTIG: Behalte EXAKT das ursprüngliche Markdown-Format des Original-Drafts bei, inklusive aller ===MARKER=== Blöcke (wie ===STUDENT_QUIZ_START=== und ===COVERAGE_LEDGER_START===). Generiere auf KEINEN Fall ein reines JSON-Objekt.` }] }],
-        config: { systemInstruction: `Du bist ein brillanter Quiz-Autor. Überarbeite den Entwurf basierend auf der Kritik. Das finale Output muss im identischen Markdown-Format wie der Original-Draft formatiert sein. Nutze zwingend alle Section-Marker (===...===).` + languageInstruction },
-      }, (msg) => progress(2.6, msg), "Quiz 1 Agent Revision", useAiWrapper);
-      
-      if (agentRes.text?.trim()) {
-        finalQuiz1Text = agentRes.text;
-      } else {
-        console.warn("[quiz-gen] Agent reflection returned empty. Falling back to draft.");
-      }
-    }
-    const quiz1Ledger = extractSection(finalQuiz1Text, "===COVERAGE_LEDGER_START===", "===COVERAGE_LEDGER_END===");
+    const quiz1Ledger = extractSection(quiz1Text, "===COVERAGE_LEDGER_START===", "===COVERAGE_LEDGER_END===");
 
     // ---- Step 3+4: Tutor prompt & podcast prompts in parallel (independent) ----
     progress(3, "Generating Tutor Prompt & Podcast Prompts...");
@@ -202,7 +198,7 @@ export async function runQuizGeneration(params: {
       }
 
       await Promise.allSettled([
-        createGoogleDoc("Quiz 1 (Tag 1)", finalQuiz1Text, folderId),
+        createGoogleDoc("Quiz 1 (Tag 1)", quiz1Text, folderId),
         createGoogleDoc("Tutor Prompt", tutorPrompt || "", folderId),
       ]);
     } catch (e) {
@@ -218,7 +214,7 @@ export async function runQuizGeneration(params: {
         semester: currentSemester,
         currentLevel: 0,
         nextReviewDate: new Date(Date.now() + 24 * 60 * 60 * 1000),
-        quiz1DocId: finalQuiz1Text,
+        quiz1DocId: quiz1Text,
         blueprint,
         coverageLedger: quiz1Ledger,
         tutorPromptContent: tutorPrompt,

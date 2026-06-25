@@ -8,7 +8,7 @@ function getOrCreateConfig() {
   return prisma.appConfig.upsert({
     where: { id: 1 },
     update: {},
-    create: { id: 1, currentSemester: 1, modulePresets: "[]", language: "german", agentMode: false },
+    create: { id: 1, currentSemester: 1, modulePresets: "[]", language: "german" },
   });
 }
 

@@ -5,6 +5,7 @@ import { PROMPTS } from "@/app/api/quiz/prompts";
 import { downloadFromDrive, createGoogleDoc } from "@/lib/google-drive";
 import { sendPushNotification } from "@/lib/push";
 import { generateContentWithRetry } from "@/lib/gemini-retry";
+import { generateQuizWithAgent } from "@/lib/agent";
 import { generateVideoPromptsWorker } from "@/lib/notebooklm";
 import { extractSection, extractSectionOr, formatPrompt, parseMismatchVerdict, parseAssessmentDecision, DecisionParseError } from "@/lib/markers";
 import { countTasks, currentQuizText, intervalLabelFor, nextReviewDateAfter, quizFieldForLevel, INTERVAL_LABELS } from "@/lib/srs";
@@ -20,7 +21,7 @@ import fs from "fs/promises";
  * Any change to grading behavior happens HERE, exactly once.
  */
 
-const DEFAULT_MODEL = "gemini-3.1-flash-lite";
+const DEFAULT_MODEL = "gemini-3.5-flash";
 
 export class GradingMismatchError extends Error {
   constructor() {
@@ -139,7 +140,7 @@ export async function runGradingPipeline(opts: {
 
   const appConfig = await prisma.appConfig.findUnique({ where: { id: 1 } });
   const useAiWrapper = (appConfig?.wrapperMode || "all") === "all";
-  const agentMode = appConfig?.agentMode || false;
+  const agentMode = appConfig?.agentMode ?? false;
 
   const language = opts.language || appConfig?.language || "german";
   const languageInstruction = `\n\nCRITICAL: You must generate ALL text, output, and responses strictly in ${language.toUpperCase()}. This applies to every section of the generated content.`;
@@ -255,6 +256,10 @@ export async function runGradingPipeline(opts: {
   let nextQuizText = "";
   let newLedgerText = "";
   let lmRes;
+  // Captured per branch so Agent Mode can re-GENERATE the follow-up with the
+  // EXACT same prompt + context as the normal call (not a refine pass).
+  let nextQuizInstruction = "";
+  let nextQuizContextParts: Part[] = [];
 
   // The level we GRADE at vs the level we move TO. Mastery (5+) keeps cycling quiz7.
   const nextLevel = srsItem.currentLevel + 1; // uncapped mastery counter
@@ -296,14 +301,17 @@ export async function runGradingPipeline(opts: {
       nextIntervalLabel = generationStage === 5 ? "Tag 180" : "Tag 365";
     }
 
+    nextQuizInstruction = formatPrompt(nextPrompt, { SUBJECT: subject, NEXT_INTERVAL: nextIntervalLabel, NEXT_INTERVAL_LABEL: nextIntervalLabel }) + languageInstruction;
+    nextQuizContextParts = nextQuizParts;
     const nextQuizCall = generateContentWithRetry(ai, modelName, {
       contents: [{ role: "user", parts: nextQuizParts as never }],
-      config: { systemInstruction: formatPrompt(nextPrompt, { SUBJECT: subject, NEXT_INTERVAL: nextIntervalLabel, NEXT_INTERVAL_LABEL: nextIntervalLabel }) + languageInstruction },
+      config: { systemInstruction: nextQuizInstruction },
     }, (msg) => progress(3, msg), `Next Quiz (${nextIntervalLabel})`, useAiWrapper);
 
     const [lmResult, nextQuizRes] = await Promise.all([lmPromptCall, nextQuizCall]);
     lmRes = lmResult;
     nextQuizText = nextQuizRes.text || "";
+    newLedgerText = extractSection(nextQuizText, "===COVERAGE_LEDGER_START===", "===COVERAGE_LEDGER_END===");
   } else {
     // REPEAT: remedial quiz attacking the diagnosed misconceptions
     const remedialQuizParts: Part[] = [...sourceMaterialParts];
@@ -314,9 +322,11 @@ export async function runGradingPipeline(opts: {
     remedialQuizParts.push({ text: `Fehleranalyse des Graders:\n${chefFeedback}` });
     remedialQuizParts.push({ text: "Hier sind die Dateien. Bitte führe deine System-Instruktionen aus." });
 
+    nextQuizInstruction = formatPrompt(GRADE_PROMPTS.retry_quiz_fail, { SUBJECT: subject, INTERVAL: interval }) + languageInstruction;
+    nextQuizContextParts = remedialQuizParts;
     const nextQuizCall = generateContentWithRetry(ai, modelName, {
       contents: [{ role: "user", parts: remedialQuizParts as never }],
-      config: { systemInstruction: formatPrompt(GRADE_PROMPTS.retry_quiz_fail, { SUBJECT: subject, INTERVAL: interval }) + languageInstruction },
+      config: { systemInstruction: nextQuizInstruction },
     }, (msg) => progress(3, msg), "Next Quiz (REPEAT)", useAiWrapper);
 
     const [lmResult, nextQuizRes] = await Promise.all([lmPromptCall, nextQuizCall]);
@@ -324,30 +334,26 @@ export async function runGradingPipeline(opts: {
     nextQuizText = nextQuizRes.text || "";
   }
 
-  if (agentMode && nextQuizText.trim()) {
-    progress(3.3, "Agent Mode: Schreibe detaillierte Kritik des Folge-Quizzes...");
-    const critiqueRes = await generateContentWithRetry(ai, modelName, {
-      contents: [{ role: "user", parts: [{ text: `Original Draft:\n${nextQuizText}\n\nBlueprint:\n${srsItem.blueprint || "N/A"}\n\nBitte schreibe einen detaillierten Kritik-Bericht über dieses Folge-Quiz. Prüfe hart: Ist das Niveau universitär (Bachelor Psychologie)? Geht das Quiz auf die spezifischen Fehler des Studenten ein? Sind die falschen Antworten plausibel, aber eindeutig falsch? Schreibe nur die Kritik.` }] }],
-      config: { systemInstruction: `Du bist ein strenger Prüfungsdidaktiker. Deine einzige Aufgabe ist es, den Entwurf schonungslos zu kritisieren, um die Qualität zu maximieren.` + languageInstruction },
-    }, (msg) => progress(3.3, msg), "Next Quiz Agent Critique", useAiWrapper);
-
-    const critiqueText = critiqueRes.text || "Keine Kritik generiert.";
-
-    progress(3.6, "Agent Mode: Überarbeite Folge-Quiz basierend auf Kritik...");
-    const agentRes = await generateContentWithRetry(ai, modelName, {
-      contents: [{ role: "user", parts: [{ text: `Original Draft:\n${nextQuizText}\n\nBlueprint:\n${srsItem.blueprint || "N/A"}\n\nKritik-Bericht:\n${critiqueText}\n\nBitte überarbeite den Original-Draft basierend auf der Kritik. Behebe alle gefundenen Schwächen. Gib dein finales, verbessertes Quiz aus. WICHTIG: Behalte EXAKT das ursprüngliche Markdown-Format des Original-Drafts bei, inklusive aller ===MARKER=== Blöcke. Generiere auf KEINEN Fall ein reines JSON-Objekt.` }] }],
-      config: { systemInstruction: `Du bist ein brillanter Quiz-Autor. Überarbeite den Entwurf basierend auf der Kritik. Das finale Output muss im identischen Markdown-Format wie der Original-Draft formatiert sein. Nutze zwingend alle Section-Marker (===...===).` + languageInstruction },
-    }, (msg) => progress(3.6, msg), "Next Quiz Agent Revision", useAiWrapper);
-    
-    if (agentRes.text?.trim()) {
-      nextQuizText = agentRes.text;
-    } else {
-      console.warn("[grading] Agent reflection returned empty. Falling back to draft.");
+  // Agent Mode (opt-in): GENERATE the follow-up quiz with the managed agent using
+  // the SAME prompt + context as the normal call, grounded in the lecture material
+  // (no web). On any failure generateQuizWithAgent returns null and we keep the
+  // gemini-3.5-flash draft above — so it can never empty or break the next quiz.
+  if (agentMode && nextQuizInstruction) {
+    const material = nextQuizContextParts
+      .map((p) => (typeof (p as { text?: unknown }).text === "string" ? (p as { text: string }).text : ""))
+      .filter(Boolean)
+      .join("\n\n");
+    const agentQuiz = await generateQuizWithAgent({
+      instruction: nextQuizInstruction,
+      material,
+      label: "Folge-Quiz",
+      onProgress: (m) => progress(3, m),
+    });
+    if (agentQuiz) {
+      nextQuizText = agentQuiz;
+      // Re-extract the ledger so it matches the agent-generated quiz.
+      newLedgerText = extractSection(nextQuizText, "===COVERAGE_LEDGER_START===", "===COVERAGE_LEDGER_END===");
     }
-  }
-
-  if (isPass) {
-    newLedgerText = extractSection(nextQuizText, "===COVERAGE_LEDGER_START===", "===COVERAGE_LEDGER_END===");
   }
 
   const videoPromptsText = lmRes.text || "";

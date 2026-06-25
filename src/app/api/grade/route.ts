@@ -1,4 +1,4 @@
-export const maxDuration = 300;
+export const maxDuration = 600; // higher ceiling for opt-in Agent Mode (also raise the Cloud Run request timeout ≥ 600s)
 import { NextRequest, NextResponse, after } from "next/server";
 import { runGradingPipeline, GradingMismatchError, ConcurrentGradingError } from "@/lib/grading-pipeline";
 import { DecisionParseError } from "@/lib/markers";

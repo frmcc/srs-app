@@ -1459,10 +1459,21 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                       />
                     </div>
                     <div className="w-full max-w-md mt-8 text-left space-y-3.5">
-                      {[1,2,3,4,5,6,7].map(step => (
+                      {[
+                        // The REAL pipeline steps the backend emits (quiz-generator.ts),
+                        // not the old fictional "Quiz Agent Level 1–5" labels. The app
+                        // only generates Quiz 1 at upload; later levels are made one-by-one
+                        // during grading. Step numbers match the backend's progress() calls.
+                        { step: 1, label: language === "german" ? "Blueprint analysieren" : "Analyze Blueprint" },
+                        { step: 2, label: agentMode ? (language === "german" ? "Quiz 1 + Agent-Verfeinerung" : "Quiz 1 + Agent refinement") : (language === "german" ? "Quiz 1 generieren" : "Generate Quiz 1") },
+                        { step: 3, label: language === "german" ? "Tutor- & Podcast-Prompts" : "Tutor & Podcast prompts" },
+                        { step: 5, label: language === "german" ? "NotebookLM einrichten" : "NotebookLM setup" },
+                        { step: 6, label: language === "german" ? "Google Drive Upload" : "Google Drive upload" },
+                        { step: 7, label: language === "german" ? "In Datenbank speichern" : "Save to database" },
+                      ].map(({ step, label }) => (
                         <div key={step} className={`flex items-center gap-3.5 text-sm ${progressStep > step ? 'text-emerald-300' : progressStep === step ? 'text-amber-200 font-medium' : 'text-white/20'}`}>
                           {progressStep > step ? <CheckCircleIcon className="w-5 h-5 shrink-0" /> : progressStep === step ? <span className="ember-dot w-5 h-5 rounded-full border-2 border-amber-300 shrink-0 flex items-center justify-center"><span className="w-1.5 h-1.5 rounded-full bg-amber-300"></span></span> : <div className="w-5 h-5 rounded-full border-2 border-current shrink-0" />}
-                          {step === 1 ? "Blueprint Engine" : step === 5 ? "NotebookLM Setup" : step === 7 ? "Tutor Prompt Engine" : `Quiz Agent (Level ${step-1})`}
+                          {label}
                         </div>
                       ))}
                     </div>
@@ -2643,10 +2654,19 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                 </div>
 
                 <div className="pt-6 border-t border-white/[0.07]">
-                  <h4 className="text-[10px] font-bold text-amber-500/70 uppercase tracking-[0.2em] mb-2">{language === "german" ? "Agenten-Modus (Multi-Step Reflection)" : "Agent Mode (Multi-Step Reflection)"}</h4>
-                  <p className="text-white/40 text-xs mb-4 leading-relaxed">{language === "german" ? "Nutzt einen iterativen LLM-Loop, um das Quiz nach der Generierung selbstständig zu kritisieren und zu verbessern. Erhöht die Qualität massiv, dauert aber länger." : "Uses an iterative LLM loop to self-critique and improve the quiz after drafting. Massively increases quality but takes longer."}</p>
-                  <div className="flex bg-[#0e0c0a] p-1 rounded-xl border border-white/[0.05] relative isolate">
-                    <div className="absolute inset-y-1 w-[calc(50%-0.25rem)] transition-all duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] z-0 rounded-lg bg-amber-400/15 border border-amber-400/30" style={{ transform: agentMode ? 'translateX(calc(100% + 0.5rem))' : 'translateX(0)' }}></div>
+                  <h4 className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em] mb-3">{language === "german" ? "Agent-Modus (Beta)" : "Agent Mode (Beta)"}</h4>
+                  <p className="text-xs text-white/40 mb-4 leading-relaxed">
+                    {language === "german"
+                      ? "Wenn aktiv, verfeinert ein KI-Agent jedes generierte Quiz (und Folge-Quizze beim Bewerten) in einem zweiten Schritt — er kritisiert den Entwurf und schreibt ihn neu, streng auf Basis deines Vorlesungsmaterials. Bessere Qualität, aber langsamer und teurer pro Quiz."
+                      : "When on, an AI agent refines every generated quiz (and follow-up quizzes during grading) in a second pass — it critiques the draft and rewrites it, grounded strictly in your lecture material. Higher quality, but slower and pricier per quiz."}
+                  </p>
+                  {(isGenerating || isGrading) && (
+                    <div className="mb-4 text-xs font-semibold text-amber-300 flex items-center gap-2">
+                      <LockClosedIcon className="w-3.5 h-3.5" />
+                      {language === "german" ? "Einstellungen gesperrt, während eine KI-Aktion läuft." : "Settings locked while AI generation is in progress."}
+                    </div>
+                  )}
+                  <div className="flex gap-2 bg-white/[0.02] border border-white/[0.06] rounded-xl p-1">
                     <button
                       disabled={isGenerating || isGrading}
                       onClick={() => {
@@ -2655,15 +2675,16 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({ action: 'update_agent_mode', agentMode: false })
                         }).then(res => res.json()).then(data => {
+                          if (data.error) { addToast("error", `${language === "german" ? "Fehler" : "Error"}: ${data.error}`); return; }
                           if (typeof data.agentMode === 'boolean') setAgentMode(data.agentMode);
                         }).catch(err => {
                           console.error(err);
                           addToast("error", language === "german" ? "Einstellung konnte nicht gespeichert werden." : "Failed to save setting.");
                         });
                       }}
-                      className={`flex-1 py-2.5 relative z-10 text-xs sm:text-sm font-medium transition-colors cursor-pointer ${(isGenerating || isGrading) ? 'opacity-50 cursor-not-allowed' : ''} ${!agentMode ? 'text-amber-100' : 'text-white/45 hover:text-white/70'}`}
+                      className={`flex-1 py-2.5 rounded-lg text-xs sm:text-sm transition-colors cursor-pointer ${(isGenerating || isGrading) ? 'opacity-50 cursor-not-allowed' : ''} ${!agentMode ? 'bg-amber-400/15 text-amber-100 border border-amber-400/30 font-medium' : 'border border-transparent text-white/45 hover:bg-white/[0.04] hover:text-white/70'}`}
                     >
-                      Off
+                      {language === "german" ? "Aus (Standard)" : "Off (Default)"}
                     </button>
                     <button
                       disabled={isGenerating || isGrading}
@@ -2673,15 +2694,16 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({ action: 'update_agent_mode', agentMode: true })
                         }).then(res => res.json()).then(data => {
+                          if (data.error) { addToast("error", `${language === "german" ? "Fehler" : "Error"}: ${data.error}`); return; }
                           if (typeof data.agentMode === 'boolean') setAgentMode(data.agentMode);
                         }).catch(err => {
                           console.error(err);
                           addToast("error", language === "german" ? "Einstellung konnte nicht gespeichert werden." : "Failed to save setting.");
                         });
                       }}
-                      className={`flex-1 py-2.5 relative z-10 text-xs sm:text-sm font-medium transition-colors cursor-pointer ${(isGenerating || isGrading) ? 'opacity-50 cursor-not-allowed' : ''} ${agentMode ? 'text-amber-100' : 'text-white/45 hover:text-white/70'}`}
+                      className={`flex-1 py-2.5 rounded-lg text-xs sm:text-sm transition-colors cursor-pointer ${(isGenerating || isGrading) ? 'opacity-50 cursor-not-allowed' : ''} ${agentMode ? 'bg-amber-400/15 text-amber-100 border border-amber-400/30 font-medium' : 'border border-transparent text-white/45 hover:bg-white/[0.04] hover:text-white/70'}`}
                     >
-                      On
+                      {language === "german" ? "An (Agent)" : "On (Agent)"}
                     </button>
                   </div>
                 </div>

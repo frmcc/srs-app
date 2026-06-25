@@ -1,4 +1,4 @@
-export const maxDuration = 300;
+export const maxDuration = 600; // higher ceiling for opt-in Agent Mode (also raise the Cloud Run request timeout ≥ 600s)
 import { NextRequest, NextResponse } from "next/server";
 import { runQuizGeneration } from "@/lib/quiz-generator";
 import fs from "fs/promises";
