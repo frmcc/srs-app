@@ -63,7 +63,7 @@ export async function generateContentWithRetry(
         // SECOND LINE: official Gemini API with the FULL request (native PDFs included).
         const errMsg = wrapperError instanceof Error ? wrapperError.message : String(wrapperError);
         console.warn(`[Gemini Wrapper] Failed for ${stepLabel}, falling back to standard Gemini API...`, errMsg);
-        progressCallback(`Proxy-Fallback aktiv — nutze offizielle Gemini API (${stepLabel}, kann etwas dauern)...`);
+        progressCallback(`Proxy nicht erreichbar — wechsle zur offiziellen Gemini API (${stepLabel})...`);
         return await ai.models.generateContent({ model: modelName, ...request });
       }
     } catch (err) {

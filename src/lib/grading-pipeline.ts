@@ -6,7 +6,7 @@ import { downloadFromDrive, createGoogleDoc } from "@/lib/google-drive";
 import { sendPushNotification } from "@/lib/push";
 import { generateContentWithRetry } from "@/lib/gemini-retry";
 import { generateVideoPromptsWorker } from "@/lib/notebooklm";
-import { extractSection, extractSectionOr, formatPrompt, parseMismatchVerdict, parseAssessmentDecision } from "@/lib/markers";
+import { extractSection, extractSectionOr, formatPrompt, parseMismatchVerdict, parseAssessmentDecision, DecisionParseError } from "@/lib/markers";
 import { countTasks, currentQuizText, intervalLabelFor, nextReviewDateAfter, quizFieldForLevel, INTERVAL_LABELS } from "@/lib/srs";
 import { pdfToText } from "@/lib/pdf-text";
 import type { SRSItem } from "@prisma/client";
@@ -215,8 +215,26 @@ export async function runGradingPipeline(opts: {
     config: { systemInstruction: formatPrompt(GRADE_PROMPTS.chef_pruefer, { SUBJECT: subject, INTERVAL: interval }) + languageInstruction },
   }, (msg) => progress(2, msg), "Chief Assessor", useAiWrapper);
 
-  const chefFeedback = chefRes.text || "";
-  const isPass = parseAssessmentDecision(chefFeedback); // throws instead of silently demoting
+  let chefFeedback = chefRes.text || "";
+  let isPass: boolean;
+  try {
+    isPass = parseAssessmentDecision(chefFeedback); // throws instead of silently demoting
+  } catch (decisionErr) {
+    if (!(decisionErr instanceof DecisionParseError)) throw decisionErr;
+    // The PASS/REPEAT decision is the cheapest call to redo, and forcing a full
+    // re-run after a long (60/180/365-day) wait is painful — so re-ask ONLY the
+    // Chief Assessor once with a stricter decision-format instruction before
+    // giving up. Same context, same wrapper flag; nothing is persisted yet.
+    progress(2, "Chief Assessor: Entscheidung wird erneut angefordert...");
+    const chefRetry = await generateContentWithRetry(ai, modelName, {
+      contents: [{ role: "user", parts: chefUserParts as never }],
+      config: { systemInstruction: formatPrompt(GRADE_PROMPTS.chef_pruefer, { SUBJECT: subject, INTERVAL: interval })
+        + languageInstruction
+        + "\n\nWICHTIG: Gib am Ende zwingend einen klaren Entscheidungsblock aus:\n===ASSESSMENT_DECISION_START===\nPASS oder REPEAT\n===ASSESSMENT_DECISION_END===" },
+    }, (msg) => progress(2, msg), "Chief Assessor (Retry)", useAiWrapper);
+    chefFeedback = chefRetry.text || chefFeedback;
+    isPass = parseAssessmentDecision(chefFeedback); // still unparseable ⇒ throws DecisionParseError
+  }
 
   // ---- Step 3: Follow-up material -------------------------------------------
   progress(3, "Spacing Logic: Calculating intervals & generating follow-ups...");
@@ -317,6 +335,17 @@ export async function runGradingPipeline(opts: {
   if (summary) cleanFeedback += summary + "\n\n---\n\n";
   if (brief) cleanFeedback += brief;
   if (!cleanFeedback) cleanFeedback = chefFeedback;
+
+  // A PASS must never advance the student over an EMPTY quiz slot. If it did,
+  // currentQuizText() silently falls back to Quiz 1, the schedule has already
+  // jumped to the long interval, and the regression stays invisible until the
+  // next (possibly 60/180/365-day) review. Nothing has been written yet, so
+  // throwing here is fully reversible — the item stays at its current level and
+  // the user just re-runs grading. (REPEAT is unaffected: it keeps the current
+  // level, and the `if (nextQuizText)` guard below already protects its slot.)
+  if (isPass && !nextQuizText.trim()) {
+    throw new Error("Das nächste Quiz wurde leer generiert — es wurde nichts gespeichert. Bitte starte die Bewertung erneut.");
+  }
 
   // ---- Step 4: persist (with optimistic lock) ---------------------------------
   progress(4, "Saving records to database...");

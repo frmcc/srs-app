@@ -5,6 +5,7 @@ import { sendPushNotification } from "@/lib/push";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
+import { createHash } from "crypto";
 
 export const maxDuration = 300; // 5 minutes max for background processing
 
@@ -42,6 +43,31 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No content or files provided" }, { status: 400 });
     }
 
+    // Idempotency against double-tapped Shortcuts / retries: a DETERMINISTIC job
+    // id from the submission's content (course, topic, text, each file's
+    // name+size) inside a 60-second bucket. An identical resubmit within the same
+    // minute collapses onto the same id — caught here, or via the unique-PK guard
+    // on create() below if two race — instead of creating a duplicate module.
+    // Keys on CONTENT, so two different lectures hash differently and are never
+    // merged; an intentional re-upload a minute later lands in a fresh bucket.
+    const fileSig = files.map((f) => `${f.name}:${f.size}`).join("|");
+    const bucket = Math.floor(Date.now() / 60_000);
+    const idemJobId =
+      "qg_" +
+      createHash("sha256")
+        .update([subjectMain, subjectSub, textContent, fileSig, bucket].join(" "))
+        .digest("hex")
+        .slice(0, 40);
+    const existingJob = await prisma.backgroundJob.findUnique({ where: { id: idemJobId }, select: { id: true } });
+    if (existingJob) {
+      return NextResponse.json({
+        success: true,
+        jobId: existingJob.id,
+        deduplicated: true,
+        message: `Generierung für "${subjectMain}" läuft bereits — du erhältst eine Benachrichtigung, sobald sie fertig ist.`,
+      });
+    }
+
     const uploadsDir = path.join(os.tmpdir(), "srs-uploads");
     await fs.mkdir(uploadsDir, { recursive: true });
     for (const file of files) {
@@ -54,14 +80,30 @@ export async function POST(req: NextRequest) {
       savedFiles.push({ name: file.name, path: localFilePath, mimeType: file.type || "application/octet-stream" });
     }
 
-    const job = await prisma.backgroundJob.create({
-      data: {
-        type: "quiz_generation",
-        status: "pending",
-        subjectMain,
-        subjectSub,
-      },
-    });
+    const job = await prisma.backgroundJob
+      .create({
+        data: {
+          id: idemJobId,
+          type: "quiz_generation",
+          status: "pending",
+          subjectMain,
+          subjectSub,
+        },
+      })
+      .catch((e: unknown) => {
+        // Identical concurrent submit won the unique-PK race — return its job;
+        // the `finally` cleans our temp files (backgroundWorkerScheduled false).
+        if ((e as { code?: string }).code === "P2002") return null;
+        throw e;
+      });
+    if (!job) {
+      return NextResponse.json({
+        success: true,
+        jobId: idemJobId,
+        deduplicated: true,
+        message: `Generierung für "${subjectMain}" läuft bereits.`,
+      });
+    }
 
     after(async () => {
       // Let the user know the upload landed and is being processed. The "done"

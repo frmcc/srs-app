@@ -93,8 +93,6 @@ export async function POST(req: NextRequest) {
     headers: {
       "Content-Type": "application/x-ndjson; charset=utf-8",
       "Cache-Control": "no-cache",
-      "Connection": "keep-alive",
-      "X-Accel-Buffering": "no",
     },
   });
 }

@@ -42,7 +42,6 @@ import {
   VideoCameraIcon,
   LockClosedIcon,
   FolderOpenIcon,
-  LinkIcon,
 } from "@heroicons/react/24/outline";
 
 import { useState, useEffect, useCallback, useRef, useMemo, useTransition } from "react";
@@ -202,7 +201,11 @@ const parseQuizTasks = (studentQuizText: string) => {
       }
 
       tasks.push({
-        id: taskName.toLowerCase().replace(/\s+/g, ""),
+        // Suffix with the position so tasks that don't match "Aufgabe N" (and
+        // fall back to the literal "Aufgabe") can't collide on the same id — a
+        // collision made their answer fields mirror each other and produced
+        // duplicate React keys. Ids are internal (keys + answer map), never shown.
+        id: `${taskName.toLowerCase().replace(/\s+/g, "")}-${tasks.length}`,
         header: taskName + ":",
         label: label,
         questionText: cleanQuestionText
@@ -471,7 +474,6 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
 
   // Always refetch on mount and whenever the tab regains focus/visibility.
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- async fetch kickoff, not a sync state write
     fetchReviews();
     const onFocus = () => fetchReviews();
     const onVisibilityChange = () => {
@@ -484,16 +486,6 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [fetchReviews]);
-
-  /**
-   * Auto-grow textarea: expand to fit content, never scroll.
-   * Attach to both `ref` and `onInput` callbacks.
-   */
-  const autoGrow = (el: HTMLTextAreaElement | null) => {
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${el.scrollHeight}px`;
-  };
 
   /** Library: items grouped by semester → module → lecture, always derived from latest fetch. */
   const libraryBySemester = useMemo(() => {
@@ -515,6 +507,7 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
   // Keep accordion expansion sets in sync: newly uploaded lectures auto-expand
   // their semester and module without collapsing anything the user already closed.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- safe: each updater returns the SAME Set reference when nothing changed, so no re-render loop
     setExpandedLibrarySemesters(prev => {
       let changed = false;
       const next = new Set(prev);
@@ -621,7 +614,12 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to start generation";
       addToast("error", `${language === "german" ? "Fehler" : "Error"}: ${msg}`);
-      setGeneratingPodcasts(prev => ({ ...prev, [stateKey]: false }));
+    } finally {
+      // Always re-enable the button. On success the 60s poll swaps it for the
+      // audio link once the URL lands; the short delay keeps the "Gestartet…"
+      // confirmation visible. Previously this only reset on error, so a
+      // successful start left the button stuck on "Gestartet…" until reload.
+      setTimeout(() => setGeneratingPodcasts(prev => ({ ...prev, [stateKey]: false })), 5000);
     }
   };
 
@@ -747,6 +745,7 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
         if (review) {
           processedQuizIdRef.current = true;
           window.history.replaceState({}, document.title, window.location.pathname);
+          // eslint-disable-next-line react-hooks/set-state-in-effect -- runs once (guarded by processedQuizIdRef); opens the ?quizId= deep link
           startQuiz(review);
         }
       } else {

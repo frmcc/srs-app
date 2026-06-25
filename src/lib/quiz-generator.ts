@@ -105,6 +105,14 @@ export async function runQuizGeneration(params: {
     }, (msg) => progress(2, msg), "Quiz 1", useAiWrapper);
 
     const quiz1Text = quiz1Res.text || "";
+    // A module with an empty Quiz 1 is unusable: the student opens it to no quiz
+    // and can never advance (currentQuizText falls back to an empty quiz1DocId).
+    // Fail here — before the tutor/podcast calls and before persisting — so the
+    // error path cleans up and the user simply retries, instead of saving a
+    // broken module. Mirrors the grading-pipeline guard against empty next-quizzes.
+    if (!quiz1Text.trim()) {
+      throw new Error("Quiz 1 wurde leer generiert — es wurde nichts gespeichert. Bitte versuche es erneut.");
+    }
     const quiz1Ledger = extractSection(quiz1Text, "===COVERAGE_LEDGER_START===", "===COVERAGE_LEDGER_END===");
 
     // ---- Step 3+4: Tutor prompt & podcast prompts in parallel (independent) ----
