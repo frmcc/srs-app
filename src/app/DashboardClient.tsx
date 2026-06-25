@@ -285,6 +285,7 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
   const [modulePresets, setModulePresets] = useState<string[]>([]);
   const [language, setLanguage] = useState<string>("german");
   const [wrapperMode, setWrapperMode] = useState<string>("all");
+  const [agentMode, setAgentMode] = useState<boolean>(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [newPresetInput, setNewPresetInput] = useState("");
@@ -298,6 +299,7 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
           if (data.modulePresets) setModulePresets(data.modulePresets);
           if (data.language) setLanguage(data.language);
           if (data.wrapperMode) setWrapperMode(data.wrapperMode);
+          if (typeof data.agentMode === 'boolean') setAgentMode(data.agentMode);
           if (data.modulePresets && data.modulePresets.length > 0) {
             setSubjectInput(data.modulePresets[0]);
           }
@@ -2636,6 +2638,50 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                       className={`flex-1 py-2.5 rounded-lg text-xs sm:text-sm transition-colors cursor-pointer ${(isGenerating || isGrading) ? 'opacity-50 cursor-not-allowed' : ''} ${wrapperMode === "none" ? 'bg-amber-400/15 text-amber-100 border border-amber-400/30 font-medium' : 'border border-transparent text-white/45 hover:bg-white/[0.04] hover:text-white/70'}`}
                     >
                       {language === "german" ? "Nur Fallback" : "Fallback Only"}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="pt-6 border-t border-white/[0.07]">
+                  <h4 className="text-[10px] font-bold text-amber-500/70 uppercase tracking-[0.2em] mb-2">{language === "german" ? "Agenten-Modus (Multi-Step Reflection)" : "Agent Mode (Multi-Step Reflection)"}</h4>
+                  <p className="text-white/40 text-xs mb-4 leading-relaxed">{language === "german" ? "Nutzt einen iterativen LLM-Loop, um das Quiz nach der Generierung selbstständig zu kritisieren und zu verbessern. Erhöht die Qualität massiv, dauert aber länger." : "Uses an iterative LLM loop to self-critique and improve the quiz after drafting. Massively increases quality but takes longer."}</p>
+                  <div className="flex bg-[#0e0c0a] p-1 rounded-xl border border-white/[0.05] relative isolate">
+                    <div className="absolute inset-y-1 w-[calc(50%-0.25rem)] transition-all duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] z-0 rounded-lg bg-amber-400/15 border border-amber-400/30" style={{ transform: agentMode ? 'translateX(calc(100% + 0.5rem))' : 'translateX(0)' }}></div>
+                    <button
+                      disabled={isGenerating || isGrading}
+                      onClick={() => {
+                        fetch('/api/settings', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ action: 'update_agent_mode', agentMode: false })
+                        }).then(res => res.json()).then(data => {
+                          if (typeof data.agentMode === 'boolean') setAgentMode(data.agentMode);
+                        }).catch(err => {
+                          console.error(err);
+                          addToast("error", language === "german" ? "Einstellung konnte nicht gespeichert werden." : "Failed to save setting.");
+                        });
+                      }}
+                      className={`flex-1 py-2.5 relative z-10 text-xs sm:text-sm font-medium transition-colors cursor-pointer ${(isGenerating || isGrading) ? 'opacity-50 cursor-not-allowed' : ''} ${!agentMode ? 'text-amber-100' : 'text-white/45 hover:text-white/70'}`}
+                    >
+                      Off
+                    </button>
+                    <button
+                      disabled={isGenerating || isGrading}
+                      onClick={() => {
+                        fetch('/api/settings', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ action: 'update_agent_mode', agentMode: true })
+                        }).then(res => res.json()).then(data => {
+                          if (typeof data.agentMode === 'boolean') setAgentMode(data.agentMode);
+                        }).catch(err => {
+                          console.error(err);
+                          addToast("error", language === "german" ? "Einstellung konnte nicht gespeichert werden." : "Failed to save setting.");
+                        });
+                      }}
+                      className={`flex-1 py-2.5 relative z-10 text-xs sm:text-sm font-medium transition-colors cursor-pointer ${(isGenerating || isGrading) ? 'opacity-50 cursor-not-allowed' : ''} ${agentMode ? 'text-amber-100' : 'text-white/45 hover:text-white/70'}`}
+                    >
+                      On
                     </button>
                   </div>
                 </div>

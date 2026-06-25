@@ -50,6 +50,7 @@ export async function runQuizGeneration(params: {
     const appConfig = await prisma.appConfig.findUnique({ where: { id: 1 } });
     const wrapperMode = appConfig?.wrapperMode || "all";
     const useAiWrapper = wrapperMode === "all" || wrapperMode === "generation_only";
+    const agentMode = appConfig?.agentMode || false;
     const currentSemester = appConfig?.currentSemester || 1;
     const language = appConfig?.language || "german";
     const languageInstruction = `\n\nCRITICAL: You must generate ALL text, output, and responses strictly in ${language.toUpperCase()}. This applies to every section of the generated content.`;
@@ -113,7 +114,22 @@ export async function runQuizGeneration(params: {
     if (!quiz1Text.trim()) {
       throw new Error("Quiz 1 wurde leer generiert — es wurde nichts gespeichert. Bitte versuche es erneut.");
     }
-    const quiz1Ledger = extractSection(quiz1Text, "===COVERAGE_LEDGER_START===", "===COVERAGE_LEDGER_END===");
+    
+    let finalQuiz1Text = quiz1Text;
+    if (agentMode) {
+      progress(2.5, "Agent Mode: Reflecting on draft and self-correcting...");
+      const agentRes = await generateContentWithRetry(ai, modelName, {
+        contents: [{ role: "user", parts: [{ text: `Original Draft:\n${quiz1Text}\n\nBlueprint:\n${blueprint}\n\nPlease critically review your drafted quiz. Check if the wrong answers are plausible but strictly incorrect, if the difficulty is appropriate for university level, and if the concepts from the blueprint are deeply covered. Fix any flaws and output ONLY the final perfected JSON Quiz (with the coverage ledger).` }] }],
+        config: { systemInstruction: `You are an expert educational agent. Your task is to critique and refine the drafted quiz. Output ONLY the final perfected JSON exactly following the requested schema. Do not wrap in markdown code blocks if possible.` + languageInstruction },
+      }, (msg) => progress(2.5, msg), "Quiz 1 Agent Reflection", useAiWrapper);
+      
+      if (agentRes.text?.trim()) {
+        finalQuiz1Text = agentRes.text;
+      } else {
+        console.warn("[quiz-gen] Agent reflection returned empty. Falling back to draft.");
+      }
+    }
+    const quiz1Ledger = extractSection(finalQuiz1Text, "===COVERAGE_LEDGER_START===", "===COVERAGE_LEDGER_END===");
 
     // ---- Step 3+4: Tutor prompt & podcast prompts in parallel (independent) ----
     progress(3, "Generating Tutor Prompt & Podcast Prompts...");
@@ -178,7 +194,7 @@ export async function runQuizGeneration(params: {
       }
 
       await Promise.allSettled([
-        createGoogleDoc("Quiz 1 (Tag 1)", quiz1Text, folderId),
+        createGoogleDoc("Quiz 1 (Tag 1)", finalQuiz1Text, folderId),
         createGoogleDoc("Tutor Prompt", tutorPrompt || "", folderId),
       ]);
     } catch (e) {
@@ -194,7 +210,7 @@ export async function runQuizGeneration(params: {
         semester: currentSemester,
         currentLevel: 0,
         nextReviewDate: new Date(Date.now() + 24 * 60 * 60 * 1000),
-        quiz1DocId: quiz1Text,
+        quiz1DocId: finalQuiz1Text,
         blueprint,
         coverageLedger: quiz1Ledger,
         tutorPromptContent: tutorPrompt,
