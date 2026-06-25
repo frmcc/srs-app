@@ -11,7 +11,7 @@ import type { SRSItem } from "@prisma/client";
 import fs from "fs/promises";
 import path from "path";
 
-const DEFAULT_MODEL = "gemini-3.5-flash";
+const DEFAULT_MODEL = "gemini-3.1-flash-lite";
 
 /**
  * THE quiz generation pipeline. Used by both:

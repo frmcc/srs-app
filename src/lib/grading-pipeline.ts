@@ -20,7 +20,7 @@ import fs from "fs/promises";
  * Any change to grading behavior happens HERE, exactly once.
  */
 
-const DEFAULT_MODEL = "gemini-3.5-flash";
+const DEFAULT_MODEL = "gemini-3.1-flash-lite";
 
 export class GradingMismatchError extends Error {
   constructor() {
