@@ -139,6 +139,7 @@ export async function runGradingPipeline(opts: {
 
   const appConfig = await prisma.appConfig.findUnique({ where: { id: 1 } });
   const useAiWrapper = (appConfig?.wrapperMode || "all") === "all";
+  const agentMode = appConfig?.agentMode || false;
 
   const language = opts.language || appConfig?.language || "german";
   const languageInstruction = `\n\nCRITICAL: You must generate ALL text, output, and responses strictly in ${language.toUpperCase()}. This applies to every section of the generated content.`;
@@ -303,7 +304,6 @@ export async function runGradingPipeline(opts: {
     const [lmResult, nextQuizRes] = await Promise.all([lmPromptCall, nextQuizCall]);
     lmRes = lmResult;
     nextQuizText = nextQuizRes.text || "";
-    newLedgerText = extractSection(nextQuizText, "===COVERAGE_LEDGER_START===", "===COVERAGE_LEDGER_END===");
   } else {
     // REPEAT: remedial quiz attacking the diagnosed misconceptions
     const remedialQuizParts: Part[] = [...sourceMaterialParts];
@@ -322,6 +322,24 @@ export async function runGradingPipeline(opts: {
     const [lmResult, nextQuizRes] = await Promise.all([lmPromptCall, nextQuizCall]);
     lmRes = lmResult;
     nextQuizText = nextQuizRes.text || "";
+  }
+
+  if (agentMode && nextQuizText.trim()) {
+    progress(3.5, "Agent Mode: Reflecting on draft and self-correcting...");
+    const agentRes = await generateContentWithRetry(ai, modelName, {
+      contents: [{ role: "user", parts: [{ text: `Original Draft:\n${nextQuizText}\n\nBlueprint:\n${srsItem.blueprint || "N/A"}\n\nPlease critically review your drafted quiz. Check if the wrong answers are plausible but strictly incorrect, if the difficulty is appropriate for university level, and if the concepts from the blueprint are deeply covered. Fix any flaws and output ONLY the final perfected JSON Quiz (with the coverage ledger if present).` }] }],
+      config: { systemInstruction: `You are an expert educational agent. Your task is to critique and refine the drafted quiz. Output ONLY the final perfected JSON exactly following the requested schema. Do not wrap in markdown code blocks if possible.` + languageInstruction },
+    }, (msg) => progress(3.5, msg), "Next Quiz Agent Reflection", useAiWrapper);
+    
+    if (agentRes.text?.trim()) {
+      nextQuizText = agentRes.text;
+    } else {
+      console.warn("[grading] Agent reflection returned empty. Falling back to draft.");
+    }
+  }
+
+  if (isPass) {
+    newLedgerText = extractSection(nextQuizText, "===COVERAGE_LEDGER_START===", "===COVERAGE_LEDGER_END===");
   }
 
   const videoPromptsText = lmRes.text || "";
