@@ -119,8 +119,8 @@ export async function runQuizGeneration(params: {
     if (agentMode) {
       progress(2.5, "Agent Mode: Reflecting on draft and self-correcting...");
       const agentRes = await generateContentWithRetry(ai, modelName, {
-        contents: [{ role: "user", parts: [{ text: `Original Draft:\n${quiz1Text}\n\nBlueprint:\n${blueprint}\n\nPlease critically review your drafted quiz. Check if the wrong answers are plausible but strictly incorrect, if the difficulty is appropriate for university level, and if the concepts from the blueprint are deeply covered. Fix any flaws and output ONLY the final perfected JSON Quiz (with the coverage ledger).` }] }],
-        config: { systemInstruction: `You are an expert educational agent. Your task is to critique and refine the drafted quiz. Output ONLY the final perfected JSON exactly following the requested schema. Do not wrap in markdown code blocks if possible.` + languageInstruction },
+        contents: [{ role: "user", parts: [{ text: `Original Draft:\n${quiz1Text}\n\nBlueprint:\n${blueprint}\n\nPlease critically review your drafted quiz. Check if the wrong answers are plausible but strictly incorrect, if the difficulty is appropriate for university level, and if the concepts from the blueprint are deeply covered. Fix any flaws and output your result in the EXACT SAME FORMAT as the original draft. The quiz itself must be pure JSON, followed exactly by the coverage ledger wrapped in ===COVERAGE_LEDGER_START=== and ===COVERAGE_LEDGER_END=== markers just like in the draft. Do NOT move the ledger inside the JSON.` }] }],
+        config: { systemInstruction: `You are an expert educational agent. Your task is to critique and refine the drafted quiz. Maintain the exact formatting rules of the original draft. Output the perfected JSON and the coverage ledger markers below it. Do not wrap in markdown code blocks if possible.` + languageInstruction },
       }, (msg) => progress(2.5, msg), "Quiz 1 Agent Reflection", useAiWrapper);
       
       if (agentRes.text?.trim()) {

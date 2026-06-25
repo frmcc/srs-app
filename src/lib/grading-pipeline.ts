@@ -327,8 +327,8 @@ export async function runGradingPipeline(opts: {
   if (agentMode && nextQuizText.trim()) {
     progress(3.5, "Agent Mode: Reflecting on draft and self-correcting...");
     const agentRes = await generateContentWithRetry(ai, modelName, {
-      contents: [{ role: "user", parts: [{ text: `Original Draft:\n${nextQuizText}\n\nBlueprint:\n${srsItem.blueprint || "N/A"}\n\nPlease critically review your drafted quiz. Check if the wrong answers are plausible but strictly incorrect, if the difficulty is appropriate for university level, and if the concepts from the blueprint are deeply covered. Fix any flaws and output ONLY the final perfected JSON Quiz (with the coverage ledger if present).` }] }],
-      config: { systemInstruction: `You are an expert educational agent. Your task is to critique and refine the drafted quiz. Output ONLY the final perfected JSON exactly following the requested schema. Do not wrap in markdown code blocks if possible.` + languageInstruction },
+      contents: [{ role: "user", parts: [{ text: `Original Draft:\n${nextQuizText}\n\nBlueprint:\n${srsItem.blueprint || "N/A"}\n\nPlease critically review your drafted quiz. Check if the wrong answers are plausible but strictly incorrect, if the difficulty is appropriate for university level, and if the concepts from the blueprint are deeply covered. Fix any flaws and output your result in the EXACT SAME FORMAT as the original draft. The quiz itself must be pure JSON, followed exactly by the coverage ledger wrapped in ===COVERAGE_LEDGER_START=== and ===COVERAGE_LEDGER_END=== markers just like in the draft (if one was present). Do NOT move the ledger inside the JSON.` }] }],
+      config: { systemInstruction: `You are an expert educational agent. Your task is to critique and refine the drafted quiz. Maintain the exact formatting rules of the original draft. Output the perfected JSON and the coverage ledger markers below it. Do not wrap in markdown code blocks if possible.` + languageInstruction },
     }, (msg) => progress(3.5, msg), "Next Quiz Agent Reflection", useAiWrapper);
     
     if (agentRes.text?.trim()) {
