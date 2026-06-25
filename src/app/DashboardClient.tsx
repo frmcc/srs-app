@@ -1464,8 +1464,8 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                         // not the old fictional "Quiz Agent Level 1–5" labels. The app
                         // only generates Quiz 1 at upload; later levels are made one-by-one
                         // during grading. Step numbers match the backend's progress() calls.
-                        { step: 1, label: language === "german" ? "Blueprint analysieren" : "Analyze Blueprint" },
-                        { step: 2, label: agentMode ? (language === "german" ? "Quiz 1 + Agent-Verfeinerung" : "Quiz 1 + Agent refinement") : (language === "german" ? "Quiz 1 generieren" : "Generate Quiz 1") },
+                        { step: 1, label: language === "german" ? "Blueprint erstellen" : "Generate Blueprint" },
+                        { step: 2, label: agentMode ? "Quiz 1 (Agent)" : (language === "german" ? "Quiz 1 generieren" : "Generate Quiz 1") },
                         { step: 3, label: language === "german" ? "Tutor- & Podcast-Prompts" : "Tutor & Podcast prompts" },
                         { step: 5, label: language === "german" ? "NotebookLM einrichten" : "NotebookLM setup" },
                         { step: 6, label: language === "german" ? "Google Drive Upload" : "Google Drive upload" },

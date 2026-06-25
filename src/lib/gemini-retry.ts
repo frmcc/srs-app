@@ -1,4 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
+import { runAgent } from "./agent";
 
 const wrapperUrl = process.env.OPENAI_PROXY_URL || process.env.AISTUDIO_BASE_URL || "http://127.0.0.1:7860";
 const wrapperKey = process.env.OPENAI_PROXY_KEY || process.env.AISTUDIO_API_KEY || "";
@@ -30,14 +31,50 @@ function isTransient(error: Error & { status?: number }): boolean {
   );
 }
 
+/** Flatten the text parts of a request (the agent is text-only — no PDF/inlineData). */
+function extractRequestText(request: { contents?: unknown }): string {
+  const contents = request.contents;
+  if (!Array.isArray(contents)) return "";
+  const out: string[] = [];
+  for (const c of contents) {
+    const parts = c && typeof c === "object" && "parts" in c ? (c as { parts?: unknown }).parts : undefined;
+    if (Array.isArray(parts)) {
+      for (const p of parts) {
+        if (p && typeof p === "object" && typeof (p as { text?: unknown }).text === "string") {
+          out.push((p as { text: string }).text);
+        }
+      }
+    }
+  }
+  return out.join("\n\n");
+}
+
 export async function generateContentWithRetry(
   ai: GoogleGenAI,
   modelName: string,
   request: Omit<Parameters<GoogleGenAI["models"]["generateContent"]>[0], "model">,
   progressCallback: (message: string) => void,
   stepLabel: string,
-  useAiWrapper: boolean = true
+  useAiWrapper: boolean = true,
+  agentMode: boolean = false
 ) {
+  // Agent Mode (opt-in): run THIS step with the managed agent, using the SAME
+  // system instruction + text material as the normal call. On ANY failure it
+  // returns null and we fall through to the normal model call below — so Agent
+  // Mode can never break or empty a step.
+  if (agentMode) {
+    const instruction = typeof request.config?.systemInstruction === "string" ? request.config.systemInstruction : "";
+    const agentOut = await runAgent({
+      instruction,
+      material: extractRequestText(request),
+      label: stepLabel,
+      onProgress: progressCallback,
+    });
+    if (agentOut !== null) {
+      return { text: agentOut } as unknown as Awaited<ReturnType<GoogleGenAI["models"]["generateContent"]>>;
+    }
+  }
+
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
       if (!useAiWrapper || !aiWrapper) {

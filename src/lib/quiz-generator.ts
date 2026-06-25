@@ -4,7 +4,6 @@ import { PROMPTS, podcast_prompts } from "../app/api/quiz/prompts";
 import { sendPushNotification } from "./push";
 import { generatePodcastWorker, createNotebook } from "./notebooklm";
 import { generateContentWithRetry } from "./gemini-retry";
-import { generateQuizWithAgent } from "./agent";
 import { getOrCreateDriveFolder, uploadToDrive, createGoogleDoc } from "./google-drive";
 import { extractSection } from "./markers";
 import { pdfToText } from "./pdf-text";
@@ -96,36 +95,19 @@ export async function runQuizGeneration(params: {
     const blueprintRes = await generateContentWithRetry(ai, modelName, {
       contents: [{ role: "user", parts: [...masterContextParts, { text: `Modul/Vorlesungsthema:\n${subjectMain} - ${subjectSub}` }, { text: "Hier sind die Materialien. Bitte führe deine System-Instruktionen aus." }] }],
       config: { systemInstruction: PROMPTS.blueprint + languageInstruction },
-    }, (msg) => progress(1, msg), "Blueprint", useAiWrapper);
+    }, (msg) => progress(1, msg), "Blueprint", useAiWrapper, agentMode);
     const blueprint = blueprintRes.text;
 
     // ---- Step 2: Quiz 1 (later quizzes are generated on-demand after grading) ----
-    // Same system prompt for both paths. In Agent Mode the managed agent GENERATES
-    // the quiz (grounded in the lecture text); otherwise — or if the agent fails or
-    // is unavailable — the normal gemini-3.5-flash call does, as a safe fallback.
-    const quiz1Instruction = PROMPTS.quiz_tag_1 + `\n\nModul/Vorlesungsthema:\n${subjectMain}\n\nBlueprint:\n${blueprint}` + languageInstruction;
-    let quiz1Text = "";
+    // In Agent Mode every step (incl. this one) runs via the managed agent inside
+    // generateContentWithRetry, using the SAME prompt; otherwise normal gemini-3.5-flash.
+    progress(2, "Generating Quiz 1...");
+    const quiz1Res = await generateContentWithRetry(ai, modelName, {
+      contents: [{ role: "user", parts: [...masterContextParts, { text: "Hier sind die Materialien. Bitte führe deine System-Instruktionen aus." }] }],
+      config: { systemInstruction: PROMPTS.quiz_tag_1 + `\n\nModul/Vorlesungsthema:\n${subjectMain}\n\nBlueprint:\n${blueprint}` + languageInstruction },
+    }, (msg) => progress(2, msg), "Quiz 1", useAiWrapper, agentMode);
 
-    if (agentMode) {
-      const agentQuiz = await generateQuizWithAgent({
-        instruction: quiz1Instruction,
-        material: dynamicTextContent,
-        label: "Quiz 1",
-        onProgress: (m) => progress(2, m),
-      });
-      if (agentQuiz) quiz1Text = agentQuiz;
-    }
-
-    if (!quiz1Text.trim()) {
-      // Agent off, or agent failed/unavailable → normal gemini-3.5-flash generation.
-      progress(2, "Generating Quiz 1...");
-      const quiz1Res = await generateContentWithRetry(ai, modelName, {
-        contents: [{ role: "user", parts: [...masterContextParts, { text: "Hier sind die Materialien. Bitte führe deine System-Instruktionen aus." }] }],
-        config: { systemInstruction: quiz1Instruction },
-      }, (msg) => progress(2, msg), "Quiz 1", useAiWrapper);
-      quiz1Text = quiz1Res.text || "";
-    }
-
+    const quiz1Text = quiz1Res.text || "";
     // A module with an empty Quiz 1 is unusable: the student opens it to no quiz
     // and can never advance (currentQuizText falls back to an empty quiz1DocId).
     // Fail before the tutor/podcast calls and before persisting.
@@ -141,11 +123,11 @@ export async function runQuizGeneration(params: {
       generateContentWithRetry(ai, modelName, {
         contents: [{ role: "user", parts: [...masterContextParts, { text: `Modul/Vorlesungsthema:\n${subjectMain}` }, { text: `Didaktischer Blueprint:\n${blueprint}` }, { text: "Bitte generiere den Tutor-Prompt basierend auf dem bereitgestellten Blueprint." }] }],
         config: { systemInstruction: PROMPTS.tutor_prompt + languageInstruction },
-      }, (msg) => progress(3, msg), "Tutor Prompt", useAiWrapper),
+      }, (msg) => progress(3, msg), "Tutor Prompt", useAiWrapper, agentMode),
       generateContentWithRetry(ai, modelName, {
         contents: [{ role: "user", parts: [...masterContextParts, { text: `Modul/Vorlesungsthema:\n${subjectMain}` }, { text: `Didaktischer Blueprint:\n${blueprint}` }, { text: "Bitte generiere die zwei Regieanweisungen basierend auf dem bereitgestellten Blueprint." }] }],
         config: { systemInstruction: podcast_prompts + languageInstruction },
-      }, (msg) => progress(3, msg), "Podcast Prompts", useAiWrapper),
+      }, (msg) => progress(3, msg), "Podcast Prompts", useAiWrapper, agentMode),
     ]);
     const tutorPrompt = tutorRes.text;
     const podcastOutput = podcastRes.text;
