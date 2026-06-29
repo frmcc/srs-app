@@ -286,7 +286,6 @@ QUIZ TAG 1 — ABRUFANKER UND GRUNDSTRUKTUR
 HINWEISE:
 Beantworte alle Fragen handschriftlich und in eigenen Worten. Schreibe so, dass erkennbar wird, dass du den Inhalt verstanden hast. Stichpunkte sind erlaubt, solange sie fachlich präzise sind.
 
-
 AUFGABEN:
 
 Aufgabe 1 — [Punktzahl] Punkte:
@@ -294,19 +293,13 @@ Aufgabe 1 — [Punktzahl] Punkte:
 
 Zielumfang: ca. 2–4 Sätze oder 3–5 Stichpunkte.
 
-[FÜGE HIER ZWINGEND 8 LEERE ZEILEN EIN, DAMIT DER STUDENT PLATZ HAT, SEINE ANTWORT HANDSCHRIFTLICH HINZUSCHREIBEN]
-
-
 Aufgabe 2 — [Punktzahl] Punkte:
 [Frage]
 
 Zielumfang: ca. 2–4 Sätze oder 3–5 Stichpunkte.
 
-[FÜGE HIER ZWINGEND 8 LEERE ZEILEN EIN, DAMIT DER STUDENT PLATZ HAT, SEINE ANTWORT HANDSCHRIFTLICH HINZUSCHREIBEN]
-
 ...
 ===STUDENT_QUIZ_END===
-
 
 ===COVERAGE_LEDGER_START===
 
@@ -501,7 +494,6 @@ QUIZ TAG 3 — VERSTÄNDNIS UND ERSTE VERKNÜPFUNG
 HINWEISE:
 Beantworte alle Fragen handschriftlich und in eigenen Worten. Achte besonders darauf, Zusammenhänge zu erklären und ähnliche Konzepte sauber voneinander abzugrenzen.
 
-
 AUFGABEN:
 
 Aufgabe 1 — [Punktzahl] Punkte:
@@ -509,15 +501,10 @@ Aufgabe 1 — [Punktzahl] Punkte:
 
 Zielumfang: ca. 4–6 Sätze oder strukturierte Stichpunkte.
 
-[FÜGE HIER ZWINGEND 12 LEERE ZEILEN EIN, DAMIT DER STUDENT PLATZ HAT, SEINE ANTWORT HANDSCHRIFTLICH HINZUSCHREIBEN]
-
-
 Aufgabe 2 — [Punktzahl] Punkte:
 [Frage]
 
 Zielumfang: ca. 4–6 Sätze oder strukturierte Stichpunkte.
-
-[FÜGE HIER ZWINGEND 12 LEERE ZEILEN EIN, DAMIT DER STUDENT PLATZ HAT, SEINE ANTWORT HANDSCHRIFTLICH HINZUSCHREIBEN]
 
 ...
 ===STUDENT_QUIZ_END===
@@ -716,7 +703,6 @@ QUIZ TAG 7 — INTEGRATION UND DISKRIMINATION
 HINWEISE:
 Beantworte alle Fragen handschriftlich und in eigenen Worten. Bei Fall- und Zuordnungsaufgaben zählt nicht nur das richtige Konzept, sondern vor allem deine Begründung.
 
-
 AUFGABEN:
 
 Aufgabe 1 — [Punktzahl] Punkte:
@@ -724,19 +710,13 @@ Aufgabe 1 — [Punktzahl] Punkte:
 
 Zielumfang: ca. 5–8 Sätze, besonders bei Vignetten.
 
-[FÜGE HIER ZWINGEND 16 LEERE ZEILEN EIN, DAMIT DER STUDENT PLATZ HAT, SEINE ANTWORT HANDSCHRIFTLICH HINZUSCHREIBEN]
-
-
 Aufgabe 2 — [Punktzahl] Punkte:
 [Frage]
 
 Zielumfang: ca. 5–8 Sätze, besonders bei Vignetten.
 
-[FÜGE HIER ZWINGEND 16 LEERE ZEILEN EIN, DAMIT DER STUDENT PLATZ HAT, SEINE ANTWORT HANDSCHRIFTLICH HINZUSCHREIBEN]
-
 ...
 ===STUDENT_QUIZ_END===
-
 
 ===COVERAGE_LEDGER_START===
 
@@ -934,7 +914,6 @@ QUIZ TAG 21 — TRANSFER UND PRÜFUNGSNAHE ANWENDUNG
 HINWEISE:
 Beantworte alle Fragen handschriftlich und in eigenen Worten. Bei Transfer- und Fallaufgaben zählt besonders deine Begründung: Warum passt ein Konzept, Modell oder Befund hier — und warum passen naheliegende Alternativen weniger gut?
 
-
 AUFGABEN:
 
 Aufgabe 1 — [Punktzahl] Punkte:
@@ -942,19 +921,13 @@ Aufgabe 1 — [Punktzahl] Punkte:
 
 Zielumfang: ca. 7–10 Sätze oder strukturierte Fallanalyse.
 
-[FÜGE HIER ZWINGEND 24 LEERE ZEILEN EIN, DAMIT DER STUDENT PLATZ HAT, SEINE ANTWORT HANDSCHRIFTLICH HINZUSCHREIBEN]
-
-
 Aufgabe 2 — [Punktzahl] Punkte:
 [Frage]
 
 Zielumfang: ca. 7–10 Sätze oder strukturierte Fallanalyse.
 
-[FÜGE HIER ZWINGEND 24 LEERE ZEILEN EIN, DAMIT DER STUDENT PLATZ HAT, SEINE ANTWORT HANDSCHRIFTLICH HINZUSCHREIBEN]
-
 ...
 ===STUDENT_QUIZ_END===
-
 
 ===COVERAGE_LEDGER_START===
 
@@ -1151,7 +1124,6 @@ QUIZ TAG 60 — LANGFRISTIGE SYNTHESE UND BACHELOR-MASTERY
 HINWEISE:
 Beantworte alle Fragen handschriftlich und in eigenen Worten. Ziel ist nicht auswendig gelernte Formulierung, sondern fachlich präziser Abruf, Anwendung, Synthese und kritische Bewertung.
 
-
 AUFGABEN:
 
 Aufgabe 1 — [Punktzahl] Punkte:
@@ -1159,19 +1131,13 @@ Aufgabe 1 — [Punktzahl] Punkte:
 
 Zielumfang: ca. 8–12 Sätze bei großen Aufgaben, gerne mit Unterpunkten.
 
-[FÜGE HIER ZWINGEND 32 LEERE ZEILEN EIN, DAMIT DER STUDENT PLATZ HAT, SEINE ANTWORT HANDSCHRIFTLICH HINZUSCHREIBEN]
-
-
 Aufgabe 2 — [Punktzahl] Punkte:
 [Frage]
 
 Zielumfang: ca. 8–12 Sätze bei großen Aufgaben, gerne mit Unterpunkten.
 
-[FÜGE HIER ZWINGEND 32 LEERE ZEILEN EIN, DAMIT DER STUDENT PLATZ HAT, SEINE ANTWORT HANDSCHRIFTLICH HINZUSCHREIBEN]
-
 ...
 ===STUDENT_QUIZ_END===
-
 
 ===COVERAGE_LEDGER_START===
 

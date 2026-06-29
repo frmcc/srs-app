@@ -461,8 +461,6 @@ B) [Option B]
 C) [Option C]
 D) [Option D]
 
-[FÜGE HIER ZWINGEND 4 LEERE ZEILEN EIN]
-
 [Führe das Muster für alle Aufgaben 1 bis X fort]
 ===STUDENT_QUIZ_END===`,
 
@@ -502,14 +500,10 @@ Aufgabe 1 — [Punktzahl] Punkte:
 
 Zielumfang: ca. 4–6 Sätze oder strukturierte Stichpunkte.
 
-[FÜGE HIER ZWINGEND 12 LEERE ZEILEN EIN, DAMIT DER STUDENT PLATZ HAT, SEINE ANTWORT HANDSCHRIFTLICH HINZUSCHREIBEN]
-
 Aufgabe 2 — [Punktzahl] Punkte:
 [Deine neue, gezielte Frage]
 
 Zielumfang: ca. 4–6 Sätze oder strukturierte Stichpunkte.
-
-[FÜGE HIER ZWINGEND 12 LEERE ZEILEN EIN, DAMIT DER STUDENT PLATZ HAT, SEINE ANTWORT HANDSCHRIFTLICH HINZUSCHREIBEN]
 
 [Führe das Muster für alle Aufgaben fort]
 ===STUDENT_QUIZ_END===`,
@@ -551,14 +545,10 @@ Aufgabe 1 — [Punktzahl] Punkte:
 
 Zielumfang: ca. 6–10 Sätze oder eine strukturierte Fallanalyse.
 
-[FÜGE HIER ZWINGEND 20 LEERE ZEILEN EIN, DAMIT DER STUDENT PLATZ HAT, SEINE ANTWORT HANDSCHRIFTLICH HINZUSCHREIBEN]
-
 Aufgabe 2 — [Punktzahl] Punkte:
 [Deine neue, komplexe Frage]
 
 Zielumfang: ca. 6–10 Sätze oder eine strukturierte Fallanalyse.
-
-[FÜGE HIER ZWINGEND 20 LEERE ZEILEN EIN, DAMIT DER STUDENT PLATZ HAT, SEINE ANTWORT HANDSCHRIFTLICH HINZUSCHREIBEN]
 
 [Führe das Muster für alle Aufgaben fort]
 ===STUDENT_QUIZ_END===`
