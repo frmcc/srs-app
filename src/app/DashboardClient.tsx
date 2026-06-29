@@ -1556,10 +1556,14 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                           className="hidden"
                           id="file-upload"
                           onChange={(e) => {
-                            if (e.target.files && e.target.files.length > 0) {
-                              setUploadedFiles(prev => [...prev, ...Array.from(e.target.files!)]);
+                            // Snapshot the files BEFORE resetting value: React's state updater
+                            // runs asynchronously, and `e.target.value = ""` synchronously clears
+                            // e.target.files — so reading it inside the updater dropped the pick.
+                            const picked = e.target.files ? Array.from(e.target.files) : [];
+                            e.target.value = ""; // reset so re-picking the same file still fires onChange
+                            if (picked.length > 0) {
+                              setUploadedFiles(prev => [...prev, ...picked]);
                             }
-                            e.target.value = "";
                           }}
                         />
                         <label htmlFor="file-upload" className="btn-secondary px-4 py-2 text-sm cursor-pointer">
