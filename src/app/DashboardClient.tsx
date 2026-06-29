@@ -269,6 +269,7 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState("dashboard");
   const [isGenerating, setIsGenerating] = useState(false);
+  const [generationModel, setGenerationModel] = useState("gemini-3.5-flash");
   const [progressStep, setProgressStep] = useState(0);
   const [progressMsg, setProgressMsg] = useState("");
 
@@ -777,6 +778,7 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
       formData.append("subjectMain", subjectInput.trim());
       formData.append("subjectSub", topicInput.trim() || (language === "german" ? "Modul" : "Module"));
       formData.append("language", language);
+      formData.append("modelName", generationModel);
       if (textInput) formData.append("content", textInput);
       uploadedFiles.forEach(file => formData.append("files", file));
 
@@ -1592,14 +1594,25 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                         className="input-dark w-full px-4 py-4 h-32 resize-none text-sm leading-relaxed"
                       />
                     </div>
-                    <button
-                      onClick={handleGenerate}
-                      disabled={isGenerating || (!textInput && uploadedFiles.length === 0) || !subjectInput}
-                      className="btn-primary w-full py-4 text-sm flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-40"
-                    >
-                      <CpuChipIcon className="w-5 h-5" />
-                      {language === "german" ? "6-Stufen KI-Generierung starten" : "Start 6-Stage AI Generation"}
-                    </button>
+                    <div className="flex gap-3">
+                      <select
+                        value={generationModel}
+                        onChange={e => setGenerationModel(e.target.value)}
+                        className="input-dark w-1/3 px-4 py-4 text-sm cursor-pointer appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M5%208l5%205%205-5%22%20stroke%3D%22%239ca3af%22%20stroke-width%3D%222%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-no-repeat bg-[position:right_1rem_center]"
+                      >
+                        <option value="gemini-3.5-flash">3.5 Flash (Standard)</option>
+                        <option value="gemini-3.1-pro-preview">3.1 Pro (Preview)</option>
+                        <option value="gemini-3.1-flash-lite">3.1 Flash-Lite</option>
+                      </select>
+                      <button
+                        onClick={handleGenerate}
+                        disabled={isGenerating || (!textInput && uploadedFiles.length === 0) || !subjectInput}
+                        className="btn-primary flex-1 py-4 text-sm flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-40"
+                      >
+                        <CpuChipIcon className="w-5 h-5" />
+                        {language === "german" ? "6-Stufen KI-Generierung starten" : "Start 6-Stage AI Generation"}
+                      </button>
+                    </div>
                   </div>
                 )}
               </motion.div>

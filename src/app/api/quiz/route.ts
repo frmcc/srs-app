@@ -70,6 +70,7 @@ export async function POST(req: NextRequest) {
           subjectSub,
           textContent,
           filePaths,
+          modelName: formData.get("modelName") as string | undefined,
           onProgress: (step, message) => sendEvent("progress", { step, message }),
           // Fire `done` the moment the item exists — podcast uploads keep
           // running inside the generator without blocking the UI.
