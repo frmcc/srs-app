@@ -92,6 +92,7 @@ interface RawReviewItem {
   lastVideoPrompt1: string | null;
   lastVideoPrompt2: string | null;
   generatedLevels: [boolean, boolean, boolean, boolean, boolean, boolean, boolean];
+  hasSource: boolean;
   /** Level-correct quiz text, computed server-side (incl. quiz-1 fallback and level>=6 rollover). */
   currentQuizText: string;
 }
@@ -285,7 +286,6 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
   const [modulePresets, setModulePresets] = useState<string[]>([]);
   const [language, setLanguage] = useState<string>("german");
   const [wrapperMode, setWrapperMode] = useState<string>("all");
-  const [agentMode, setAgentMode] = useState<boolean>(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [newPresetInput, setNewPresetInput] = useState("");
@@ -299,7 +299,6 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
           if (data.modulePresets) setModulePresets(data.modulePresets);
           if (data.language) setLanguage(data.language);
           if (data.wrapperMode) setWrapperMode(data.wrapperMode);
-          if (typeof data.agentMode === 'boolean') setAgentMode(data.agentMode);
           if (data.modulePresets && data.modulePresets.length > 0) {
             setSubjectInput(data.modulePresets[0]);
           }
@@ -1272,6 +1271,18 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                                                 exit="exit"
                                                 style={{ overflow: "hidden" }}
                                               >
+                                                {review.raw.hasSource && (
+                                                  <a
+                                                    href={`/api/source/${review.id}`}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    onClick={(e) => e.stopPropagation()}
+                                                    className="mb-2.5 text-xs font-medium bg-white/[0.04] hover:bg-amber-400/[0.1] border border-white/[0.09] hover:border-amber-400/30 text-white/55 hover:text-amber-200 px-3.5 py-2.5 rounded-xl flex items-center justify-center gap-2 w-full text-center transition-all cursor-pointer"
+                                                  >
+                                                    <DocumentTextIcon className="w-4 h-4 shrink-0 text-amber-400/70" />
+                                                    {language === "german" ? "Original-PDF öffnen / herunterladen" : "Open / download original PDF"}
+                                                  </a>
+                                                )}
                                                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 p-3 bg-black/30 rounded-2xl border border-white/[0.05] mt-2.5">
                                                   {/* PRE-PODCAST */}
                                                   <div className="flex-1 min-w-0">
@@ -1465,7 +1476,7 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                         // only generates Quiz 1 at upload; later levels are made one-by-one
                         // during grading. Step numbers match the backend's progress() calls.
                         { step: 1, label: language === "german" ? "Blueprint erstellen" : "Generate Blueprint" },
-                        { step: 2, label: agentMode ? "Quiz 1 (Agent)" : (language === "german" ? "Quiz 1 generieren" : "Generate Quiz 1") },
+                        { step: 2, label: language === "german" ? "Quiz 1 generieren" : "Generate Quiz 1" },
                         { step: 3, label: language === "german" ? "Tutor- & Podcast-Prompts" : "Tutor & Podcast prompts" },
                         { step: 5, label: language === "german" ? "NotebookLM einrichten" : "NotebookLM setup" },
                         { step: 6, label: language === "german" ? "Google Drive Upload" : "Google Drive upload" },
@@ -2649,61 +2660,6 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                       className={`flex-1 py-2.5 rounded-lg text-xs sm:text-sm transition-colors cursor-pointer ${(isGenerating || isGrading) ? 'opacity-50 cursor-not-allowed' : ''} ${wrapperMode === "none" ? 'bg-amber-400/15 text-amber-100 border border-amber-400/30 font-medium' : 'border border-transparent text-white/45 hover:bg-white/[0.04] hover:text-white/70'}`}
                     >
                       {language === "german" ? "Nur Fallback" : "Fallback Only"}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="pt-6 border-t border-white/[0.07]">
-                  <h4 className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em] mb-3">{language === "german" ? "Agent-Modus (Beta)" : "Agent Mode (Beta)"}</h4>
-                  <p className="text-xs text-white/40 mb-4 leading-relaxed">
-                    {language === "german"
-                      ? "Wenn aktiv, verfeinert ein KI-Agent jedes generierte Quiz (und Folge-Quizze beim Bewerten) in einem zweiten Schritt — er kritisiert den Entwurf und schreibt ihn neu, streng auf Basis deines Vorlesungsmaterials. Bessere Qualität, aber langsamer und teurer pro Quiz."
-                      : "When on, an AI agent refines every generated quiz (and follow-up quizzes during grading) in a second pass — it critiques the draft and rewrites it, grounded strictly in your lecture material. Higher quality, but slower and pricier per quiz."}
-                  </p>
-                  {(isGenerating || isGrading) && (
-                    <div className="mb-4 text-xs font-semibold text-amber-300 flex items-center gap-2">
-                      <LockClosedIcon className="w-3.5 h-3.5" />
-                      {language === "german" ? "Einstellungen gesperrt, während eine KI-Aktion läuft." : "Settings locked while AI generation is in progress."}
-                    </div>
-                  )}
-                  <div className="flex gap-2 bg-white/[0.02] border border-white/[0.06] rounded-xl p-1">
-                    <button
-                      disabled={isGenerating || isGrading}
-                      onClick={() => {
-                        fetch('/api/settings', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ action: 'update_agent_mode', agentMode: false })
-                        }).then(res => res.json()).then(data => {
-                          if (data.error) { addToast("error", `${language === "german" ? "Fehler" : "Error"}: ${data.error}`); return; }
-                          if (typeof data.agentMode === 'boolean') setAgentMode(data.agentMode);
-                        }).catch(err => {
-                          console.error(err);
-                          addToast("error", language === "german" ? "Einstellung konnte nicht gespeichert werden." : "Failed to save setting.");
-                        });
-                      }}
-                      className={`flex-1 py-2.5 rounded-lg text-xs sm:text-sm transition-colors cursor-pointer ${(isGenerating || isGrading) ? 'opacity-50 cursor-not-allowed' : ''} ${!agentMode ? 'bg-amber-400/15 text-amber-100 border border-amber-400/30 font-medium' : 'border border-transparent text-white/45 hover:bg-white/[0.04] hover:text-white/70'}`}
-                    >
-                      {language === "german" ? "Aus (Standard)" : "Off (Default)"}
-                    </button>
-                    <button
-                      disabled={isGenerating || isGrading}
-                      onClick={() => {
-                        fetch('/api/settings', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ action: 'update_agent_mode', agentMode: true })
-                        }).then(res => res.json()).then(data => {
-                          if (data.error) { addToast("error", `${language === "german" ? "Fehler" : "Error"}: ${data.error}`); return; }
-                          if (typeof data.agentMode === 'boolean') setAgentMode(data.agentMode);
-                        }).catch(err => {
-                          console.error(err);
-                          addToast("error", language === "german" ? "Einstellung konnte nicht gespeichert werden." : "Failed to save setting.");
-                        });
-                      }}
-                      className={`flex-1 py-2.5 rounded-lg text-xs sm:text-sm transition-colors cursor-pointer ${(isGenerating || isGrading) ? 'opacity-50 cursor-not-allowed' : ''} ${agentMode ? 'bg-amber-400/15 text-amber-100 border border-amber-400/30 font-medium' : 'border border-transparent text-white/45 hover:bg-white/[0.04] hover:text-white/70'}`}
-                    >
-                      {language === "german" ? "An (Agent)" : "On (Agent)"}
                     </button>
                   </div>
                 </div>

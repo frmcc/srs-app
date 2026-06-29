@@ -26,6 +26,8 @@ const LIST_SELECT = {
   postPodcastPrompt: true,
   lastVideoPrompt1: true,
   lastVideoPrompt2: true,
+  // Needed only to compute the `hasSource` boolean — the raw content never ships.
+  sourceMaterialContent: true,
   // Needed to compute currentQuizText; stripped before the payload ships.
   quiz1DocId: true,
   quiz2DocId: true,
@@ -54,8 +56,20 @@ export interface ReviewListItem {
   lastVideoPrompt1: string | null;
   lastVideoPrompt2: string | null;
   generatedLevels: [boolean, boolean, boolean, boolean, boolean, boolean, boolean];
+  /** True if the original uploaded lecture PDF is downloadable via /api/source/[id]. */
+  hasSource: boolean;
   /** The quiz text for the item's CURRENT level (the only one the UI shows). */
   currentQuizText: string;
+}
+
+/** Current items store {driveFileId,...} in sourceMaterialContent; legacy rows may not. */
+function hasDownloadableSource(content: string | null): boolean {
+  if (!content) return false;
+  try {
+    return !!JSON.parse(content).driveFileId;
+  } catch {
+    return false;
+  }
 }
 
 export async function fetchReviewList(): Promise<ReviewListItem[]> {
@@ -86,6 +100,7 @@ export async function fetchReviewList(): Promise<ReviewListItem[]> {
       !!row.quiz1DocId, !!row.quiz2DocId, !!row.quiz3DocId, !!row.quiz4DocId,
       !!row.quiz5DocId, !!row.quiz6DocId, !!row.quiz7DocId,
     ] as [boolean, boolean, boolean, boolean, boolean, boolean, boolean],
+    hasSource: hasDownloadableSource(row.sourceMaterialContent),
     currentQuizText: currentQuizText(row),
   }));
 }

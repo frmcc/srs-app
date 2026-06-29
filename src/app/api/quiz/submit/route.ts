@@ -7,7 +7,7 @@ import path from "path";
 import os from "os";
 import { createHash } from "crypto";
 
-export const maxDuration = 600; // raised for opt-in Agent Mode (also raise the Cloud Run request timeout ≥ 600s)
+export const maxDuration = 300; // 5 minutes max for background processing
 
 /** Jobs stuck in pending/processing longer than this are considered dead. */
 const STALE_JOB_MS = 10 * 60 * 1000;

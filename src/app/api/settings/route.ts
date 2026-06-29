@@ -24,7 +24,6 @@ function serialize(config: AppConfig) {
     modulePresets: presets,
     language: config.language,
     wrapperMode: config.wrapperMode,
-    agentMode: config.agentMode,
   };
 }
 
@@ -38,13 +37,13 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
-    let body: { action?: string; presets?: unknown; language?: string; wrapperMode?: string; agentMode?: boolean };
+    let body: { action?: string; presets?: unknown; language?: string; wrapperMode?: string };
     try {
       body = await req.json();
     } catch {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
-    const { action, presets, language, wrapperMode, agentMode } = body;
+    const { action, presets, language, wrapperMode } = body;
     await getOrCreateConfig();
 
     switch (action) {
@@ -72,14 +71,6 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: "wrapperMode must be 'all', 'generation_only' or 'none'" }, { status: 400 });
         }
         const updated = await prisma.appConfig.update({ where: { id: 1 }, data: { wrapperMode } });
-        return NextResponse.json(serialize(updated));
-      }
-
-      case "update_agent_mode": {
-        if (typeof agentMode !== "boolean") {
-          return NextResponse.json({ error: "agentMode must be a boolean" }, { status: 400 });
-        }
-        const updated = await prisma.appConfig.update({ where: { id: 1 }, data: { agentMode } });
         return NextResponse.json(serialize(updated));
       }
 

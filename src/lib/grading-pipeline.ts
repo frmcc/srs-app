@@ -139,7 +139,6 @@ export async function runGradingPipeline(opts: {
 
   const appConfig = await prisma.appConfig.findUnique({ where: { id: 1 } });
   const useAiWrapper = (appConfig?.wrapperMode || "all") === "all";
-  const agentMode = appConfig?.agentMode ?? false;
 
   const language = opts.language || appConfig?.language || "german";
   const languageInstruction = `\n\nCRITICAL: You must generate ALL text, output, and responses strictly in ${language.toUpperCase()}. This applies to every section of the generated content.`;
@@ -179,7 +178,7 @@ export async function runGradingPipeline(opts: {
   const mismatchCheckRes = await generateContentWithRetry(ai, modelName, {
     contents: [{ role: "user", parts: answerParts as never }],
     config: { systemInstruction: formatPrompt(GRADE_PROMPTS.mismatch_check, { QUIZ_QUESTIONS: studentQuizText }) + languageInstruction },
-  }, (msg) => progress(0, msg), "Submission Check", useAiWrapper, agentMode);
+  }, (msg) => progress(0, msg), "Submission Check", useAiWrapper);
 
   const verdict = parseMismatchVerdict(mismatchCheckRes.text);
   if (verdict === true) throw new GradingMismatchError();
@@ -197,11 +196,11 @@ export async function runGradingPipeline(opts: {
     generateContentWithRetry(ai, modelName, {
       contents: [{ role: "user", parts: coUserParts as never }],
       config: { systemInstruction: formatPrompt(GRADE_PROMPTS.co_pruefer_1, { TOTAL_TASKS: totalTasks, SPLIT_POINT: splitPoint, SUBJECT: subject, INTERVAL: interval }) + languageInstruction },
-    }, (msg) => progress(1, msg), "Co-Prüfer 1", useAiWrapper, agentMode),
+    }, (msg) => progress(1, msg), "Co-Prüfer 1", useAiWrapper),
     generateContentWithRetry(ai, modelName, {
       contents: [{ role: "user", parts: coUserParts as never }],
       config: { systemInstruction: formatPrompt(GRADE_PROMPTS.co_pruefer_2, { TOTAL_TASKS: totalTasks, START_INDEX: startIdx2, SUBJECT: subject, INTERVAL: interval }) + languageInstruction },
-    }, (msg) => progress(1, msg), "Co-Prüfer 2", useAiWrapper, agentMode),
+    }, (msg) => progress(1, msg), "Co-Prüfer 2", useAiWrapper),
   ]);
 
   // ---- Step 2: Chief Assessor ----------------------------------------------
@@ -214,7 +213,7 @@ export async function runGradingPipeline(opts: {
   const chefRes = await generateContentWithRetry(ai, modelName, {
     contents: [{ role: "user", parts: chefUserParts as never }],
     config: { systemInstruction: formatPrompt(GRADE_PROMPTS.chef_pruefer, { SUBJECT: subject, INTERVAL: interval }) + languageInstruction },
-  }, (msg) => progress(2, msg), "Chief Assessor", useAiWrapper, agentMode);
+  }, (msg) => progress(2, msg), "Chief Assessor", useAiWrapper);
 
   let chefFeedback = chefRes.text || "";
   let isPass: boolean;
@@ -232,7 +231,7 @@ export async function runGradingPipeline(opts: {
       config: { systemInstruction: formatPrompt(GRADE_PROMPTS.chef_pruefer, { SUBJECT: subject, INTERVAL: interval })
         + languageInstruction
         + "\n\nWICHTIG: Gib am Ende zwingend einen klaren Entscheidungsblock aus:\n===ASSESSMENT_DECISION_START===\nPASS oder REPEAT\n===ASSESSMENT_DECISION_END===" },
-    }, (msg) => progress(2, msg), "Chief Assessor (Retry)", useAiWrapper, agentMode);
+    }, (msg) => progress(2, msg), "Chief Assessor (Retry)", useAiWrapper);
     chefFeedback = chefRetry.text || chefFeedback;
     isPass = parseAssessmentDecision(chefFeedback); // still unparseable ⇒ throws DecisionParseError
   }
@@ -250,7 +249,7 @@ export async function runGradingPipeline(opts: {
   const lmPromptCall = generateContentWithRetry(ai, modelName, {
     contents: [{ role: "user", parts: lmUserParts as never }],
     config: { systemInstruction: formatPrompt(isPass ? GRADE_PROMPTS.video_pass : GRADE_PROMPTS.video_repeat, { SUBJECT: subject, INTERVAL: interval }) + languageInstruction },
-  }, (msg) => progress(3, msg), "Video Prompts", useAiWrapper, agentMode);
+  }, (msg) => progress(3, msg), "Video Prompts", useAiWrapper);
 
   let nextQuizText = "";
   let newLedgerText = "";
@@ -302,7 +301,7 @@ export async function runGradingPipeline(opts: {
     const nextQuizCall = generateContentWithRetry(ai, modelName, {
       contents: [{ role: "user", parts: nextQuizParts as never }],
       config: { systemInstruction: nextQuizInstruction },
-    }, (msg) => progress(3, msg), `Next Quiz (${nextIntervalLabel})`, useAiWrapper, agentMode);
+    }, (msg) => progress(3, msg), `Next Quiz (${nextIntervalLabel})`, useAiWrapper);
 
     const [lmResult, nextQuizRes] = await Promise.all([lmPromptCall, nextQuizCall]);
     lmRes = lmResult;
@@ -322,7 +321,7 @@ export async function runGradingPipeline(opts: {
     const nextQuizCall = generateContentWithRetry(ai, modelName, {
       contents: [{ role: "user", parts: remedialQuizParts as never }],
       config: { systemInstruction: nextQuizInstruction },
-    }, (msg) => progress(3, msg), "Next Quiz (REPEAT)", useAiWrapper, agentMode);
+    }, (msg) => progress(3, msg), "Next Quiz (REPEAT)", useAiWrapper);
 
     const [lmResult, nextQuizRes] = await Promise.all([lmPromptCall, nextQuizCall]);
     lmRes = lmResult;

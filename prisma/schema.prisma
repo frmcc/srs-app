@@ -96,7 +96,6 @@ model AppConfig {
   modulePresets   String   @default("[]") // JSON string array
   language        String   @default("german") // german or english
   wrapperMode     String   @default("all") // "all", "generation_only", "none"
-  agentMode       Boolean  @default(false)  // opt-in: managed-agent grounded critique-revise pass
   updatedAt       DateTime @updatedAt
 }
 

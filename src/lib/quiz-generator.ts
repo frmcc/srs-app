@@ -51,7 +51,6 @@ export async function runQuizGeneration(params: {
     const wrapperMode = appConfig?.wrapperMode || "all";
     const useAiWrapper = wrapperMode === "all" || wrapperMode === "generation_only";
     const currentSemester = appConfig?.currentSemester || 1;
-    const agentMode = appConfig?.agentMode ?? false;
     const language = appConfig?.language || "german";
     const languageInstruction = `\n\nCRITICAL: You must generate ALL text, output, and responses strictly in ${language.toUpperCase()}. This applies to every section of the generated content.`;
 
@@ -95,17 +94,15 @@ export async function runQuizGeneration(params: {
     const blueprintRes = await generateContentWithRetry(ai, modelName, {
       contents: [{ role: "user", parts: [...masterContextParts, { text: `Modul/Vorlesungsthema:\n${subjectMain} - ${subjectSub}` }, { text: "Hier sind die Materialien. Bitte führe deine System-Instruktionen aus." }] }],
       config: { systemInstruction: PROMPTS.blueprint + languageInstruction },
-    }, (msg) => progress(1, msg), "Blueprint", useAiWrapper, agentMode);
+    }, (msg) => progress(1, msg), "Blueprint", useAiWrapper);
     const blueprint = blueprintRes.text;
 
     // ---- Step 2: Quiz 1 (later quizzes are generated on-demand after grading) ----
-    // In Agent Mode every step (incl. this one) runs via the managed agent inside
-    // generateContentWithRetry, using the SAME prompt; otherwise normal gemini-3.5-flash.
     progress(2, "Generating Quiz 1...");
     const quiz1Res = await generateContentWithRetry(ai, modelName, {
       contents: [{ role: "user", parts: [...masterContextParts, { text: "Hier sind die Materialien. Bitte führe deine System-Instruktionen aus." }] }],
       config: { systemInstruction: PROMPTS.quiz_tag_1 + `\n\nModul/Vorlesungsthema:\n${subjectMain}\n\nBlueprint:\n${blueprint}` + languageInstruction },
-    }, (msg) => progress(2, msg), "Quiz 1", useAiWrapper, agentMode);
+    }, (msg) => progress(2, msg), "Quiz 1", useAiWrapper);
 
     const quiz1Text = quiz1Res.text || "";
     // A module with an empty Quiz 1 is unusable: the student opens it to no quiz
@@ -123,11 +120,11 @@ export async function runQuizGeneration(params: {
       generateContentWithRetry(ai, modelName, {
         contents: [{ role: "user", parts: [...masterContextParts, { text: `Modul/Vorlesungsthema:\n${subjectMain}` }, { text: `Didaktischer Blueprint:\n${blueprint}` }, { text: "Bitte generiere den Tutor-Prompt basierend auf dem bereitgestellten Blueprint." }] }],
         config: { systemInstruction: PROMPTS.tutor_prompt + languageInstruction },
-      }, (msg) => progress(3, msg), "Tutor Prompt", useAiWrapper, agentMode),
+      }, (msg) => progress(3, msg), "Tutor Prompt", useAiWrapper),
       generateContentWithRetry(ai, modelName, {
         contents: [{ role: "user", parts: [...masterContextParts, { text: `Modul/Vorlesungsthema:\n${subjectMain}` }, { text: `Didaktischer Blueprint:\n${blueprint}` }, { text: "Bitte generiere die zwei Regieanweisungen basierend auf dem bereitgestellten Blueprint." }] }],
         config: { systemInstruction: podcast_prompts + languageInstruction },
-      }, (msg) => progress(3, msg), "Podcast Prompts", useAiWrapper, agentMode),
+      }, (msg) => progress(3, msg), "Podcast Prompts", useAiWrapper),
     ]);
     const tutorPrompt = tutorRes.text;
     const podcastOutput = podcastRes.text;

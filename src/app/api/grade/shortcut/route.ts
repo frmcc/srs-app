@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { sendPushNotification } from "@/lib/push";
 import { runGradingPipeline } from "@/lib/grading-pipeline";
 
-export const maxDuration = 600; // higher ceiling for opt-in Agent Mode (also raise the Cloud Run request timeout ≥ 600s)
+export const maxDuration = 300;
 
 /**
  * iPhone Shortcut grading endpoint.
