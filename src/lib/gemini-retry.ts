@@ -71,8 +71,22 @@ export async function generateContentWithRetry(
       if (attempt === MAX_RETRIES || !isTransient(error)) {
         throw error;
       }
+      // The wording used to always say "Hohe Auslastung", which hid network
+      // errors, proxy failures and timeouts behind a "high demand" label.
+      // Classify the REAL reason and log it (status + message) so the true cause
+      // is visible in the server logs instead of a generic "high demand".
+      const m = error.message || "";
+      const reason =
+        error.status === 429 || /quota|Resource has been exhausted/i.test(m)
+          ? "Rate-Limit / Kontingent"
+          : /fetch failed|ECONNREFUSED|ENOTFOUND|EAI_AGAIN|network/i.test(m)
+          ? "Netzwerk-/Verbindungsfehler"
+          : /timeout|ETIMEDOUT/i.test(m)
+          ? "Zeitüberschreitung"
+          : "Hohe Auslastung";
+      console.warn(`[Gemini Retry] ${stepLabel} Versuch ${attempt}/${MAX_RETRIES} fehlgeschlagen — ${reason} (status=${error.status ?? "n/a"}): ${m}`);
       const delayMs = RETRY_DELAYS_MS[attempt - 1] ?? RETRY_DELAYS_MS[RETRY_DELAYS_MS.length - 1];
-      progressCallback(`Hohe Auslastung (${stepLabel}). Neuer Versuch in ${Math.round(delayMs / 1000)}s (Versuch ${attempt}/${MAX_RETRIES})...`);
+      progressCallback(`${reason} (${stepLabel}). Neuer Versuch in ${Math.round(delayMs / 1000)}s (Versuch ${attempt}/${MAX_RETRIES})...`);
       await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
   }
