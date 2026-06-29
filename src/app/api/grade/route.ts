@@ -15,14 +15,14 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  let body: { itemId?: string; studentAnswers?: string; language?: string };
+  let body: { itemId?: string; studentAnswers?: string; language?: string; modelName?: string };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const { itemId, studentAnswers, language } = body;
+  const { itemId, studentAnswers, language, modelName } = body;
   if (!itemId) {
     return NextResponse.json({ error: "Item ID is required" }, { status: 400 });
   }
@@ -46,6 +46,7 @@ export async function POST(req: NextRequest) {
           itemId,
           submission: { text: studentAnswers },
           language,
+          modelName,
           onProgress: (step, message) => sendEvent("progress", { step, message }),
         });
 
