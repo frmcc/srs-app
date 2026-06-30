@@ -67,7 +67,9 @@ function silentWavUri(): string {
 }
 
 /** The spoken command that advances to the next task (umlaut-tolerant + EN fallback). */
-const TRIGGER_RE = /n[aä]chste\s+aufgabe|next\s+(?:task|question)/i;
+// Broad on purpose: speech recognition rarely returns "nächste Aufgabe" exactly.
+// Matches nächste/nächster/nächsten/nachste + aufgabe/frage, and English fallbacks.
+const TRIGGER_RE = /n[aäe]chst\w*\s+(?:aufgabe|frage)|next\s+(?:task|question|one)/i;
 
 interface Options {
   tasks: InteractiveTask[];
@@ -125,15 +127,22 @@ export function useInteractiveQuiz({ tasks, recognitionLang = "de-DE", onAnswer 
     const cached = ttsCacheRef.current.get(i);
     if (cached) return cached;
     const p = (async () => {
-      const res = await fetch("/api/tts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: tasksRef.current[i]?.questionText ?? "" }),
-      });
-      if (!res.ok) throw new Error(`TTS HTTP ${res.status}`);
-      const url = URL.createObjectURL(await res.blob());
-      blobUrlsRef.current.push(url);
-      return url;
+      const ctrl = new AbortController();
+      const timeout = setTimeout(() => ctrl.abort(), 25000); // never hang the "loading" state on a slow/stuck TTS
+      try {
+        const res = await fetch("/api/tts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: tasksRef.current[i]?.questionText ?? "" }),
+          signal: ctrl.signal,
+        });
+        if (!res.ok) throw new Error(`TTS HTTP ${res.status}`);
+        const url = URL.createObjectURL(await res.blob());
+        blobUrlsRef.current.push(url);
+        return url;
+      } finally {
+        clearTimeout(timeout);
+      }
     })();
     ttsCacheRef.current.set(i, p);
     return p;
@@ -299,6 +308,15 @@ export function useInteractiveQuiz({ tasks, recognitionLang = "de-DE", onAnswer 
     playRef.current(next);
   }, [teardownRecognition, stop]);
 
+  const previous = useCallback(() => {
+    teardownRecognition();
+    const prev = indexRef.current - 1;
+    if (prev < 0) return; // already at the first question
+    indexRef.current = prev;
+    setCurrentIndex(prev);
+    playRef.current(prev);
+  }, [teardownRecognition]);
+
   // Keep the mirror + recursion refs pointed at the latest values/closures. All
   // ref consumers run post-mount via user interaction, so syncing in an effect
   // (rather than during render) is both correct and lint-clean.
@@ -370,5 +388,5 @@ export function useInteractiveQuiz({ tasks, recognitionLang = "de-DE", onAnswer 
     [cleanup],
   );
 
-  return { active, paused, currentIndex, phase, error, supported, start, stop, togglePause, next: advance };
+  return { active, paused, currentIndex, total: tasks.length, phase, error, supported, start, stop, togglePause, previous, next: advance };
 }

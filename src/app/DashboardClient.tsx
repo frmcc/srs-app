@@ -47,12 +47,14 @@ import {
   StopIcon,
   MicrophoneIcon,
   ForwardIcon,
+  BackwardIcon,
 } from "@heroicons/react/24/outline";
 
 import { useState, useEffect, useCallback, useRef, useMemo, useTransition } from "react";
 
 import { useToasts, ToastStack } from "./components/Toast";
 import { useInteractiveQuiz } from "./useInteractiveQuiz";
+import { AutoGrowTextarea } from "./components/AutoGrowTextarea";
 
 const LIB_LEVEL_SHORT = ["T1", "T3", "T7", "T21", "T60", "T180", "T365"] as const;
 const LIB_LEVEL_FULL  = ["Tag 1", "Tag 3", "Tag 7", "Tag 21", "Tag 60", "Tag 180", "Tag 365"] as const;
@@ -342,6 +344,11 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
     if (interactive.error) addToast("error", interactive.error);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- toast once per distinct error; addToast identity is irrelevant
   }, [interactive.error]);
+  // Smoothly keep the current interactive question centered in view as it advances.
+  useEffect(() => {
+    if (!interactive.active || interactive.currentIndex < 0) return;
+    document.getElementById(`iq-${interactive.currentIndex}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [interactive.active, interactive.currentIndex]);
   const [showAllScheduled, setShowAllScheduled] = useState(false);
   const [gradingStep, setGradingStep] = useState(0);
   const [gradingMsg, setGradingMsg] = useState("");
@@ -1150,8 +1157,8 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                 </motion.header>
 
                 <motion.div variants={riseChild} className="grid grid-cols-1 lg:grid-cols-3 gap-5 md:gap-8">
-                  {/* Reviews List */}
-                  <div className="lg:col-span-2 flex flex-col gap-4">
+                  {/* Reviews List — spans full width on the empty state so it reads clean */}
+                  <div className={`flex flex-col gap-4 ${upcomingReviews.length === 0 ? "lg:col-span-3" : "lg:col-span-2"}`}>
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-3 gap-3">
                       <h3 className="font-display text-xl sm:text-2xl font-medium text-white flex items-center gap-2.5">
                         <ClockIcon className="w-5 h-5 text-amber-300" />
@@ -1180,9 +1187,27 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                             initial={{ opacity: 0, y: 24, filter: "blur(8px)" }}
                             animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
                             transition={{ duration: DUR.base, ease: EASE_OUT }}
-                            className="card-surface p-8 md:p-14 text-center text-white/40 text-sm leading-relaxed"
+                            className="card-surface p-14 md:p-20 flex flex-col items-center text-center"
                           >
-                            {language === 'german' ? 'Keine Wiederholungen gefunden. Lade Vorlesungsmaterial hoch, um dein erstes Quiz zu erstellen!' : 'No reviews found. Upload lecture material to generate your first quiz!'}
+                            <div className="w-14 h-14 rounded-2xl bg-white/[0.04] border border-white/[0.09] flex items-center justify-center mb-6">
+                              <AcademicCapIcon className="w-7 h-7 text-white/25" strokeWidth={1.5} />
+                            </div>
+                            <p className="eyebrow mb-3">{language === 'german' ? 'Lernarchiv leer' : 'Archive empty'}</p>
+                            <h3 className="font-display text-xl font-medium text-white mb-2">
+                              {language === 'german' ? 'Noch keine Module' : 'No modules yet'}
+                            </h3>
+                            <p className="text-white/35 text-sm leading-relaxed max-w-xs mb-7">
+                              {language === 'german'
+                                ? 'Lade dein erstes Vorlesungsmaterial hoch, um den 6-Stufen KI-Prozess zu starten.'
+                                : 'Upload your first lecture material to start the 6-stage AI generation pipeline.'}
+                            </p>
+                            <button
+                              onClick={() => { setActiveTab("upload"); setShowMobileMenu(false); }}
+                              className="btn-primary px-6 py-3 text-sm flex items-center gap-2 cursor-pointer"
+                            >
+                              <CloudArrowUpIcon className="w-5 h-5" />
+                              {language === 'german' ? 'Jetzt hochladen' : 'Upload Now'}
+                            </button>
                           </motion.div>
                         );
                       }
@@ -1457,18 +1482,20 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                     })()}
                   </div>
 
-                  {/* Quick Actions */}
-                  <div className="flex flex-col gap-6">
-                    <motion.div whileHover={{ y: -4 }} whileTap={{ scale: 0.99 }} transition={springSoft} className="card-surface-elevated gradient-border p-6 cursor-pointer transition-colors" onClick={() => { setActiveTab("upload"); setShowMobileMenu(false); }}>
-                      <p className="eyebrow mb-3">Pipeline</p>
-                      <h3 className="font-display text-xl font-medium mb-2 text-white">{language === 'german' ? 'Material hochladen' : 'Upload Material'}</h3>
-                      <p className="text-sm text-white/40 leading-relaxed mb-6">{language === 'german' ? 'Füttere die KI mit einem neuen Modul, um den generativen Prozess zu starten.' : 'Feed the engine a new module to start the generative AI pipeline.'}</p>
-                      <button className="btn-primary w-full py-3.5 px-4 text-sm flex items-center justify-center gap-2 cursor-pointer">
-                        <CloudArrowUpIcon className="w-5 h-5" />
-                        {language === 'german' ? 'Jetzt hochladen' : 'Upload Now'}
-                      </button>
-                    </motion.div>
-                  </div>
+                  {/* Quick Actions — hidden on the empty state (its CTA lives in the empty card instead) */}
+                  {upcomingReviews.length > 0 && (
+                    <div className="flex flex-col gap-6">
+                      <motion.div whileHover={{ y: -4 }} whileTap={{ scale: 0.99 }} transition={springSoft} className="card-surface-elevated gradient-border p-6 cursor-pointer transition-colors" onClick={() => { setActiveTab("upload"); setShowMobileMenu(false); }}>
+                        <p className="eyebrow mb-3">Pipeline</p>
+                        <h3 className="font-display text-xl font-medium mb-2 text-white">{language === 'german' ? 'Material hochladen' : 'Upload Material'}</h3>
+                        <p className="text-sm text-white/40 leading-relaxed mb-6">{language === 'german' ? 'Füttere die KI mit einem neuen Modul, um den generativen Prozess zu starten.' : 'Feed the engine a new module to start the generative AI pipeline.'}</p>
+                        <button className="btn-primary w-full py-3.5 px-4 text-sm flex items-center justify-center gap-2 cursor-pointer">
+                          <CloudArrowUpIcon className="w-5 h-5" />
+                          {language === 'german' ? 'Jetzt hochladen' : 'Upload Now'}
+                        </button>
+                      </motion.div>
+                    </div>
+                  )}
                 </motion.div>
               </motion.div>
             )}
@@ -2107,7 +2134,7 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                     </div>
                     {parsedTasks.length > 0 && (
                       <div className="flex items-center gap-2 shrink-0">
-                        {!interactive.active ? (
+                        {!interactive.active && (
                           <motion.button
                             {...pressable}
                             onClick={interactive.start}
@@ -2117,35 +2144,6 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                             <MicrophoneIcon className="w-4 h-4 text-amber-300" />
                             {language === "german" ? "Interaktiv" : "Interactive"}
                           </motion.button>
-                        ) : (
-                          <div className="flex items-center gap-1.5">
-                            <motion.button
-                              {...pressable}
-                              onClick={interactive.togglePause}
-                              title={interactive.paused ? (language === "german" ? "Fortsetzen" : "Resume") : (language === "german" ? "Pause" : "Pause")}
-                              className="btn-secondary flex items-center justify-center w-10 h-10 p-0 cursor-pointer"
-                            >
-                              {interactive.paused
-                                ? <PlayIcon className="w-4 h-4 text-amber-300" />
-                                : <PauseIcon className="w-4 h-4 text-amber-300" />}
-                            </motion.button>
-                            <motion.button
-                              {...pressable}
-                              onClick={interactive.next}
-                              title={language === "german" ? "Nächste Aufgabe" : "Next task"}
-                              className="btn-secondary flex items-center justify-center w-10 h-10 p-0 cursor-pointer"
-                            >
-                              <ForwardIcon className="w-4 h-4 text-amber-300" />
-                            </motion.button>
-                            <motion.button
-                              {...pressable}
-                              onClick={interactive.stop}
-                              title={language === "german" ? "Beenden" : "Stop"}
-                              className="btn-secondary flex items-center justify-center w-10 h-10 p-0 cursor-pointer"
-                            >
-                              <StopIcon className="w-4 h-4 text-red-300" />
-                            </motion.button>
-                          </div>
                         )}
                         <motion.button
                           {...pressable}
@@ -2159,6 +2157,39 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                     )}
                   </div>
                 </header>
+
+                {/* Floating interactive control bar — always reachable, no scrolling up */}
+                {interactive.active && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 24 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 flex items-center gap-1.5 px-3 py-2.5 rounded-2xl bg-black/85 backdrop-blur-xl border border-amber-400/20 shadow-[0_8px_44px_-8px_rgba(0,0,0,0.85)]"
+                  >
+                    <span className="text-[11px] font-bold text-amber-200/90 tabular-nums px-1.5">{interactive.currentIndex + 1}/{interactive.total}</span>
+                    <span className="text-[11px] text-white/45 pr-1.5 min-w-[74px]">
+                      {interactive.paused
+                        ? (language === "german" ? "Pausiert" : "Paused")
+                        : interactive.phase === "loading" ? (language === "german" ? "Lädt…" : "Loading…")
+                        : interactive.phase === "speaking" ? (language === "german" ? "Liest vor…" : "Reading…")
+                        : interactive.phase === "listening" ? (language === "german" ? "Hört zu…" : "Listening…")
+                        : ""}
+                    </span>
+                    <div className="w-px h-6 bg-white/10" />
+                    <button onClick={interactive.previous} disabled={interactive.currentIndex <= 0} title={language === "german" ? "Vorherige Aufgabe" : "Previous task"} className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-colors">
+                      <BackwardIcon className="w-4 h-4 text-amber-300" />
+                    </button>
+                    <button onClick={interactive.togglePause} title={interactive.paused ? (language === "german" ? "Fortsetzen" : "Resume") : "Pause"} className="w-12 h-12 flex items-center justify-center rounded-xl bg-amber-400/15 hover:bg-amber-400/25 cursor-pointer transition-colors">
+                      {interactive.paused ? <PlayIcon className="w-5 h-5 text-amber-200" /> : <PauseIcon className="w-5 h-5 text-amber-200" />}
+                    </button>
+                    <button onClick={interactive.next} title={language === "german" ? "Nächste Aufgabe" : "Next task"} className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-white/10 cursor-pointer transition-colors">
+                      <ForwardIcon className="w-4 h-4 text-amber-300" />
+                    </button>
+                    <div className="w-px h-6 bg-white/10" />
+                    <button onClick={interactive.stop} title={language === "german" ? "Beenden" : "Stop"} className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-red-500/15 cursor-pointer transition-colors">
+                      <StopIcon className="w-4 h-4 text-red-300" />
+                    </button>
+                  </motion.div>
+                )}
 
                 {gradingError && !isGrading && (
                   <div className="mb-6 p-6 rounded-2xl bg-rose-500/[0.07] border border-rose-400/20 text-rose-200 text-sm flex flex-col gap-3">
@@ -2265,10 +2296,17 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                           return (
                             <motion.div
                               key={task.id}
+                              id={`iq-${idx}`}
                               initial={{ opacity: 0, y: 20 }}
                               animate={{ opacity: 1, y: 0 }}
                               transition={{ delay: idx * 0.06, duration: DUR.base, ease: EASE_OUT }}
-                              className={`card-surface-elevated p-5 md:p-8 transition-shadow ${interactive.active && interactive.currentIndex === idx ? "ring-2 ring-amber-400/70 shadow-[0_0_30px_rgba(251,191,36,0.15)]" : ""}`}
+                              className={`card-surface-elevated p-5 md:p-8 transition-all duration-300 ${
+                                interactive.active && interactive.currentIndex === idx
+                                  ? "ring-2 ring-amber-400 bg-amber-400/[0.03] shadow-[0_0_50px_-8px_rgba(251,191,36,0.45)] scale-[1.01]"
+                                  : interactive.active
+                                  ? "opacity-50"
+                                  : ""
+                              }`}
                             >
                               <div className="flex items-center gap-3 mb-5">
                                 <span className="font-display text-2xl text-amber-300/50 italic leading-none">{String(idx + 1).padStart(2, "0")}</span>
@@ -2276,18 +2314,15 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                               </div>
                               {interactive.active && interactive.currentIndex === idx && (
                                 <div className="flex items-center gap-2 mb-5 text-[11px] font-semibold">
-                                  {interactive.phase === "speaking" && (
+                                  {interactive.paused ? (
+                                    <span className="flex items-center gap-1.5 text-white/40"><PauseIcon className="w-4 h-4" />{language === "german" ? "Pausiert" : "Paused"}</span>
+                                  ) : interactive.phase === "speaking" ? (
                                     <span className="flex items-center gap-1.5 text-amber-300"><SpeakerWaveIcon className="w-4 h-4 animate-pulse" />{language === "german" ? "Wird vorgelesen…" : "Reading aloud…"}</span>
-                                  )}
-                                  {interactive.phase === "listening" && (
+                                  ) : interactive.phase === "listening" ? (
                                     <span className="flex items-center gap-1.5 text-emerald-300"><MicrophoneIcon className="w-4 h-4 animate-pulse" />{language === "german" ? "Höre zu… sag „nächste Aufgabe“" : "Listening… say „nächste Aufgabe“"}</span>
-                                  )}
-                                  {interactive.phase === "loading" && (
+                                  ) : interactive.phase === "loading" ? (
                                     <span className="flex items-center gap-1.5 text-white/50"><span className="w-3.5 h-3.5 border-2 border-amber-300/40 border-t-amber-300 rounded-full animate-spin" />{language === "german" ? "Audio lädt…" : "Loading audio…"}</span>
-                                  )}
-                                  {interactive.paused && (
-                                    <span className="text-white/40">{language === "german" ? "(pausiert)" : "(paused)"}</span>
-                                  )}
+                                  ) : null}
                                 </div>
                               )}
                               <div className="text-[15px] text-white/75 whitespace-pre-wrap leading-relaxed mb-6">
@@ -2296,7 +2331,7 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
 
                               <div className="border-t border-white/[0.06] pt-6">
                                 <span className="block text-[10px] font-bold text-white/30 uppercase tracking-[0.2em] mb-3">Your Answer:</span>
-                                <textarea
+                                <AutoGrowTextarea
                                   value={individualAnswers[task.id] || ""}
                                   onChange={e => {
                                     setIndividualAnswers(prev => ({
@@ -2305,8 +2340,7 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                                     }));
                                   }}
                                   placeholder={language === "german" ? (isMC ? "Tippe A, B, C oder D..." : "Tippe deine Antwort hier ein...") : (isMC ? "Type A, B, C, or D..." : "Type your answer here...")}
-                                  rows={isMC ? 2 : 4}
-                                  className="input-dark w-full px-5 py-4 text-sm leading-relaxed resize-none"
+                                  className={`input-dark w-full px-5 py-4 text-sm leading-relaxed resize-none overflow-hidden ${isMC ? "min-h-[3rem]" : "min-h-[5.5rem]"}`}
                                 />
                               </div>
                             </motion.div>

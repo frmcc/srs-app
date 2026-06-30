@@ -42,14 +42,14 @@ export async function GET(req: NextRequest) {
       `Your review for ${interval} (Level ${levelNum + 1})`,
       "",
       "📝 Your quiz for today:",
-      `${baseUrl}/?quizId=${item.id}`,
+      `${baseUrl}/quiz/${item.id}`,
       "",
       `🤖 Tutor Doc ID (do not delete): ${tutorUrl}`,
     ].join("\n") : [
       `Dein Review für ${interval} (Level ${levelNum + 1})`,
       "",
       "📝 Dein Quiz für heute:",
-      `${baseUrl}/?quizId=${item.id}`,
+      `${baseUrl}/quiz/${item.id}`,
       "",
       `🤖 Tutor Doc ID (Nicht löschen): ${tutorUrl}`,
     ].join("\n");
@@ -62,6 +62,9 @@ export async function GET(req: NextRequest) {
       `DTEND;VALUE=DATE:${formatICSDate(endDate)}`,
       `SUMMARY:${escapeICS(`Review: ${subjectLabel}`)}`,
       `DESCRIPTION:${escapeICS(description)}`,
+      // Clickable deep link to the module's current quiz (standard ICS field,
+      // surfaced as a tappable link/button by Apple & Google Calendar).
+      `URL:${baseUrl}/quiz/${item.id}`,
       "TRANSP:TRANSPARENT",
       "BEGIN:VALARM",
       "TRIGGER:-PT30M",
