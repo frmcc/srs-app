@@ -26,7 +26,9 @@ export async function GET(req: NextRequest) {
   const url = req.nextUrl;
   const lang = url.searchParams.get("lang") === "english" ? "english" : "german";
   const now = new Date();
-  const baseUrl = req.nextUrl.origin;
+  const host = req.headers.get("x-forwarded-host") || req.nextUrl.host;
+  const proto = req.headers.get("x-forwarded-proto") || req.nextUrl.protocol.replace(":", "");
+  const baseUrl = `${proto}://${host}`;
   const eventLines: string[] = [];
 
   for (const item of items) {
