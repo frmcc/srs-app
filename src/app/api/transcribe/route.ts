@@ -5,7 +5,9 @@ export const maxDuration = 30;
 
 // Initialize the SpeechClient. On Cloud Run, it uses the default service account automatically.
 // Locally, ensure you have run `gcloud auth application-default login`.
-const speechClient = new v2.SpeechClient();
+const speechClient = new v2.SpeechClient({
+  apiEndpoint: 'europe-west4-speech.googleapis.com',
+});
 
 export async function POST(req: NextRequest) {
   const lang = new URL(req.url).searchParams.get("lang") || "German";
@@ -27,8 +29,8 @@ export async function POST(req: NextRequest) {
     const projectId = await speechClient.getProjectId().catch(() => "auto-drive-494409");
 
     const [response] = await speechClient.recognize({
-      // We use the global recognizer for the project
-      recognizer: `projects/${projectId}/locations/global/recognizers/_`,
+      // We use the europe-west4 location because the "chirp" model is not available in global
+      recognizer: `projects/${projectId}/locations/europe-west4/recognizers/_`,
       config: {
         autoDecodingConfig: {},
         model: "chirp",
