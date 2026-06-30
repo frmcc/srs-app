@@ -43,15 +43,9 @@ export async function GET(req: NextRequest) {
     const description = lang === "english" ? [
       `Your review for ${interval} (Level ${levelNum + 1})`,
       "",
-      "📝 Your quiz for today:",
-      `${baseUrl}/quiz/${item.id}`,
-      "",
       `🤖 Tutor Doc ID (do not delete): ${tutorUrl}`,
     ].join("\n") : [
       `Dein Review für ${interval} (Level ${levelNum + 1})`,
-      "",
-      "📝 Dein Quiz für heute:",
-      `${baseUrl}/quiz/${item.id}`,
       "",
       `🤖 Tutor Doc ID (Nicht löschen): ${tutorUrl}`,
     ].join("\n");
