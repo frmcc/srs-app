@@ -195,11 +195,10 @@ const extractStudentQuiz = (rawQuizText: string) => {
 const parseQuizTasks = (studentQuizText: string) => {
   if (!studentQuizText) return [];
   // Quizzes are LLM-generated in German ("AUFGABE 1 - 2 PUNKTE:") or English
-  // ("TASK 1 - 2 POINTS:"), so we anchor on EITHER task word + number at the
-  // start of a line. Keying on German "Aufgabe" alone made every English quiz
-  // parse into ZERO tasks — which hid the per-task answer sheet and fell back to
-  // a hardcoded 2-task template regardless of the real task count.
-  const chunks = studentQuizText.split(/(?=^[ \t]*(?:Aufgabe|Task)\s+\d+)/im);
+  // ("TASK 1 - 2 POINTS:"). We avoid Safari regex bugs with lookaheads + multiline ^
+  // by using a safe replace-then-split approach.
+  const safeSplit = studentQuizText.replace(/(^|\n)([ \t]*(?:Aufgabe|Task)\s+\d+)/gi, "$1===TASK_SPLIT===$2");
+  const chunks = safeSplit.split("===TASK_SPLIT===");
   const tasks: { id: string; header: string; label: string; questionText: string }[] = [];
   for (const chunk of chunks) {
     const trimmed = chunk.trim();
@@ -756,7 +755,8 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
     // Match task headers in BOTH languages at line starts — mirroring
     // parseQuizTasks — so we build one block per REAL task instead of a hardcoded
     // 2-task German guess that was wrong for every English quiz.
-    const taskMatches = studentQuizOnly.match(/^[ \t]*(?:Aufgabe|Task)\s+\d+/gim) || [];
+    const taskMatches = (studentQuizOnly.match(/(?:^|\n)[ \t]*(?:Aufgabe|Task)\s+\d+/gi) || [])
+      .map(t => t.trim());
     let answerTemplate = "";
     if (taskMatches.length > 0) {
       answerTemplate = taskMatches.map((t: string) => `${t.trim().replace(/\s+/g, " ")}:\n\n`).join("\n");
