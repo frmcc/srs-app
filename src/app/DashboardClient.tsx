@@ -42,11 +42,17 @@ import {
   VideoCameraIcon,
   LockClosedIcon,
   FolderOpenIcon,
+  PlayIcon,
+  PauseIcon,
+  StopIcon,
+  MicrophoneIcon,
+  ForwardIcon,
 } from "@heroicons/react/24/outline";
 
 import { useState, useEffect, useCallback, useRef, useMemo, useTransition } from "react";
 
 import { useToasts, ToastStack } from "./components/Toast";
+import { useInteractiveQuiz } from "./useInteractiveQuiz";
 
 const LIB_LEVEL_SHORT = ["T1", "T3", "T7", "T21", "T60", "T180", "T365"] as const;
 const LIB_LEVEL_FULL  = ["Tag 1", "Tag 3", "Tag 7", "Tag 21", "Tag 60", "Tag 180", "Tag 365"] as const;
@@ -185,33 +191,34 @@ const extractStudentQuiz = (rawQuizText: string) => {
 
 const parseQuizTasks = (studentQuizText: string) => {
   if (!studentQuizText) return [];
-  const chunks = studentQuizText.split(/(?=Aufgabe \d+)/i);
+  // Quizzes are LLM-generated in German ("AUFGABE 1 - 2 PUNKTE:") or English
+  // ("TASK 1 - 2 POINTS:"), so we anchor on EITHER task word + number at the
+  // start of a line. Keying on German "Aufgabe" alone made every English quiz
+  // parse into ZERO tasks — which hid the per-task answer sheet and fell back to
+  // a hardcoded 2-task template regardless of the real task count.
+  const chunks = studentQuizText.split(/(?=^[ \t]*(?:Aufgabe|Task)\s+\d+)/im);
   const tasks: { id: string; header: string; label: string; questionText: string }[] = [];
   for (const chunk of chunks) {
     const trimmed = chunk.trim();
-    if (trimmed.startsWith("Aufgabe") || /^[a-zA-Z]+ \d+/i.test(trimmed)) {
-      const lines = trimmed.split("\n");
-      const headerLine = lines[0];
-      const taskNameMatch = headerLine.match(/Aufgabe \d+/i);
-      const taskName = taskNameMatch ? taskNameMatch[0] : "Aufgabe";
-      const label = headerLine.replace(/:\s*$/, "").trim();
+    const headerMatch = trimmed.match(/^(?:Aufgabe|Task)\s+\d+/i);
+    if (!headerMatch) continue; // intro/notes text before the first task → skip
 
-      let cleanQuestionText = trimmed;
-      if (cleanQuestionText.startsWith(headerLine)) {
-        cleanQuestionText = cleanQuestionText.substring(headerLine.length).trim();
-      }
+    const headerLine = trimmed.split("\n")[0];
+    const taskName = headerMatch[0].replace(/\s+/g, " "); // "Task 1" / "Aufgabe 1"
+    const label = headerLine.replace(/:\s*$/, "").trim();  // e.g. "TASK 1 - 2 POINTS"
+    const questionText = trimmed.startsWith(headerLine)
+      ? trimmed.substring(headerLine.length).trim()
+      : trimmed;
 
-      tasks.push({
-        // Suffix with the position so tasks that don't match "Aufgabe N" (and
-        // fall back to the literal "Aufgabe") can't collide on the same id — a
-        // collision made their answer fields mirror each other and produced
-        // duplicate React keys. Ids are internal (keys + answer map), never shown.
-        id: `${taskName.toLowerCase().replace(/\s+/g, "")}-${tasks.length}`,
-        header: taskName + ":",
-        label: label,
-        questionText: cleanQuestionText
-      });
-    }
+    tasks.push({
+      // Suffix with the position so two tasks can never collide on the same id —
+      // a collision made their answer fields mirror each other and produced
+      // duplicate React keys. Ids are internal (keys + answer map), never shown.
+      id: `${taskName.toLowerCase().replace(/\s+/g, "")}-${tasks.length}`,
+      header: taskName + ":",
+      label,
+      questionText,
+    });
   }
   return tasks;
 };
@@ -315,6 +322,26 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
   const [parsedTasks, setParsedTasks] = useState<ReturnType<typeof parseQuizTasks>>([]);
   const [individualAnswers, setIndividualAnswers] = useState<Record<string, string>>({});
   const [isGrading, setIsGrading] = useState(false);
+
+  // ---- Interactive Mode: reads each question aloud (Gemini TTS), then dictates
+  // the spoken answer into the box until the user says "nächste Aufgabe". --------
+  const handleInteractiveAnswer = useCallback((taskId: string, text: string) => {
+    setIndividualAnswers(prev => ({ ...prev, [taskId]: text }));
+  }, []);
+  const interactive = useInteractiveQuiz({
+    tasks: parsedTasks,
+    recognitionLang: "de-DE",
+    onAnswer: handleInteractiveAnswer,
+  });
+  // Stop interactive mode (audio + mic) whenever we leave the quiz view.
+  const stopInteractive = interactive.stop;
+  useEffect(() => {
+    if (activeTab !== "quiz") stopInteractive();
+  }, [activeTab, stopInteractive]);
+  useEffect(() => {
+    if (interactive.error) addToast("error", interactive.error);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- toast once per distinct error; addToast identity is irrelevant
+  }, [interactive.error]);
   const [showAllScheduled, setShowAllScheduled] = useState(false);
   const [gradingStep, setGradingStep] = useState(0);
   const [gradingMsg, setGradingMsg] = useState("");
@@ -707,13 +734,16 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
     // Only display/process student questions
     const studentQuizOnly = extractStudentQuiz(quizText);
 
-    // Generate a template for answers based strictly on actual questions
-    const taskMatches = studentQuizOnly.match(/Aufgabe \d+/g) || [];
+    // Fallback template (used only if the structured per-task sheet can't parse).
+    // Match task headers in BOTH languages at line starts — mirroring
+    // parseQuizTasks — so we build one block per REAL task instead of a hardcoded
+    // 2-task German guess that was wrong for every English quiz.
+    const taskMatches = studentQuizOnly.match(/^[ \t]*(?:Aufgabe|Task)\s+\d+/gim) || [];
     let answerTemplate = "";
     if (taskMatches.length > 0) {
-      answerTemplate = taskMatches.map((task: string) => `${task}:\n\n`).join("\n");
+      answerTemplate = taskMatches.map((t: string) => `${t.trim().replace(/\s+/g, " ")}:\n\n`).join("\n");
     } else {
-      answerTemplate = "Aufgabe 1:\n\nAufgabe 2:\n\n";
+      answerTemplate = (language === "german" ? "Aufgabe 1:" : "Task 1:") + "\n\n";
     }
 
     setStudentAnswers(answerTemplate);
@@ -755,6 +785,7 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
         processedQuizIdRef.current = true;
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot deep-link opener: intentionally keyed only on upcomingReviews; the open is guarded by processedQuizIdRef
   }, [upcomingReviews]);
 
   const exportQuizForPrint = () => {
@@ -2075,14 +2106,56 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                       <p className="text-sm text-white/40 mt-2">{selectedReview.topic}</p>
                     </div>
                     {parsedTasks.length > 0 && (
-                      <motion.button
-                        {...pressable}
-                        onClick={exportQuizForPrint}
-                        className="btn-secondary flex items-center gap-2 px-4 py-2.5 text-xs font-semibold cursor-pointer shrink-0"
-                      >
-                        <PrinterIcon className="w-4 h-4 text-amber-300" />
-                        {language === "german" ? "Exportieren" : "Export"}
-                      </motion.button>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {!interactive.active ? (
+                          <motion.button
+                            {...pressable}
+                            onClick={interactive.start}
+                            title={language === "german" ? "Interaktiver Modus: Fragen werden vorgelesen, Antworten diktiert" : "Interactive mode: questions read aloud, answers dictated"}
+                            className="btn-secondary flex items-center gap-2 px-4 py-2.5 text-xs font-semibold cursor-pointer"
+                          >
+                            <MicrophoneIcon className="w-4 h-4 text-amber-300" />
+                            {language === "german" ? "Interaktiv" : "Interactive"}
+                          </motion.button>
+                        ) : (
+                          <div className="flex items-center gap-1.5">
+                            <motion.button
+                              {...pressable}
+                              onClick={interactive.togglePause}
+                              title={interactive.paused ? (language === "german" ? "Fortsetzen" : "Resume") : (language === "german" ? "Pause" : "Pause")}
+                              className="btn-secondary flex items-center justify-center w-10 h-10 p-0 cursor-pointer"
+                            >
+                              {interactive.paused
+                                ? <PlayIcon className="w-4 h-4 text-amber-300" />
+                                : <PauseIcon className="w-4 h-4 text-amber-300" />}
+                            </motion.button>
+                            <motion.button
+                              {...pressable}
+                              onClick={interactive.next}
+                              title={language === "german" ? "Nächste Aufgabe" : "Next task"}
+                              className="btn-secondary flex items-center justify-center w-10 h-10 p-0 cursor-pointer"
+                            >
+                              <ForwardIcon className="w-4 h-4 text-amber-300" />
+                            </motion.button>
+                            <motion.button
+                              {...pressable}
+                              onClick={interactive.stop}
+                              title={language === "german" ? "Beenden" : "Stop"}
+                              className="btn-secondary flex items-center justify-center w-10 h-10 p-0 cursor-pointer"
+                            >
+                              <StopIcon className="w-4 h-4 text-red-300" />
+                            </motion.button>
+                          </div>
+                        )}
+                        <motion.button
+                          {...pressable}
+                          onClick={exportQuizForPrint}
+                          className="btn-secondary flex items-center gap-2 px-4 py-2.5 text-xs font-semibold cursor-pointer"
+                        >
+                          <PrinterIcon className="w-4 h-4 text-amber-300" />
+                          {language === "german" ? "Exportieren" : "Export"}
+                        </motion.button>
+                      </div>
                     )}
                   </div>
                 </header>
@@ -2195,12 +2268,28 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                               initial={{ opacity: 0, y: 20 }}
                               animate={{ opacity: 1, y: 0 }}
                               transition={{ delay: idx * 0.06, duration: DUR.base, ease: EASE_OUT }}
-                              className="card-surface-elevated p-5 md:p-8"
+                              className={`card-surface-elevated p-5 md:p-8 transition-shadow ${interactive.active && interactive.currentIndex === idx ? "ring-2 ring-amber-400/70 shadow-[0_0_30px_rgba(251,191,36,0.15)]" : ""}`}
                             >
                               <div className="flex items-center gap-3 mb-5">
                                 <span className="font-display text-2xl text-amber-300/50 italic leading-none">{String(idx + 1).padStart(2, "0")}</span>
                                 <h3 className="text-xs font-bold text-amber-200/90 uppercase tracking-[0.16em]">{task.label}</h3>
                               </div>
+                              {interactive.active && interactive.currentIndex === idx && (
+                                <div className="flex items-center gap-2 mb-5 text-[11px] font-semibold">
+                                  {interactive.phase === "speaking" && (
+                                    <span className="flex items-center gap-1.5 text-amber-300"><SpeakerWaveIcon className="w-4 h-4 animate-pulse" />{language === "german" ? "Wird vorgelesen…" : "Reading aloud…"}</span>
+                                  )}
+                                  {interactive.phase === "listening" && (
+                                    <span className="flex items-center gap-1.5 text-emerald-300"><MicrophoneIcon className="w-4 h-4 animate-pulse" />{language === "german" ? "Höre zu… sag „nächste Aufgabe“" : "Listening… say „nächste Aufgabe“"}</span>
+                                  )}
+                                  {interactive.phase === "loading" && (
+                                    <span className="flex items-center gap-1.5 text-white/50"><span className="w-3.5 h-3.5 border-2 border-amber-300/40 border-t-amber-300 rounded-full animate-spin" />{language === "german" ? "Audio lädt…" : "Loading audio…"}</span>
+                                  )}
+                                  {interactive.paused && (
+                                    <span className="text-white/40">{language === "german" ? "(pausiert)" : "(paused)"}</span>
+                                  )}
+                                </div>
+                              )}
                               <div className="text-[15px] text-white/75 whitespace-pre-wrap leading-relaxed mb-6">
                                 {task.questionText}
                               </div>
