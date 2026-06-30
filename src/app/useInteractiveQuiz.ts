@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 export type InteractivePhase = "idle" | "loading" | "speaking" | "listening";
+export type DictationMode = "gemini" | "browser";
 
 interface InteractiveTask {
   id: string;
@@ -66,38 +67,66 @@ function silentWavUri(): string {
   return "data:audio/wav;base64," + btoa(bin);
 }
 
-/** The spoken command that advances to the next task (umlaut-tolerant + EN fallback). */
-// Broad on purpose: speech recognition rarely returns "nächste Aufgabe" exactly.
-// Matches nächste/nächster/nächsten/nachste + aufgabe/frage, and English fallbacks.
+// The spoken command that advances to the next task. Broad on purpose — speech
+// recognition rarely returns "nächste Aufgabe" exactly.
 const TRIGGER_RE = /n[aäe]chst\w*\s+(?:aufgabe|frage)|next\s+(?:task|question|one)/i;
+
+/** Split a transcript at the trigger phrase: everything before it is the answer. */
+function cutAtTrigger(text: string): { answer: string; triggered: boolean } {
+  const m = text.match(TRIGGER_RE);
+  if (m && typeof m.index === "number") {
+    return { answer: text.slice(0, m.index).trim(), triggered: true };
+  }
+  return { answer: text.trim(), triggered: false };
+}
+
+/** Pick a MediaRecorder mime the browser supports (iOS → mp4/aac, Chrome → webm/opus). */
+function pickRecorderMime(): string {
+  if (typeof MediaRecorder === "undefined") return "";
+  for (const m of ["audio/mp4", "audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus", "audio/ogg"]) {
+    try {
+      if (MediaRecorder.isTypeSupported(m)) return m;
+    } catch {
+      /* ignore */
+    }
+  }
+  return "";
+}
 
 interface Options {
   tasks: InteractiveTask[];
-  /** BCP-47 language for speech recognition. The trigger phrase is German. */
-  recognitionLang?: string;
+  /** Spoken-language hint (the trigger phrase is German). de-DE for browser STT. */
+  language?: string;
+  /** "gemini" = server transcription (reliable on iOS); "browser" = Web Speech API. */
+  dictationMode?: DictationMode;
   /** Live-fill the answer box for a task as the user speaks. */
   onAnswer: (taskId: string, text: string) => void;
 }
 
 /**
- * Drives "interactive mode": reads each question aloud (Gemini TTS via /api/tts),
- * then dictates the user's spoken answer into the box until they say "nächste
- * Aufgabe", advancing through every task. Audio for all questions is preloaded in
- * parallel so playback never waits on the whole set.
+ * Drives "interactive mode": reads each question aloud (Gemini TTS), then captures
+ * the spoken answer until the user says "nächste Aufgabe". Dictation has two
+ * engines, switchable in settings: "gemini" records the answer and transcribes it
+ * server-side every couple of seconds (reliable on iOS), "browser" uses the native
+ * Web Speech API (instant, but flaky on iOS Safari).
  */
-export function useInteractiveQuiz({ tasks, recognitionLang = "de-DE", onAnswer }: Options) {
+export function useInteractiveQuiz({ tasks, language = "German", dictationMode = "gemini", onAnswer }: Options) {
   const [active, setActive] = useState(false);
   const [paused, setPaused] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(-1);
   const [phase, setPhaseState] = useState<InteractivePhase>("idle");
   const [error, setError] = useState<string | null>(null);
-  const [supported] = useState(() => getSpeechRecognitionCtor() !== null);
+  const [supported] = useState(() => {
+    if (typeof window === "undefined") return false;
+    const media = !!navigator.mediaDevices?.getUserMedia && typeof MediaRecorder !== "undefined";
+    return media || getSpeechRecognitionCtor() !== null;
+  });
 
-  // Refs mirror props/state for use inside async callbacks / Web Speech event
-  // handlers. They are synced in an effect below (not during render).
+  // Refs mirror props/state for use inside async callbacks. Synced in an effect below.
   const tasksRef = useRef(tasks);
   const onAnswerRef = useRef(onAnswer);
-  const langRef = useRef(recognitionLang);
+  const langRef = useRef(language);
+  const modeRef = useRef(dictationMode);
 
   const activeRef = useRef(false);
   const pausedRef = useRef(false);
@@ -105,17 +134,27 @@ export function useInteractiveQuiz({ tasks, recognitionLang = "de-DE", onAnswer 
   const phaseRef = useRef<InteractivePhase>("idle");
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const recRef = useRef<SpeechRecognitionLike | null>(null);
-  const wantListenRef = useRef(false);
-  const finalRef = useRef(""); // final transcript accumulated for the current task
   const ttsCacheRef = useRef<Map<number, Promise<string>>>(new Map());
   const blobUrlsRef = useRef<string[]>([]);
 
-  // Mutually-recursive orchestration is stored in refs (kept in sync below) so the
-  // pieces stay stable and can call each other without dependency cycles.
+  // --- gemini (record + transcribe) ---
+  const micPromiseRef = useRef<Promise<MediaStream | null> | null>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const transcribingRef = useRef(false);
+  const recMimeRef = useRef("audio/webm");
+
+  // --- browser (Web Speech API) ---
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const wantListenRef = useRef(false);
+  const finalRef = useRef("");
+
+  // Mutually-recursive orchestration stored in refs (kept in sync below).
   const advanceRef = useRef<() => void>(() => {});
   const playRef = useRef<(i: number) => void>(() => {});
   const listenRef = useRef<(i: number) => void>(() => {});
+  const transcribeRef = useRef<(i: number) => void>(() => {});
   const runRecognizerRef = useRef<(i: number) => void>(() => {});
 
   const setPhase = useCallback((p: InteractivePhase) => {
@@ -148,10 +187,11 @@ export function useInteractiveQuiz({ tasks, recognitionLang = "de-DE", onAnswer 
     return p;
   }, []);
 
+  // --- browser STT ---------------------------------------------------------
   const teardownRecognition = useCallback(() => {
     wantListenRef.current = false;
-    const r = recRef.current;
-    recRef.current = null;
+    const r = recognitionRef.current;
+    recognitionRef.current = null;
     if (r) {
       r.onresult = null;
       r.onerror = null;
@@ -164,15 +204,12 @@ export function useInteractiveQuiz({ tasks, recognitionLang = "de-DE", onAnswer 
     }
   }, []);
 
-  // Create + start a recognizer for task i. Browsers stop recognition after a
-  // pause, so onend restarts it while we still want to listen — finalRef is
-  // preserved across restarts so the answer keeps growing instead of resetting.
   const runRecognizer = useCallback((i: number) => {
     const Ctor = getSpeechRecognitionCtor();
     const task = tasksRef.current[i];
     if (!Ctor || !task) return;
     const rec = new Ctor();
-    rec.lang = langRef.current;
+    rec.lang = langRef.current === "English" ? "en-US" : "de-DE";
     rec.continuous = true;
     rec.interimResults = true;
     rec.onresult = (e) => {
@@ -184,9 +221,9 @@ export function useInteractiveQuiz({ tasks, recognitionLang = "de-DE", onAnswer 
         else interim += txt;
       }
       const combined = (finalRef.current + interim).replace(/\s+/g, " ").trim();
-      const m = combined.match(TRIGGER_RE);
-      if (m && typeof m.index === "number") {
-        onAnswerRef.current(task.id, combined.slice(0, m.index).trim());
+      const { answer, triggered } = cutAtTrigger(combined);
+      if (triggered) {
+        onAnswerRef.current(task.id, answer);
         advanceRef.current();
         return;
       }
@@ -203,7 +240,7 @@ export function useInteractiveQuiz({ tasks, recognitionLang = "de-DE", onAnswer 
         runRecognizerRef.current(i); // restart (browsers stop after a pause); finalRef preserved
       }
     };
-    recRef.current = rec;
+    recognitionRef.current = rec;
     try {
       rec.start();
     } catch {
@@ -211,17 +248,106 @@ export function useInteractiveQuiz({ tasks, recognitionLang = "de-DE", onAnswer 
     }
   }, []);
 
-  const beginListening = useCallback(
-    (i: number) => {
-      if (!activeRef.current || pausedRef.current) return;
-      finalRef.current = "";
-      wantListenRef.current = true;
-      setPhase("listening");
-      if (!getSpeechRecognitionCtor()) {
-        setError("Spracherkennung wird in diesem Browser nicht unterstützt — nutze den „Nächste“-Button, um weiterzugehen.");
+  // --- gemini STT ----------------------------------------------------------
+  const stopRecorder = useCallback(() => {
+    if (pollTimerRef.current) {
+      clearInterval(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+    const rec = recorderRef.current;
+    recorderRef.current = null;
+    if (rec && rec.state !== "inactive") {
+      try {
+        rec.stop();
+      } catch {
+        /* noop */
+      }
+    }
+    chunksRef.current = [];
+    transcribingRef.current = false;
+  }, []);
+
+  const transcribePoll = useCallback(async (i: number) => {
+    if (transcribingRef.current || !chunksRef.current.length) return;
+    transcribingRef.current = true;
+    try {
+      const blob = new Blob(chunksRef.current, { type: recMimeRef.current });
+      const res = await fetch(`/api/transcribe?lang=${encodeURIComponent(langRef.current)}`, {
+        method: "POST",
+        headers: { "Content-Type": recMimeRef.current },
+        body: blob,
+      });
+      const data = (await res.json().catch(() => ({}))) as { text?: string; error?: string };
+      if (!activeRef.current || pausedRef.current || indexRef.current !== i) return;
+      if (!res.ok || data.error) {
+        setError("Transkription fehlgeschlagen — nutze den „Nächste“-Button, um weiterzugehen.");
         return;
       }
-      runRecognizerRef.current(i);
+      const task = tasksRef.current[i];
+      if (!task) return;
+      const { answer, triggered } = cutAtTrigger(String(data.text ?? ""));
+      if (answer) onAnswerRef.current(task.id, answer); // don't clear the box on a silent poll
+      if (triggered) advanceRef.current();
+    } catch (e) {
+      console.warn("[interactive] transcribe failed", e);
+    } finally {
+      transcribingRef.current = false;
+    }
+  }, []);
+
+  /** Stop whichever listening engine is active. Both teardowns are no-ops if idle. */
+  const stopListening = useCallback(() => {
+    teardownRecognition();
+    stopRecorder();
+  }, [teardownRecognition, stopRecorder]);
+
+  const beginListening = useCallback(
+    async (i: number) => {
+      if (!activeRef.current || pausedRef.current) return;
+      setPhase("listening");
+
+      if (modeRef.current === "browser") {
+        if (!getSpeechRecognitionCtor()) {
+          setError("Standard-Spracherkennung wird in diesem Browser nicht unterstützt — wechsle in den Einstellungen zu Gemini.");
+          return;
+        }
+        finalRef.current = "";
+        wantListenRef.current = true;
+        runRecognizerRef.current(i);
+        return;
+      }
+
+      // gemini: record + transcribe
+      const stream = micPromiseRef.current ? await micPromiseRef.current : null;
+      if (!activeRef.current || pausedRef.current || indexRef.current !== i) return;
+      if (!stream) {
+        setError("Mikrofon nicht verfügbar — bitte Zugriff erlauben, oder nutze den „Nächste“-Button.");
+        return;
+      }
+      chunksRef.current = [];
+      const mime = pickRecorderMime();
+      let rec: MediaRecorder;
+      try {
+        rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+      } catch {
+        try {
+          rec = new MediaRecorder(stream);
+        } catch {
+          setError("Aufnahme wird in diesem Browser nicht unterstützt — nutze den „Nächste“-Button.");
+          return;
+        }
+      }
+      recMimeRef.current = (rec.mimeType || mime || "audio/webm").split(";")[0];
+      rec.ondataavailable = (e) => {
+        if (e.data && e.data.size) chunksRef.current.push(e.data);
+      };
+      recorderRef.current = rec;
+      try {
+        rec.start(1000); // emit a chunk every second
+      } catch {
+        /* noop */
+      }
+      pollTimerRef.current = setInterval(() => transcribeRef.current(i), 2500);
     },
     [setPhase],
   );
@@ -261,7 +387,6 @@ export function useInteractiveQuiz({ tasks, recognitionLang = "de-DE", onAnswer 
       try {
         await a.play();
       } catch {
-        // Autoplay blocked despite the unlock — fall back to dictation.
         if (activeRef.current && !pausedRef.current && indexRef.current === i) listenRef.current(i);
       }
     },
@@ -269,7 +394,11 @@ export function useInteractiveQuiz({ tasks, recognitionLang = "de-DE", onAnswer 
   );
 
   const cleanup = useCallback(() => {
-    teardownRecognition();
+    stopListening();
+    if (micPromiseRef.current) {
+      micPromiseRef.current.then((s) => s?.getTracks().forEach((t) => t.stop())).catch(() => {});
+      micPromiseRef.current = null;
+    }
     const a = audioRef.current;
     if (a) {
       try {
@@ -283,7 +412,7 @@ export function useInteractiveQuiz({ tasks, recognitionLang = "de-DE", onAnswer 
     blobUrlsRef.current.forEach((u) => URL.revokeObjectURL(u));
     blobUrlsRef.current = [];
     ttsCacheRef.current.clear();
-  }, [teardownRecognition]);
+  }, [stopListening]);
 
   const stop = useCallback(() => {
     activeRef.current = false;
@@ -297,7 +426,7 @@ export function useInteractiveQuiz({ tasks, recognitionLang = "de-DE", onAnswer 
   }, [cleanup, setPhase]);
 
   const advance = useCallback(() => {
-    teardownRecognition();
+    stopListening();
     const next = indexRef.current + 1;
     if (next >= tasksRef.current.length) {
       stop();
@@ -306,27 +435,27 @@ export function useInteractiveQuiz({ tasks, recognitionLang = "de-DE", onAnswer 
     indexRef.current = next;
     setCurrentIndex(next);
     playRef.current(next);
-  }, [teardownRecognition, stop]);
+  }, [stopListening, stop]);
 
   const previous = useCallback(() => {
-    teardownRecognition();
+    stopListening();
     const prev = indexRef.current - 1;
     if (prev < 0) return; // already at the first question
     indexRef.current = prev;
     setCurrentIndex(prev);
     playRef.current(prev);
-  }, [teardownRecognition]);
+  }, [stopListening]);
 
-  // Keep the mirror + recursion refs pointed at the latest values/closures. All
-  // ref consumers run post-mount via user interaction, so syncing in an effect
-  // (rather than during render) is both correct and lint-clean.
+  // Keep the mirror + recursion refs pointed at the latest values/closures.
   useEffect(() => {
     tasksRef.current = tasks;
     onAnswerRef.current = onAnswer;
-    langRef.current = recognitionLang;
+    langRef.current = language;
+    modeRef.current = dictationMode;
     advanceRef.current = advance;
     playRef.current = playQuestion;
     listenRef.current = beginListening;
+    transcribeRef.current = transcribePoll;
     runRecognizerRef.current = runRecognizer;
   });
 
@@ -351,6 +480,18 @@ export function useInteractiveQuiz({ tasks, recognitionLang = "de-DE", onAnswer 
       .catch(() => {});
     audioRef.current = a;
 
+    // Gemini mode: acquire the mic inside the user gesture (required on iOS).
+    // Browser mode lets the Web Speech API manage its own microphone.
+    if (modeRef.current === "gemini") {
+      micPromiseRef.current =
+        typeof navigator !== "undefined" && navigator.mediaDevices?.getUserMedia
+          ? navigator.mediaDevices.getUserMedia({ audio: true }).catch((e) => {
+              console.warn("[interactive] mic denied", e);
+              return null;
+            })
+          : Promise.resolve(null);
+    }
+
     fetchTts(0).catch(() => {});
     for (let k = 1; k < tasksRef.current.length; k++) fetchTts(k).catch(() => {});
     playRef.current(0);
@@ -363,9 +504,21 @@ export function useInteractiveQuiz({ tasks, recognitionLang = "de-DE", onAnswer 
       setPaused(false);
       const i = indexRef.current;
       const ph = phaseRef.current;
-      if (ph === "speaking" && audioRef.current) audioRef.current.play().catch(() => {});
-      else if (ph === "loading") playRef.current(i);
-      else listenRef.current(i);
+      if (ph === "speaking" && audioRef.current) {
+        audioRef.current.play().catch(() => {});
+      } else if (ph === "loading") {
+        playRef.current(i);
+      } else if (modeRef.current === "gemini" && recorderRef.current?.state === "paused") {
+        // Resume the same recording so the answer keeps growing.
+        try {
+          recorderRef.current.resume();
+        } catch {
+          /* noop */
+        }
+        if (!pollTimerRef.current) pollTimerRef.current = setInterval(() => transcribeRef.current(i), 2500);
+      } else {
+        listenRef.current(i);
+      }
     } else {
       pausedRef.current = true;
       setPaused(true);
@@ -375,6 +528,19 @@ export function useInteractiveQuiz({ tasks, recognitionLang = "de-DE", onAnswer 
         } catch {
           /* noop */
         }
+      }
+      // Pause/stop whichever engine is active.
+      const rec = recorderRef.current;
+      if (rec && rec.state === "recording") {
+        try {
+          rec.pause();
+        } catch {
+          /* noop */
+        }
+      }
+      if (pollTimerRef.current) {
+        clearInterval(pollTimerRef.current);
+        pollTimerRef.current = null;
       }
       teardownRecognition();
     }

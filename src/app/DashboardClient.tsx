@@ -51,6 +51,7 @@ import {
 } from "@heroicons/react/24/outline";
 
 import { useState, useEffect, useCallback, useRef, useMemo, useTransition } from "react";
+import { createPortal } from "react-dom";
 
 import { useToasts, ToastStack } from "./components/Toast";
 import { useInteractiveQuiz } from "./useInteractiveQuiz";
@@ -327,12 +328,22 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
 
   // ---- Interactive Mode: reads each question aloud (Gemini TTS), then dictates
   // the spoken answer into the box until the user says "nächste Aufgabe". --------
+  const [dictationMode, setDictationMode] = useState<"gemini" | "browser">(() => {
+    if (typeof window === "undefined") return "gemini";
+    const saved = localStorage.getItem("srs-dictation-mode");
+    return saved === "browser" || saved === "gemini" ? saved : "gemini";
+  });
+  const updateDictationMode = useCallback((mode: "gemini" | "browser") => {
+    setDictationMode(mode);
+    if (typeof window !== "undefined") localStorage.setItem("srs-dictation-mode", mode);
+  }, []);
   const handleInteractiveAnswer = useCallback((taskId: string, text: string) => {
     setIndividualAnswers(prev => ({ ...prev, [taskId]: text }));
   }, []);
   const interactive = useInteractiveQuiz({
     tasks: parsedTasks,
-    recognitionLang: "de-DE",
+    language: language === "english" ? "English" : "German",
+    dictationMode,
     onAnswer: handleInteractiveAnswer,
   });
   // Stop interactive mode (audio + mic) whenever we leave the quiz view.
@@ -2158,12 +2169,14 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                   </div>
                 </header>
 
-                {/* Floating interactive control bar — always reachable, no scrolling up */}
-                {interactive.active && (
+                {/* Floating interactive control bar — portaled to <body> so `position:fixed`
+                    escapes framer-motion's transformed ancestors and truly sticks to the
+                    viewport (otherwise it anchors to the scrolling page and sits at the bottom). */}
+                {interactive.active && createPortal(
                   <motion.div
                     initial={{ opacity: 0, y: 24 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 flex items-center gap-1.5 px-3 py-2.5 rounded-2xl bg-black/85 backdrop-blur-xl border border-amber-400/20 shadow-[0_8px_44px_-8px_rgba(0,0,0,0.85)]"
+                    className="fixed bottom-5 left-1/2 -translate-x-1/2 z-[60] flex items-center gap-1.5 px-3 py-2.5 rounded-2xl bg-black/85 backdrop-blur-xl border border-amber-400/20 shadow-[0_8px_44px_-8px_rgba(0,0,0,0.85)]"
                   >
                     <span className="text-[11px] font-bold text-amber-200/90 tabular-nums px-1.5">{interactive.currentIndex + 1}/{interactive.total}</span>
                     <span className="text-[11px] text-white/45 pr-1.5 min-w-[74px]">
@@ -2188,7 +2201,8 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                     <button onClick={interactive.stop} title={language === "german" ? "Beenden" : "Stop"} className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-red-500/15 cursor-pointer transition-colors">
                       <StopIcon className="w-4 h-4 text-red-300" />
                     </button>
-                  </motion.div>
+                  </motion.div>,
+                  document.body
                 )}
 
                 {gradingError && !isGrading && (
@@ -2741,6 +2755,29 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                       className={`flex-1 py-2.5 rounded-lg text-sm transition-colors cursor-pointer ${language === 'english' ? 'bg-amber-400/15 text-amber-100 border border-amber-400/30 font-medium' : 'border border-transparent text-white/45 hover:bg-white/[0.04] hover:text-white/70'}`}
                     >
                       English
+                    </button>
+                  </div>
+                </div>
+
+                <div className="pt-6 border-t border-white/[0.07]">
+                  <h4 className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em] mb-3">{language === "german" ? "Interaktiver Modus — Diktat" : "Interactive Mode — Dictation"}</h4>
+                  <p className="text-xs text-white/40 mb-4 leading-relaxed">
+                    {language === "german"
+                      ? "Welche Spracherkennung beim Diktieren genutzt wird. Gemini ist auf dem iPhone zuverlässiger; Standard ist sofort, aber auf iOS oft unzuverlässig."
+                      : "Which speech recognition to use when dictating. Gemini is more reliable on iPhone; Standard is instant but often unreliable on iOS."}
+                  </p>
+                  <div className="flex gap-2 bg-white/[0.02] border border-white/[0.06] rounded-xl p-1">
+                    <button
+                      onClick={() => updateDictationMode("gemini")}
+                      className={`flex-1 py-2.5 rounded-lg text-sm transition-colors cursor-pointer ${dictationMode === 'gemini' ? 'bg-amber-400/15 text-amber-100 border border-amber-400/30 font-medium' : 'border border-transparent text-white/45 hover:bg-white/[0.04] hover:text-white/70'}`}
+                    >
+                      {language === "german" ? "Gemini (KI)" : "Gemini (AI)"}
+                    </button>
+                    <button
+                      onClick={() => updateDictationMode("browser")}
+                      className={`flex-1 py-2.5 rounded-lg text-sm transition-colors cursor-pointer ${dictationMode === 'browser' ? 'bg-amber-400/15 text-amber-100 border border-amber-400/30 font-medium' : 'border border-transparent text-white/45 hover:bg-white/[0.04] hover:text-white/70'}`}
+                    >
+                      Standard (Browser)
                     </button>
                   </div>
                 </div>
