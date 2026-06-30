@@ -26,9 +26,12 @@ export async function GET(req: NextRequest) {
   const url = req.nextUrl;
   const lang = url.searchParams.get("lang") === "english" ? "english" : "german";
   const now = new Date();
-  const host = req.headers.get("x-forwarded-host") || req.nextUrl.host;
-  const proto = req.headers.get("x-forwarded-proto") || req.nextUrl.protocol.replace(":", "");
-  const baseUrl = `${proto}://${host}`;
+  // Public base URL. req.nextUrl.host is the INTERNAL Cloud Run bind (0.0.0.0:8080),
+  // so prefer the forwarded / Host headers; APP_BASE_URL overrides for certainty.
+  const envBase = (process.env.APP_BASE_URL || process.env.NEXT_PUBLIC_BASE_URL || "").replace(/\/+$/, "");
+  const host = req.headers.get("x-forwarded-host") || req.headers.get("host") || req.nextUrl.host;
+  const proto = req.headers.get("x-forwarded-proto") || (/^(localhost|0\.0\.0\.0|127\.)/.test(host) ? "http" : "https");
+  const baseUrl = envBase || `${proto}://${host}`;
   const eventLines: string[] = [];
 
   for (const item of items) {

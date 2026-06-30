@@ -226,6 +226,22 @@ const parseQuizTasks = (studentQuizText: string) => {
   return tasks;
 };
 
+/** Resolve the latest playable video URL from the stored value (plain URL or a JSON history array). */
+function latestVideoUrlOf(videoUrl: string | null): string | null {
+  if (!videoUrl) return null;
+  if (videoUrl.startsWith("http")) return videoUrl;
+  if (videoUrl.startsWith("[")) {
+    try {
+      const arr = JSON.parse(videoUrl) as { url?: string }[];
+      const last = arr[arr.length - 1];
+      return last?.url?.startsWith("http") ? last.url : null;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
 const formatItems = (data: RawReviewItem[]): ReviewCard[] => {
   if (!Array.isArray(data)) return [];
 
@@ -1342,19 +1358,28 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                                                 exit="exit"
                                                 style={{ overflow: "hidden" }}
                                               >
-                                                {review.raw.hasSource && (
-                                                  <a
-                                                    href={`/api/source/${review.id}`}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    onClick={(e) => e.stopPropagation()}
-                                                    className="mb-2.5 text-xs font-medium bg-white/[0.04] hover:bg-amber-400/[0.1] border border-white/[0.09] hover:border-amber-400/30 text-white/55 hover:text-amber-200 px-3.5 py-2.5 rounded-xl flex items-center justify-center gap-2 w-full text-center transition-all cursor-pointer"
-                                                  >
-                                                    <DocumentTextIcon className="w-4 h-4 shrink-0 text-amber-400/70" />
-                                                    {language === "german" ? "Original-PDF öffnen / herunterladen" : "Open / download original PDF"}
-                                                  </a>
-                                                )}
-                                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 p-3 bg-black/30 rounded-2xl border border-white/[0.05] mt-2.5">
+                                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 p-3 bg-black/30 rounded-2xl border border-white/[0.05] mt-2.5">
+                                                  {/* QUELLE / SOURCE */}
+                                                  <div className="flex-1 min-w-0">
+                                                    <h5 className="text-[10px] font-bold text-white/30 uppercase tracking-[0.14em] mb-2 truncate">{language === "german" ? "Quelle" : "Source"}</h5>
+                                                    {review.raw.hasSource ? (
+                                                      <a
+                                                        href={`/api/source/${review.id}`}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        className="text-[10px] font-medium bg-white/[0.04] hover:bg-amber-400/[0.1] border border-white/[0.09] hover:border-amber-400/30 text-white/50 hover:text-amber-200 px-2 py-2.5 rounded-lg flex items-center justify-center gap-2 w-full text-center transition-all cursor-pointer truncate"
+                                                      >
+                                                        <DocumentTextIcon className="w-3.5 h-3.5 shrink-0 text-amber-400/60" />
+                                                        Original PDF
+                                                      </a>
+                                                    ) : (
+                                                      <div className="text-[10px] font-medium bg-white/[0.01] border border-white/[0.05] text-white/[0.18] px-2 py-2.5 rounded-lg flex items-center gap-2 w-full justify-center text-center">
+                                                        {language === 'german' ? 'Kein Original' : 'No Source'}
+                                                      </div>
+                                                    )}
+                                                  </div>
+
                                                   {/* PRE-PODCAST */}
                                                   <div className="flex-1 min-w-0">
                                                     <h5 className="text-[10px] font-bold text-white/30 uppercase tracking-[0.14em] mb-2 truncate">{language === "german" ? "Vorbereitung" : "Pre-Lecture"}</h5>
@@ -1378,7 +1403,7 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                                                         <span className="ember-dot w-1 h-1 rounded-full bg-amber-400/60 shrink-0"></span>
                                                         {generatingPodcasts[`${review.id}-pre`]
                                                           ? (language === 'german' ? 'Gestartet…' : 'Started…')
-                                                          : (language === 'german' ? 'Wird generiert – antippen zum Starten' : 'Generating – tap to (re)start')}
+                                                          : (language === 'german' ? 'Generieren' : 'Generate')}
                                                       </button>
                                                     )}
                                                   </div>
@@ -1406,7 +1431,7 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                                                         <span className="ember-dot w-1 h-1 rounded-full bg-amber-400/60 shrink-0"></span>
                                                         {generatingPodcasts[`${review.id}-post`]
                                                           ? (language === 'german' ? 'Gestartet…' : 'Started…')
-                                                          : (language === 'german' ? 'Wird generiert – antippen zum Starten' : 'Generating – tap to (re)start')}
+                                                          : (language === 'german' ? 'Generieren' : 'Generate')}
                                                       </button>
                                                     )}
                                                   </div>
@@ -1952,6 +1977,41 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                                                                 {language === "german" ? "Lernmaterialien" : "Study Materials"}
                                                               </p>
                                                               <div className="flex flex-wrap gap-2">
+                                                                {item.hasSource ? (
+                                                                  <a
+                                                                    href={`/api/source/${item.id}`}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    className="flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg bg-amber-400/[0.07] border border-amber-400/[0.18] text-amber-300/80 hover:text-amber-200 hover:bg-amber-400/[0.12] transition-all"
+                                                                  >
+                                                                    <DocumentTextIcon className="w-3 h-3" />
+                                                                    {language === "german" ? "Original-PDF" : "Original PDF"}
+                                                                  </a>
+                                                                ) : (
+                                                                  <div className="flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg bg-white/[0.01] border border-white/[0.05] text-white/[0.18]">
+                                                                    <DocumentTextIcon className="w-3 h-3" />
+                                                                    {language === "german" ? "Keine PDF" : "No PDF"}
+                                                                  </div>
+                                                                )}
+                                                                {(() => {
+                                                                  const vurl = latestVideoUrlOf(item.videoUrl);
+                                                                  return vurl ? (
+                                                                    <a
+                                                                      href={vurl}
+                                                                      target="_blank"
+                                                                      rel="noopener noreferrer"
+                                                                      className="flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg bg-emerald-400/[0.07] border border-emerald-400/[0.18] text-emerald-300/80 hover:text-emerald-200 hover:bg-emerald-400/[0.12] transition-all"
+                                                                    >
+                                                                      <VideoCameraIcon className="w-3 h-3" />
+                                                                      Video
+                                                                    </a>
+                                                                  ) : (
+                                                                    <div className="flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg bg-white/[0.01] border border-white/[0.05] text-white/[0.18]">
+                                                                      <VideoCameraIcon className="w-3 h-3" />
+                                                                      {language === "german" ? "Kein Video" : "No Video"}
+                                                                    </div>
+                                                                  );
+                                                                })()}
                                                                 {item.tutorPromptDocId && (
                                                                   <a
                                                                     href={`/tutor/${item.tutorPromptDocId}`}
@@ -2138,13 +2198,13 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                     <span className="text-[10px] font-bold uppercase tracking-[0.12em] px-2.5 py-1 rounded-md badge-due">Level {selectedReview.level + 1}</span>
                     <span className="eyebrow !text-white/35">{language === "german" ? "Aktives Quiz" : "Active Quiz"}</span>
                   </div>
-                  <div className="flex items-start justify-between gap-4">
+                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 sm:gap-6">
                     <div>
                       <h1 className="font-display text-2xl sm:text-3xl font-medium tracking-tight text-white">{selectedReview.subject}</h1>
                       <p className="text-sm text-white/40 mt-2">{selectedReview.topic}</p>
                     </div>
                     {parsedTasks.length > 0 && (
-                      <div className="flex items-center gap-2 shrink-0">
+                      <div className="flex flex-wrap items-center gap-2 shrink-0">
                         {!interactive.active && (
                           <motion.button
                             {...pressable}
