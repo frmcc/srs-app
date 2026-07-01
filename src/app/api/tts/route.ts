@@ -6,8 +6,13 @@ export const maxDuration = 60;
 // Confirmed against the Gemini TTS docs (gemini-3.1-flash-tts-preview, voice
 // "Charon", PCM 24 kHz / mono / 16-bit). The "Director's Notes" block is the
 // documented way to steer style/pace/accent.
-const TTS_MODEL = "gemini-3.1-flash-tts-preview";
-const VOICE_NAME = "Charon";
+// Overridable via env so a renamed/retired preview model is an .env fix, not a
+// deploy: run `node scripts/check-tts.mjs` to find a working model name.
+const TTS_MODEL = process.env.TTS_MODEL || "gemini-3.1-flash-tts-preview";
+const VOICE_NAME = process.env.TTS_VOICE || "Charon";
+
+/** Errors that no amount of retrying will fix — fail fast instead of backoff. */
+const PERMANENT_ERROR_RE = /not[_ ]found|does not exist|is not supported|permission|api key|invalid argument|unauthenticated/i;
 
 /**
  * Build the TTS prompt. The docs warn that bare text can make the model read the
@@ -100,10 +105,16 @@ export async function POST(req: NextRequest) {
       });
     } catch (err) {
       lastError = err instanceof Error ? err.message : String(err);
-      console.warn(`[tts] attempt ${attempt}/${MAX_ATTEMPTS} failed: ${lastError}`);
-      await new Promise((r) => setTimeout(r, 700 * attempt));
+      console.warn(`[tts] attempt ${attempt}/${MAX_ATTEMPTS} failed (model=${TTS_MODEL}): ${lastError}`);
+      // A missing/renamed model or key problem won't heal in 700ms — surface it
+      // immediately so the client can log the real cause instead of timing out.
+      if (PERMANENT_ERROR_RE.test(lastError)) break;
+      // Rate limits need a real pause (RPM windows), transient 503s only a nudge.
+      // Kept short enough that 3 attempts stay inside the client's 25s budget.
+      const isRateLimit = /429|quota|rate|exhaust|overload/i.test(lastError);
+      await new Promise((r) => setTimeout(r, (isRateLimit ? 3000 : 700) * attempt));
     }
   }
-  console.error("[tts] giving up:", lastError);
-  return new Response(`TTS failed: ${lastError}`, { status: 502 });
+  console.error(`[tts] giving up (model=${TTS_MODEL}, voice=${VOICE_NAME}):`, lastError);
+  return new Response(`TTS failed (model=${TTS_MODEL}): ${lastError}`, { status: 502 });
 }

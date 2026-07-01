@@ -59,6 +59,7 @@ import { useToasts, ToastStack } from "./components/Toast";
 import { useInteractiveQuiz, type DictationMode } from "./useInteractiveQuiz";
 import { AutoGrowTextarea } from "./components/AutoGrowTextarea";
 import StatsPanel from "./components/StatsPanel";
+import TutorPanel from "./components/TutorPanel";
 
 const LIB_LEVEL_SHORT = ["T1", "T3", "T7", "T21", "T60", "T180", "T365"] as const;
 const LIB_LEVEL_FULL  = ["Tag 1", "Tag 3", "Tag 7", "Tag 21", "Tag 60", "Tag 180", "Tag 365"] as const;
@@ -382,6 +383,8 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
 
   // Quiz taking state
   const [selectedReview, setSelectedReview] = useState<ReviewCard | null>(null);
+  // Live Tutor slide-over (web twin of the iPad audio tutor)
+  const [showTutorPanel, setShowTutorPanel] = useState(false);
   const [studentAnswers, setStudentAnswers] = useState("");
   const [parsedTasks, setParsedTasks] = useState<ReturnType<typeof parseQuizTasks>>([]);
   const [individualAnswers, setIndividualAnswers] = useState<Record<string, string>>({});
@@ -968,6 +971,7 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
 
     setGradingResult(null);
     setGradingError("");
+    setShowTutorPanel(false); // a fresh quiz starts unobstructed
     setActiveTab("quiz");
     setShowMobileMenu(false); // close the mobile menu if open
     // Always start at the top so the quiz header is immediately visible.
@@ -2492,19 +2496,28 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                       <h1 className="font-display text-2xl sm:text-3xl font-medium tracking-tight text-white">{selectedReview.subject}</h1>
                       <p className="text-sm text-white/40 mt-2">{selectedReview.topic}</p>
                     </div>
-                    {parsedTasks.length > 0 && (
-                      <div className="flex flex-wrap items-center gap-2 shrink-0">
-                        {!interactive.active && (
-                          <motion.button
-                            {...pressable}
-                            onClick={interactive.start}
-                            title={language === "german" ? "Interaktiver Modus: Fragen werden vorgelesen, Antworten diktiert" : "Interactive mode: questions read aloud, answers dictated"}
-                            className="btn-secondary flex items-center gap-2 px-4 py-2.5 text-xs font-semibold cursor-pointer"
-                          >
-                            <MicrophoneIcon className="w-4 h-4 text-amber-300" />
-                            {language === "german" ? "Interaktiv" : "Interactive"}
-                          </motion.button>
-                        )}
+                    <div className="flex flex-wrap items-center gap-2 shrink-0">
+                      <motion.button
+                        {...pressable}
+                        onClick={() => setShowTutorPanel(prev => !prev)}
+                        title={language === "german" ? "Live Tutor: kennt deine Vorlesung, das Quiz und deine Entwürfe" : "Live tutor: knows your lecture, the quiz, and your drafts"}
+                        className={`flex items-center gap-2 px-4 py-2.5 text-xs font-semibold cursor-pointer rounded-[0.875rem] transition-all ${showTutorPanel ? "bg-amber-400/15 text-amber-100 border border-amber-400/35" : "btn-secondary"}`}
+                      >
+                        <AcademicCapIcon className="w-4 h-4 text-amber-300" />
+                        {language === "german" ? "Tutor" : "Tutor"}
+                      </motion.button>
+                      {parsedTasks.length > 0 && !interactive.active && (
+                        <motion.button
+                          {...pressable}
+                          onClick={interactive.start}
+                          title={language === "german" ? "Interaktiver Modus: Fragen werden vorgelesen, Antworten diktiert" : "Interactive mode: questions read aloud, answers dictated"}
+                          className="btn-secondary flex items-center gap-2 px-4 py-2.5 text-xs font-semibold cursor-pointer"
+                        >
+                          <MicrophoneIcon className="w-4 h-4 text-amber-300" />
+                          {language === "german" ? "Interaktiv" : "Interactive"}
+                        </motion.button>
+                      )}
+                      {parsedTasks.length > 0 && (
                         <motion.button
                           {...pressable}
                           onClick={exportQuizForPrint}
@@ -2513,10 +2526,24 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                           <PrinterIcon className="w-4 h-4 text-amber-300" />
                           {language === "german" ? "Exportieren" : "Export"}
                         </motion.button>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
                 </header>
+
+                {/* Live Tutor — slide-over chat, portaled to <body> (same reason as the
+                    interactive bar below). Knows the module's tutor prompt, the quiz
+                    tasks and the current draft answers. */}
+                <TutorPanel
+                  open={showTutorPanel}
+                  onClose={() => setShowTutorPanel(false)}
+                  itemId={selectedReview.id}
+                  subject={selectedReview.subject}
+                  topic={selectedReview.topic}
+                  language={language}
+                  tasks={parsedTasks}
+                  getDraft={getInteractiveAnswer}
+                />
 
                 {/* Floating interactive control bar — portaled to <body> so `position:fixed`
                     escapes framer-motion's transformed ancestors and truly sticks to the

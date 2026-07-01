@@ -212,7 +212,7 @@ export function useInteractiveQuiz({ tasks, language = "German", dictationMode =
   const fetchTts = useCallback((i: number): Promise<string> => {
     const cached = ttsCacheRef.current.get(i);
     if (cached) return cached;
-    const p = (async () => {
+    const p: Promise<string> = (async () => {
       const ctrl = new AbortController();
       const timeout = setTimeout(() => ctrl.abort(), 25000); // never hang the "loading" state on a slow/stuck TTS
       try {
@@ -222,7 +222,14 @@ export function useInteractiveQuiz({ tasks, language = "German", dictationMode =
           body: JSON.stringify({ text: tasksRef.current[i]?.questionText ?? "" }),
           signal: ctrl.signal,
         });
-        if (!res.ok) throw new Error(`TTS HTTP ${res.status}`);
+        if (!res.ok) {
+          // Surface the server's actual reason (e.g. "model not found") — it
+          // used to be discarded, which made TTS failures undiagnosable and
+          // silently dropped the session to the robotic fallback voice.
+          const detail = await res.text().catch(() => "");
+          console.error(`[interactive] Gemini TTS failed (HTTP ${res.status}): ${detail.slice(0, 300)}`);
+          throw new Error(`TTS HTTP ${res.status}${detail ? ` — ${detail.slice(0, 200)}` : ""}`);
+        }
         const url = URL.createObjectURL(await res.blob());
         blobUrlsRef.current.push(url);
         return url;
@@ -230,6 +237,11 @@ export function useInteractiveQuiz({ tasks, language = "German", dictationMode =
         clearTimeout(timeout);
       }
     })();
+    // A FAILED request must not poison the cache: evict it so replays and
+    // navigation get a fresh attempt (rate limits clear within a minute).
+    p.catch(() => {
+      if (ttsCacheRef.current.get(i) === p) ttsCacheRef.current.delete(i);
+    });
     ttsCacheRef.current.set(i, p);
     return p;
   }, []);
@@ -651,8 +663,11 @@ export function useInteractiveQuiz({ tasks, language = "German", dictationMode =
       }
       if (!activeRef.current || pausedRef.current || indexRef.current !== i) return;
 
-      // Parallel-preload the remaining questions so later playback never waits.
-      for (let k = i + 1; k < tasksRef.current.length; k++) fetchTts(k).catch(() => {});
+      // Prefetch ONLY the next question, and only once the current one is in
+      // hand. The old "fire all remaining in parallel" slammed the TTS preview
+      // model's low rate limit (10+ concurrent calls → 429s), which killed
+      // question 1's audio too and forced the robotic fallback voice.
+      if (i + 1 < tasksRef.current.length) fetchTts(i + 1).catch(() => {});
 
       if (!url) {
         // Gemini TTS failed → seamless fallback to the browser's own voices.
@@ -798,10 +813,10 @@ export function useInteractiveQuiz({ tasks, language = "German", dictationMode =
           : Promise.resolve(null);
     }
 
-    fetchTts(0).catch(() => {});
-    for (let k = 1; k < tasksRef.current.length; k++) fetchTts(k).catch(() => {});
+    // Only question 1 — playQuestion prefetches each following question
+    // one-ahead, sequentially, to stay under the TTS model's rate limit.
     playRef.current(0);
-  }, [fetchTts]);
+  }, []);
 
   const togglePause = useCallback(() => {
     if (!activeRef.current) return;
