@@ -106,6 +106,14 @@ model ReviewLog {
   level       Int      // The level they were at when they reviewed
   passed      Boolean  // Did they pass or repeat?
   completedAt DateTime @default(now())
+  // Feedback history: the full Remediation Brief of THIS review, so grading
+  // no longer overwrites the past (SRSItem.lastFeedback only holds the latest).
+  feedback    String?
+  // The SRSItem this review belongs to (soft reference — logs survive item deletion).
+  itemId      String?
   userId      String?
   User        User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([itemId])
+  @@index([completedAt])
 }

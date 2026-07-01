@@ -44,9 +44,15 @@ export function nextReviewDateAfter(currentLevel: number, isPass: boolean): Date
 }
 
 /**
- * Count tasks in a quiz sheet. The generation prompts enforce the
- * "Aufgabe N" naming, so that's the only pattern we trust.
+ * Count tasks in a quiz sheet. The generation prompts enforce "Aufgabe N"
+ * (German) / "Task N" (English mode translates everything) at line starts.
+ * Anchoring at the line start also stops cross-references inside question
+ * text ("vergleiche mit Aufgabe 2") from inflating the count.
+ *
+ * The German-only, unanchored predecessor made EVERY English quiz count as
+ * zero → fallback 10 → the Co-Prüfer were told to grade tasks that didn't
+ * exist (mirrors the Task|Aufgabe fix already in the UI's parseQuizTasks).
  */
 export function countTasks(quizSheet: string, fallback = 10): number {
-  return (quizSheet.match(/Aufgabe \d+/g) || []).length || fallback;
+  return (quizSheet.match(/^[ \t]*(?:Aufgabe|Task)\s+\d+/gim) || []).length || fallback;
 }

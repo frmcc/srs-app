@@ -209,6 +209,7 @@ Regeln:
 4. Jede Aufgabe soll mindestens eine erkennbare Denkleistung verlangen: Definition + Bedeutung, Erklärung + Beispiel, Vergleich + Kriterium, Fallzuordnung + Begründung oder Kritik + Schlussfolgerung.
 5. Wenn dein Entwurf zu kurz ist, erweitere bestehende Aufgaben durch sinnvolle Unterfragen oder füge eine weitere Aufgabe hinzu.
 6. Wenn dein Entwurf zu lang ist, komprimiere, ohne Priorität-A-Inhalte zu verlieren.
+7. Die Punktzahl jeder Aufgabe ist ihr AQU-Wert (1–4 Punkte). Keine anderen Punktwerte — so sieht der Student am Punktwert direkt den erwarteten Umfang.
 
 WICHTIGE REGELN:
 1. Nutze ausschließlich das bereitgestellte Vorlesungsmaterial und den Blueprint.
@@ -225,7 +226,7 @@ Du schreibst Text für zwei verschiedene Empfänger. Halte dich zwingend an dies
 
 1. FÜR DAS STUDENTEN-QUIZ (Zwischen STUDENT_QUIZ_START und END):
 - Verwende hier absolut KEIN Markdown! Keine Rauten (#), keine Sterne (**), keine HTML-Tags.
-- Nutze GROSSBUCHSTABEN für Überschriften (z. B. "QUIZ TAG 3 - VERSTÄNDNIS").
+- Nutze GROSSBUCHSTABEN für Überschriften (Beispiele: "QUIZ TAG 1 - ABRUFANKER", "QUIZ TAG 21 - TRANSFER"; nutze die Überschrift DEINES Intervalls aus der OUTPUT-Vorlage).
 - Schreibe "Aufgabe 1:" statt "### Aufgabe 1".
 
 2. FÜR ALLE ANDEREN BLÖCKE (METADATA, COVERAGE_LEDGER, SELF_AUDIT):
@@ -306,8 +307,6 @@ Zielumfang: ca. 2–4 Sätze oder 3–5 Stichpunkte.
 # Compact Cumulative Coverage Ledger
 
 ## 1. Coverage Liste nach Blueprint-ID
-
-Format:
 
 Format (Nutze eine strukturierte Liste statt einer Tabelle):
 
@@ -405,6 +404,7 @@ Regeln:
 4. Jede Aufgabe soll mindestens eine erkennbare Denkleistung verlangen: Definition + Bedeutung, Erklärung + Beispiel, Vergleich + Kriterium, Fallzuordnung + Begründung oder Kritik + Schlussfolgerung.
 5. Wenn dein Entwurf zu kurz ist, erweitere bestehende Aufgaben durch sinnvolle Unterfragen oder füge eine weitere Aufgabe hinzu.
 6. Wenn dein Entwurf zu lang ist, komprimiere, ohne Priorität-A-Inhalte zu verlieren.
+7. Die Punktzahl jeder Aufgabe ist ihr AQU-Wert (1–4 Punkte). Keine anderen Punktwerte — so sieht der Student am Punktwert direkt den erwarteten Umfang.
 
 REGEL FÜR DIDAKTISCHE VIGNETTEN:
 Du darfst kurze, realistische didaktische Fallvignetten oder Beispiele erfinden, wenn sie ausschließlich dazu dienen, Konzepte aus dem Vorlesungsmaterial anzuwenden.
@@ -433,7 +433,7 @@ Du schreibst Text für zwei verschiedene Empfänger. Halte dich zwingend an dies
 
 1. FÜR DAS STUDENTEN-QUIZ (Zwischen STUDENT_QUIZ_START und END):
 - Verwende hier absolut KEIN Markdown! Keine Rauten (#), keine Sterne (**), keine HTML-Tags.
-- Nutze GROSSBUCHSTABEN für Überschriften (z. B. "QUIZ TAG 3 - VERSTÄNDNIS").
+- Nutze GROSSBUCHSTABEN für Überschriften (Beispiele: "QUIZ TAG 1 - ABRUFANKER", "QUIZ TAG 21 - TRANSFER"; nutze die Überschrift DEINES Intervalls aus der OUTPUT-Vorlage).
 - Schreibe "Aufgabe 1:" statt "### Aufgabe 1".
 
 2. FÜR ALLE ANDEREN BLÖCKE (METADATA, COVERAGE_LEDGER, SELF_AUDIT):
@@ -514,8 +514,6 @@ Zielumfang: ca. 4–6 Sätze oder strukturierte Stichpunkte.
 # Compact Cumulative Coverage Ledger
 
 ## 1. Coverage Liste nach Blueprint-ID
-
-Format:
 
 Format (Nutze eine strukturierte Liste statt einer Tabelle):
 
@@ -614,6 +612,7 @@ Regeln:
 4. Jede Aufgabe soll mindestens eine erkennbare Denkleistung verlangen: Definition + Bedeutung, Erklärung + Beispiel, Vergleich + Kriterium, Fallzuordnung + Begründung oder Kritik + Schlussfolgerung.
 5. Wenn dein Entwurf zu kurz ist, erweitere bestehende Aufgaben durch sinnvolle Unterfragen oder füge eine weitere Aufgabe hinzu.
 6. Wenn dein Entwurf zu lang ist, komprimiere, ohne Priorität-A-Inhalte zu verlieren.
+7. Die Punktzahl jeder Aufgabe ist ihr AQU-Wert (1–4 Punkte). Keine anderen Punktwerte — so sieht der Student am Punktwert direkt den erwarteten Umfang.
 
 REGEL FÜR DIDAKTISCHE VIGNETTEN:
 Du darfst kurze, realistische didaktische Fallvignetten oder Beispiele erfinden, wenn sie ausschließlich dazu dienen, Konzepte aus dem Vorlesungsmaterial anzuwenden.
@@ -642,7 +641,7 @@ Du schreibst Text für zwei verschiedene Empfänger. Halte dich zwingend an dies
 
 1. FÜR DAS STUDENTEN-QUIZ (Zwischen STUDENT_QUIZ_START und END):
 - Verwende hier absolut KEIN Markdown! Keine Rauten (#), keine Sterne (**), keine HTML-Tags.
-- Nutze GROSSBUCHSTABEN für Überschriften (z. B. "QUIZ TAG 3 - VERSTÄNDNIS").
+- Nutze GROSSBUCHSTABEN für Überschriften (Beispiele: "QUIZ TAG 1 - ABRUFANKER", "QUIZ TAG 21 - TRANSFER"; nutze die Überschrift DEINES Intervalls aus der OUTPUT-Vorlage).
 - Schreibe "Aufgabe 1:" statt "### Aufgabe 1".
 
 2. FÜR ALLE ANDEREN BLÖCKE (METADATA, COVERAGE_LEDGER, SELF_AUDIT):
@@ -723,8 +722,6 @@ Zielumfang: ca. 5–8 Sätze, besonders bei Vignetten.
 # Compact Cumulative Coverage Ledger
 
 ## 1. Coverage Liste nach Blueprint-ID
-
-Format:
 
 Format (Nutze eine strukturierte Liste statt einer Tabelle):
 
@@ -824,6 +821,7 @@ Regeln:
 4. Jede Aufgabe soll mindestens eine erkennbare Denkleistung verlangen: Definition + Bedeutung, Erklärung + Beispiel, Vergleich + Kriterium, Fallzuordnung + Begründung oder Kritik + Schlussfolgerung.
 5. Wenn dein Entwurf zu kurz ist, erweitere bestehende Aufgaben durch sinnvolle Unterfragen oder füge eine weitere Aufgabe hinzu.
 6. Wenn dein Entwurf zu lang ist, komprimiere, ohne Priorität-A-Inhalte zu verlieren.
+7. Die Punktzahl jeder Aufgabe ist ihr AQU-Wert (1–4 Punkte). Keine anderen Punktwerte — so sieht der Student am Punktwert direkt den erwarteten Umfang.
 
 REGEL FÜR DIDAKTISCHE VIGNETTEN:
 Du darfst kurze, realistische didaktische Fallvignetten oder Beispiele erfinden, wenn sie ausschließlich dazu dienen, Konzepte aus dem Vorlesungsmaterial anzuwenden.
@@ -852,7 +850,7 @@ Du schreibst Text für zwei verschiedene Empfänger. Halte dich zwingend an dies
 
 1. FÜR DAS STUDENTEN-QUIZ (Zwischen STUDENT_QUIZ_START und END):
 - Verwende hier absolut KEIN Markdown! Keine Rauten (#), keine Sterne (**), keine HTML-Tags.
-- Nutze GROSSBUCHSTABEN für Überschriften (z. B. "QUIZ TAG 3 - VERSTÄNDNIS").
+- Nutze GROSSBUCHSTABEN für Überschriften (Beispiele: "QUIZ TAG 1 - ABRUFANKER", "QUIZ TAG 21 - TRANSFER"; nutze die Überschrift DEINES Intervalls aus der OUTPUT-Vorlage).
 - Schreibe "Aufgabe 1:" statt "### Aufgabe 1".
 
 2. FÜR ALLE ANDEREN BLÖCKE (METADATA, COVERAGE_LEDGER, SELF_AUDIT):
@@ -1033,6 +1031,7 @@ Regeln:
 4. Jede Aufgabe soll mindestens eine erkennbare Denkleistung verlangen: Definition + Bedeutung, Erklärung + Beispiel, Vergleich + Kriterium, Fallzuordnung + Begründung oder Kritik + Schlussfolgerung.
 5. Wenn dein Entwurf zu kurz ist, erweitere bestehende Aufgaben durch sinnvolle Unterfragen oder füge eine weitere Aufgabe hinzu.
 6. Wenn dein Entwurf zu lang ist, komprimiere, ohne Priorität-A-Inhalte zu verlieren.
+7. Die Punktzahl jeder Aufgabe ist ihr AQU-Wert (1–4 Punkte). Keine anderen Punktwerte — so sieht der Student am Punktwert direkt den erwarteten Umfang.
 
 REGEL FÜR DIDAKTISCHE VIGNETTEN:
 Du darfst kurze, realistische didaktische Fallvignetten oder Beispiele erfinden, wenn sie ausschließlich dazu dienen, Konzepte aus dem Vorlesungsmaterial anzuwenden.
@@ -1062,7 +1061,7 @@ Du schreibst Text für zwei verschiedene Empfänger. Halte dich zwingend an dies
 
 1. FÜR DAS STUDENTEN-QUIZ (Zwischen STUDENT_QUIZ_START und END):
 - Verwende hier absolut KEIN Markdown! Keine Rauten (#), keine Sterne (**), keine HTML-Tags.
-- Nutze GROSSBUCHSTABEN für Überschriften (z. B. "QUIZ TAG 3 - VERSTÄNDNIS").
+- Nutze GROSSBUCHSTABEN für Überschriften (Beispiele: "QUIZ TAG 1 - ABRUFANKER", "QUIZ TAG 21 - TRANSFER"; nutze die Überschrift DEINES Intervalls aus der OUTPUT-Vorlage).
 - Schreibe "Aufgabe 1:" statt "### Aufgabe 1".
 
 2. FÜR ALLE ANDEREN BLÖCKE (METADATA, COVERAGE_LEDGER, SELF_AUDIT):

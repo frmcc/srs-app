@@ -48,6 +48,8 @@ import {
   MicrophoneIcon,
   ForwardIcon,
   BackwardIcon,
+  ChartBarIcon,
+  MagnifyingGlassIcon,
 } from "@heroicons/react/24/outline";
 
 import { useState, useEffect, useCallback, useRef, useMemo, useTransition } from "react";
@@ -56,6 +58,7 @@ import { createPortal } from "react-dom";
 import { useToasts, ToastStack } from "./components/Toast";
 import { useInteractiveQuiz } from "./useInteractiveQuiz";
 import { AutoGrowTextarea } from "./components/AutoGrowTextarea";
+import StatsPanel from "./components/StatsPanel";
 
 const LIB_LEVEL_SHORT = ["T1", "T3", "T7", "T21", "T60", "T180", "T365"] as const;
 const LIB_LEVEL_FULL  = ["Tag 1", "Tag 3", "Tag 7", "Tag 21", "Tag 60", "Tag 180", "Tag 365"] as const;
@@ -124,6 +127,42 @@ interface GradingOutcome {
   feedback: string;
   nextReviewDate: string | null;
   currentLevel: number | null;
+}
+
+/** One graded review from GET /api/reviews/[id]/history (ReviewLog row). */
+interface FeedbackHistoryEntry {
+  id: string;
+  completedAt: string;
+  level: number;
+  passed: boolean;
+  feedback: string | null;
+}
+
+// ---- Answer drafts (localStorage) -------------------------------------------
+// Keyed by item AND level, so a draft never leaks into the next quiz level.
+const draftKeyFor = (itemId: string, level: number) => `srs-draft-${itemId}-L${level}`;
+
+interface AnswerDraft {
+  individual: Record<string, string>;
+  free: string;
+  savedAt: number;
+}
+
+function loadDraft(itemId: string, level: number): AnswerDraft | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(draftKeyFor(itemId, level));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as AnswerDraft;
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function clearDraft(itemId: string, level: number) {
+  if (typeof window === "undefined") return;
+  try { localStorage.removeItem(draftKeyFor(itemId, level)); } catch { /* quota/private mode */ }
 }
 
 interface NdjsonEvent {
@@ -242,18 +281,24 @@ function latestVideoUrlOf(videoUrl: string | null): string | null {
   return null;
 }
 
+/**
+ * "Due" is a LOCAL-calendar-day question. The old comparison truncated to UTC
+ * days, so for a UTC+1/+2 user the "JETZT FÄLLIG" badge flipped an hour or two
+ * early/late around local midnight (L4 in CODE_REVIEW_2026-06-25).
+ */
+const startOfLocalDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+const isDueLocal = (due: Date, today: Date) => startOfLocalDay(due) <= startOfLocalDay(today);
+
 const formatItems = (data: RawReviewItem[]): ReviewCard[] => {
   if (!Array.isArray(data)) return [];
 
   const now = new Date();
-  const todayUTC = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
 
   const formatted = data.map(item => {
     const dueDate = new Date(item.nextReviewDate);
-    const itemDateUTC = new Date(Date.UTC(dueDate.getUTCFullYear(), dueDate.getUTCMonth(), dueDate.getUTCDate()));
-    const isDue = itemDateUTC <= todayUTC;
+    const isDue = isDueLocal(dueDate, now);
 
-    const formattedDate = `${dueDate.getUTCDate().toString().padStart(2, '0')}.${(dueDate.getUTCMonth() + 1).toString().padStart(2, '0')}.${dueDate.getUTCFullYear()}`;
+    const formattedDate = `${dueDate.getDate().toString().padStart(2, '0')}.${(dueDate.getMonth() + 1).toString().padStart(2, '0')}.${dueDate.getFullYear()}`;
 
     return {
       id: item.id,
@@ -386,13 +431,20 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
   const [deletingIds, setDeletingIds] = useState<Record<string, boolean>>({});
 
+  // Snooze: first click on the clock arms the card, then +1/+3/+7 pills appear.
+  const [snoozeArmedId, setSnoozeArmedId] = useState<string | null>(null);
+  const [snoozingIds, setSnoozingIds] = useState<Record<string, boolean>>({});
+
   // Two-step confirmation state for the semester danger-zone buttons
   const [confirmingNewSemester, setConfirmingNewSemester] = useState(false);
   const [confirmingResetSemester, setConfirmingResetSemester] = useState(false);
   const [isSemesterActionBusy, setIsSemesterActionBusy] = useState(false);
 
-  // Historical feedback modal
+  // Historical feedback modal (+ per-module feedback history from ReviewLog)
   const [activeFeedbackItem, setActiveFeedbackItem] = useState<RawReviewItem | null>(null);
+  const [feedbackHistory, setFeedbackHistory] = useState<FeedbackHistoryEntry[] | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [expandedHistoryIds, setExpandedHistoryIds] = useState<Set<string>>(new Set());
   const [showCalendarModal, setShowCalendarModal] = useState(false);
   const [calendarUrlCopied, setCalendarUrlCopied] = useState(false);
   const [archiveModalData, setArchiveModalData] = useState<{level: number, url: string, date?: string}[] | null>(null);
@@ -402,6 +454,9 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
 
   // Prompt viewer modal (podcast prompts + video scripts)
   const [promptModal, setPromptModal] = useState<{ title: string; content: string } | null>(null);
+
+  // Library tab — free-text search over module + lecture names
+  const [librarySearch, setLibrarySearch] = useState("");
 
   // Library tab — accordion state (populated reactively by the rawItems useEffect below)
   const [expandedLibrarySemesters, setExpandedLibrarySemesters] = useState<Set<number>>(new Set());
@@ -551,10 +606,20 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
     };
   }, [fetchReviews]);
 
+  /** True while a library search query is active — search results are always expanded. */
+  const librarySearching = librarySearch.trim().length > 0;
+
   /** Library: items grouped by semester → module → lecture, always derived from latest fetch. */
   const libraryBySemester = useMemo(() => {
+    const query = librarySearch.trim().toLowerCase();
+    const matches = (item: RawReviewItem) =>
+      !query ||
+      item.subjectMain.toLowerCase().includes(query) ||
+      item.subjectSub.toLowerCase().includes(query) ||
+      `semester ${item.semester}`.includes(query);
+
     const result = new Map<number, Map<string, RawReviewItem[]>>();
-    const sorted = [...rawItems].sort((a, b) => {
+    const sorted = rawItems.filter(matches).sort((a, b) => {
       if (a.semester !== b.semester) return a.semester - b.semester;
       if (a.subjectMain !== b.subjectMain) return a.subjectMain.localeCompare(b.subjectMain);
       return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
@@ -566,7 +631,7 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
       modMap.get(item.subjectMain)!.push(item);
     }
     return result;
-  }, [rawItems]);
+  }, [rawItems, librarySearch]);
 
   // Keep accordion expansion sets in sync: newly uploaded lectures auto-expand
   // their semester and module without collapsing anything the user already closed.
@@ -604,6 +669,26 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
     return () => window.clearInterval(intervalId);
   }, [hasPendingPodcast, fetchReviews]);
 
+  // Load the per-module feedback history whenever the feedback modal opens.
+  useEffect(() => {
+    if (!activeFeedbackItem) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reset transient modal state on close
+      setFeedbackHistory(null);
+      setExpandedHistoryIds(new Set());
+      return;
+    }
+    let cancelled = false;
+    setHistoryLoading(true);
+    fetch(`/api/reviews/${activeFeedbackItem.id}/history`)
+      .then(res => (res.ok ? res.json() : Promise.reject(new Error(`status ${res.status}`))))
+      .then((logs: FeedbackHistoryEntry[]) => {
+        if (!cancelled && Array.isArray(logs)) setFeedbackHistory(logs);
+      })
+      .catch(err => console.error("Failed to load feedback history:", err))
+      .finally(() => { if (!cancelled) setHistoryLoading(false); });
+    return () => { cancelled = true; };
+  }, [activeFeedbackItem]);
+
   // Global Escape key — closes whichever modal is currently on top.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -624,6 +709,47 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
     const timeoutId = window.setTimeout(() => setConfirmingDeleteId(null), 4000);
     return () => window.clearTimeout(timeoutId);
   }, [confirmingDeleteId]);
+
+  // Armed snooze pills reset themselves if no interval is picked.
+  useEffect(() => {
+    if (!snoozeArmedId) return;
+    const timeoutId = window.setTimeout(() => setSnoozeArmedId(null), 5000);
+    return () => window.clearTimeout(timeoutId);
+  }, [snoozeArmedId]);
+
+  /** Push a review by N days from today (sick/holiday/no time). */
+  const handleSnooze = async (e: React.MouseEvent, id: string, days: number) => {
+    e.stopPropagation();
+    if (snoozingIds[id]) return;
+    setSnoozeArmedId(null);
+    setSnoozingIds(prev => ({ ...prev, [id]: true }));
+    try {
+      const res = await fetch(`/api/reviews/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ days }),
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `Server returned status ${res.status}`);
+      }
+      const updated = await res.json();
+      const newDate = new Date(updated.nextReviewDate).toLocaleDateString();
+      addToast("success", language === "german"
+        ? `Review verschoben auf ${newDate}.`
+        : `Review snoozed until ${newDate}.`);
+      fetchReviews();
+    } catch (err) {
+      console.error(err);
+      addToast("error", language === "german" ? "Verschieben fehlgeschlagen." : "Failed to snooze the review.");
+    } finally {
+      setSnoozingIds(prev => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+    }
+  };
 
   const handleDeleteModule = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
@@ -758,6 +884,10 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
     }
   }, [showSettingsModal]);
 
+  // Remembers the untouched free-text template so the draft autosave can tell
+  // "user typed something" apart from "prefilled headers only".
+  const freeTemplateRef = useRef("");
+
   const startQuiz = (review: ReviewCard) => {
     setSelectedReview(review);
 
@@ -780,7 +910,7 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
       answerTemplate = (language === "german" ? "Aufgabe 1:" : "Task 1:") + "\n\n";
     }
 
-    setStudentAnswers(answerTemplate);
+    freeTemplateRef.current = answerTemplate;
 
     // Parse individual tasks for structured answer sheet
     const tasks = parseQuizTasks(studentQuizOnly);
@@ -790,7 +920,30 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
     tasks.forEach(t => {
       initialAnswers[t.id] = "";
     });
+
+    // Restore a saved draft (reload / phone lock must not eat typed answers).
+    // Only ids that still exist in THIS quiz are merged — stale drafts from a
+    // regenerated quiz text can't inject answers into the wrong task.
+    const draft = loadDraft(review.id, review.level);
+    let restored = false;
+    let freeText = answerTemplate;
+    if (draft) {
+      for (const [taskId, text] of Object.entries(draft.individual || {})) {
+        if (taskId in initialAnswers && text) {
+          initialAnswers[taskId] = text;
+          restored = true;
+        }
+      }
+      if (tasks.length === 0 && draft.free && draft.free !== answerTemplate) {
+        freeText = draft.free;
+        restored = true;
+      }
+    }
+    setStudentAnswers(freeText);
     setIndividualAnswers(initialAnswers);
+    if (restored) {
+      addToast("success", language === "german" ? "Entwurf wiederhergestellt." : "Draft restored.");
+    }
 
     setGradingResult(null);
     setGradingError("");
@@ -821,6 +974,25 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot deep-link opener: intentionally keyed only on upcomingReviews; the open is guarded by processedQuizIdRef
   }, [upcomingReviews]);
+
+  // Debounced draft autosave — a reload or phone lock must not eat 10 typed answers.
+  useEffect(() => {
+    if (activeTab !== "quiz" || !selectedReview || isGrading || gradingResult) return;
+    const { id, level } = selectedReview;
+    const timeoutId = window.setTimeout(() => {
+      const hasIndividualContent = Object.values(individualAnswers).some(v => v.trim().length > 0);
+      const hasFreeContent = parsedTasks.length === 0 && studentAnswers !== freeTemplateRef.current && studentAnswers.trim().length > 0;
+      try {
+        if (hasIndividualContent || hasFreeContent) {
+          const draft: AnswerDraft = { individual: individualAnswers, free: studentAnswers, savedAt: Date.now() };
+          localStorage.setItem(draftKeyFor(id, level), JSON.stringify(draft));
+        } else {
+          localStorage.removeItem(draftKeyFor(id, level));
+        }
+      } catch { /* quota/private mode — drafts are best-effort */ }
+    }, 400);
+    return () => window.clearTimeout(timeoutId);
+  }, [individualAnswers, studentAnswers, activeTab, selectedReview, isGrading, gradingResult, parsedTasks.length]);
 
   const exportQuizForPrint = () => {
     if (!selectedReview || parsedTasks.length === 0) return;
@@ -958,6 +1130,8 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
         } else if (evt.event === "done") {
           setGradingStep(5);
           setGradingMsg(language === "german" ? "Bewertung abgeschlossen! Zeitplan aktualisiert." : "Grading finished! Scheduling updated.");
+          // Graded = answers consumed; the local draft is obsolete either way.
+          clearDraft(selectedReview.id, selectedReview.level);
           // `srsItem` is the FULL updated row — keep only what the result
           // screen needs and resync the slim list via refetch.
           const nrd = evt.data.srsItem?.nextReviewDate;
@@ -1110,6 +1284,10 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
             <button onClick={() => { setActiveTab("library"); setShowMobileMenu(false); }} className={`flex items-center gap-3.5 px-4 py-3 transition-all duration-200 cursor-pointer ${activeTab === 'library' ? 'nav-item-active' : 'nav-item-idle'}`}>
               <BookOpenIcon className="w-5 h-5 shrink-0" />
               <span className="text-sm font-medium whitespace-nowrap">{language === 'german' ? 'Bibliothek' : 'Library'}</span>
+            </button>
+            <button onClick={() => { setActiveTab("stats"); setShowMobileMenu(false); }} className={`flex items-center gap-3.5 px-4 py-3 transition-all duration-200 cursor-pointer ${activeTab === 'stats' ? 'nav-item-active' : 'nav-item-idle'}`}>
+              <ChartBarIcon className="w-5 h-5 shrink-0" />
+              <span className="text-sm font-medium whitespace-nowrap">{language === 'german' ? 'Statistik' : 'Statistics'}</span>
             </button>
             <button onClick={() => { setShowSettingsModal(true); }} className="flex items-center gap-3.5 px-4 py-3 transition-all duration-200 cursor-pointer nav-item-idle">
               <Cog8ToothIcon className="w-5 h-5 shrink-0" />
@@ -1476,15 +1654,51 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                                   <button className="hidden sm:flex w-11 h-11 rounded-full items-center justify-center transition-all bg-white/[0.04] border border-white/[0.07] text-white/40 group-hover:bg-amber-400/15 group-hover:border-amber-400/30 group-hover:text-amber-200 group-hover:scale-110 cursor-pointer">
                                     <ChevronRightIcon className="w-5 h-5" />
                                   </button>
-                                  {confirmingDeleteId === review.id && !deletingIds[review.id] ? (
+                                  {/* Snooze: sick/holiday → push the review without touching the SRS level */}
+                                  {snoozeArmedId === review.id && !snoozingIds[review.id] ? (
+                                    <motion.div
+                                      initial={{ opacity: 0, scale: 0.86, y: -4 }}
+                                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                                      transition={springTactile}
+                                      className="flex flex-col gap-1"
+                                    >
+                                      {[1, 3, 7].map(days => (
+                                        <button
+                                          key={days}
+                                          onClick={(e) => handleSnooze(e, review.id, days)}
+                                          className="px-3 py-1.5 rounded-full bg-indigo-400/[0.09] border border-indigo-400/30 text-indigo-200 hover:bg-indigo-400/[0.18] hover:border-indigo-400/50 text-[10px] font-bold uppercase tracking-wide whitespace-nowrap cursor-pointer transition-all"
+                                          title={language === "german" ? `Um ${days} Tag${days > 1 ? "e" : ""} verschieben` : `Snooze by ${days} day${days > 1 ? "s" : ""}`}
+                                        >
+                                          +{days} {language === "german" ? (days === 1 ? "Tag" : "Tage") : (days === 1 ? "day" : "days")}
+                                        </button>
+                                      ))}
+                                    </motion.div>
+                                  ) : (
                                     <button
+                                      onClick={(e) => { e.stopPropagation(); if (!snoozingIds[review.id]) setSnoozeArmedId(review.id); }}
+                                      disabled={!!snoozingIds[review.id]}
+                                      className="w-10 h-10 sm:w-11 sm:h-11 rounded-full flex items-center justify-center transition-all bg-white/[0.04] border border-white/[0.07] text-white/35 hover:bg-indigo-400/[0.09] hover:border-indigo-400/30 hover:text-indigo-300 cursor-pointer disabled:opacity-60 disabled:cursor-wait"
+                                      title={language === "german" ? "Review verschieben" : "Snooze review"}
+                                    >
+                                      {snoozingIds[review.id] ? (
+                                        <ArrowPathIcon className="w-4 h-4 animate-spin text-indigo-300" />
+                                      ) : (
+                                        <ClockIcon className="w-4 h-4" />
+                                      )}
+                                    </button>
+                                  )}
+                                  {confirmingDeleteId === review.id && !deletingIds[review.id] ? (
+                                    <motion.button
+                                      initial={{ opacity: 0, scale: 0.86, y: -4 }}
+                                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                                      transition={springTactile}
                                       onClick={(e) => handleDeleteModule(e, review.id)}
                                       className="px-3 py-2 rounded-full flex items-center justify-center gap-1.5 transition-all bg-rose-500/15 border border-rose-400/40 text-rose-200 hover:bg-rose-500/25 hover:border-rose-400/60 text-[10px] font-bold uppercase tracking-wide whitespace-nowrap cursor-pointer"
                                       title={language === 'german' ? 'Wirklich löschen?' : 'Really delete?'}
                                     >
                                       <TrashIcon className="w-3.5 h-3.5" />
                                       {language === 'german' ? 'Wirklich löschen?' : 'Really delete?'}
-                                    </button>
+                                    </motion.button>
                                   ) : (
                                     <button
                                       onClick={(e) => handleDeleteModule(e, review.id)}
@@ -1736,6 +1950,39 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                   </p>
                 </header>
 
+                {/* ── Search ──────────────────────────────────────────────── */}
+                {rawItems.length > 0 && (
+                  <div className="relative mb-6">
+                    <MagnifyingGlassIcon className="w-4 h-4 text-white/30 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <input
+                      type="text"
+                      value={librarySearch}
+                      onChange={e => setLibrarySearch(e.target.value)}
+                      placeholder={language === "german" ? "Modul oder Vorlesung suchen…" : "Search module or lecture…"}
+                      className="input-dark w-full pl-11 pr-10 py-3 text-sm"
+                    />
+                    {librarySearching && (
+                      <button
+                        onClick={() => setLibrarySearch("")}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center rounded-full text-white/35 hover:text-white hover:bg-white/[0.08] transition-colors cursor-pointer"
+                        title={language === "german" ? "Suche löschen" : "Clear search"}
+                      >
+                        <XMarkIcon className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* ── No search results ───────────────────────────────────── */}
+                {librarySearching && libraryBySemester.size === 0 && rawItems.length > 0 && (
+                  <div className="card-surface p-10 flex flex-col items-center text-center">
+                    <MagnifyingGlassIcon className="w-6 h-6 text-white/20 mb-3" />
+                    <p className="text-white/35 text-sm">
+                      {language === "german" ? <>Keine Treffer für „{librarySearch.trim()}“.</> : <>No results for “{librarySearch.trim()}”.</>}
+                    </p>
+                  </div>
+                )}
+
                 {/* ── Empty state ─────────────────────────────────────────── */}
                 {rawItems.length === 0 && !isLoadingReviews && (
                   <div className="card-surface p-12 md:p-16 flex flex-col items-center text-center">
@@ -1756,7 +2003,8 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
 
                 {/* ── Semester accordion list ─────────────────────────────── */}
                 {Array.from(libraryBySemester.entries()).map(([sem, modules]) => {
-                  const semOpen = expandedLibrarySemesters.has(sem);
+                  // During a search every group is force-expanded so matches are visible.
+                  const semOpen = librarySearching || expandedLibrarySemesters.has(sem);
                   const totalLectures = Array.from(modules.values()).reduce((n, arr) => n + arr.length, 0);
                   const isCurrentSemester = sem === currentSemester;
 
@@ -1805,7 +2053,7 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                             <div className="pt-2 space-y-2 pb-2">
                               {Array.from(modules.entries()).map(([moduleName, lectures]) => {
                                 const modKey = `${sem}__${moduleName}`;
-                                const modOpen = expandedLibraryModules.has(modKey);
+                                const modOpen = librarySearching || expandedLibraryModules.has(modKey);
 
                                 return (
                                   <div key={modKey} className="card-surface overflow-hidden">
@@ -1844,11 +2092,7 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                                           <div className="border-t border-white/[0.05]">
                                             {lectures.map((item, idx) => {
                                               const itemOpen = expandedLibraryItems.has(item.id);
-                                              const _dueDate = new Date(item.nextReviewDate);
-                                              const _now = new Date();
-                                              const _todayUTC = new Date(Date.UTC(_now.getUTCFullYear(), _now.getUTCMonth(), _now.getUTCDate()));
-                                              const _itemUTC = new Date(Date.UTC(_dueDate.getUTCFullYear(), _dueDate.getUTCMonth(), _dueDate.getUTCDate()));
-                                              const isDue = _itemUTC <= _todayUTC;
+                                              const isDue = isDueLocal(new Date(item.nextReviewDate), new Date());
                                               const hasStudyMaterials = !!(item.tutorPromptDocId || item.prePodcastPrompt || item.postPodcastPrompt || item.lastVideoPrompt1 || item.lastVideoPrompt2 || item.prePodcastUrl || item.postPodcastUrl);
 
                                               return (
@@ -2169,6 +2413,30 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                     </div>
                   );
                 })}
+              </motion.div>
+            )}
+
+            {activeTab === "stats" && (
+              <motion.div
+                key="stats"
+                variants={pageVariants}
+                initial="initial"
+                animate="animate"
+                exit="exit"
+                className="max-w-5xl mx-auto"
+              >
+                <header className="mb-8 md:mb-10">
+                  <p className="eyebrow mb-3">{language === "german" ? "Fortschritt" : "Progress"}</p>
+                  <h1 className="font-display text-3xl sm:text-4xl font-medium tracking-tight text-white mb-3">
+                    {language === "german" ? <>Deine <em className="text-gradient italic">Statistik</em></> : <>Your <em className="text-gradient italic">Statistics</em></>}
+                  </h1>
+                  <p className="text-white/45 text-sm sm:text-base">
+                    {language === "german"
+                      ? "Streak, Aktivität, Bestehensquoten und die Review-Last der nächsten zwei Wochen."
+                      : "Streak, activity, pass rates and your review load for the next two weeks."}
+                  </p>
+                </header>
+                <StatsPanel items={rawItems} language={language} />
               </motion.div>
             )}
 
@@ -2569,6 +2837,87 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                 <div className="flex-1 overflow-y-auto p-6 md:p-8 custom-scrollbar">
                   <div className="whitespace-pre-wrap font-sans text-white/60 text-sm leading-relaxed">
                     {activeFeedbackItem.lastFeedback}
+                  </div>
+
+                  {/* Review history: every graded attempt of this module (ReviewLog) */}
+                  <div className="mt-8 pt-6 border-t border-white/[0.07]">
+                    <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/35 mb-4 flex items-center gap-2">
+                      <ClockIcon className="w-3.5 h-3.5 text-amber-300/70" />
+                      {language === "german" ? "Bewertungs-Verlauf" : "Review History"}
+                    </h4>
+
+                    {historyLoading ? (
+                      <div className="flex items-center gap-2 text-white/30 text-xs py-2">
+                        <ArrowPathIcon className="w-3.5 h-3.5 animate-spin" />
+                        {language === "german" ? "Verlauf wird geladen…" : "Loading history…"}
+                      </div>
+                    ) : !feedbackHistory || feedbackHistory.length === 0 ? (
+                      <p className="text-white/25 text-xs">
+                        {language === "german" ? "Noch keine abgeschlossenen Bewertungen." : "No completed reviews yet."}
+                      </p>
+                    ) : (
+                      <div className="space-y-2">
+                        {feedbackHistory.map(entry => {
+                          const isOpen = expandedHistoryIds.has(entry.id);
+                          return (
+                            <div key={entry.id} className="card-surface overflow-hidden">
+                              <button
+                                onClick={() => setExpandedHistoryIds(prev => {
+                                  const next = new Set(prev);
+                                  if (next.has(entry.id)) next.delete(entry.id); else next.add(entry.id);
+                                  return next;
+                                })}
+                                disabled={!entry.feedback}
+                                className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${entry.feedback ? "cursor-pointer hover:bg-white/[0.02]" : "cursor-default"}`}
+                              >
+                                <span className={`text-[9px] font-bold uppercase tracking-[0.12em] px-2 py-0.5 rounded-full border shrink-0 ${entry.passed ? "bg-emerald-400/10 text-emerald-300 border-emerald-400/25" : "bg-rose-400/10 text-rose-300 border-rose-400/25"}`}>
+                                  {entry.passed ? "PASS" : "REPEAT"}
+                                </span>
+                                <span className="text-[10px] font-semibold text-white/45 bg-white/[0.04] px-2 py-0.5 rounded-full border border-white/[0.08] shrink-0">
+                                  Level {entry.level + 1}
+                                </span>
+                                <span className="text-xs text-white/40 flex-1 truncate">
+                                  {new Date(entry.completedAt).toLocaleDateString()}{" "}
+                                  <span className="text-white/20">
+                                    {new Date(entry.completedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                                  </span>
+                                </span>
+                                {entry.feedback ? (
+                                  <motion.span animate={{ rotate: isOpen ? 180 : 0 }} transition={springTactile} className="shrink-0 text-white/25">
+                                    <ChevronDownIcon className="w-3.5 h-3.5" />
+                                  </motion.span>
+                                ) : (
+                                  <span className="text-[9px] text-white/15 shrink-0">{language === "german" ? "kein Brief" : "no brief"}</span>
+                                )}
+                              </button>
+                              <AnimatePresence initial={false}>
+                                {isOpen && entry.feedback && (
+                                  <motion.div
+                                    key="hist-body"
+                                    variants={accordion}
+                                    initial="initial"
+                                    animate="animate"
+                                    exit="exit"
+                                    style={{ overflow: "hidden" }}
+                                  >
+                                    <div className="px-4 pb-4 pt-1 border-t border-white/[0.05]">
+                                      <div className="whitespace-pre-wrap font-sans text-white/45 text-xs leading-relaxed max-h-64 overflow-y-auto custom-scrollbar">
+                                        {entry.feedback}
+                                      </div>
+                                    </div>
+                                  </motion.div>
+                                )}
+                              </AnimatePresence>
+                            </div>
+                          );
+                        })}
+                        <p className="text-[10px] text-white/20 pt-1">
+                          {language === "german"
+                            ? "Briefe werden ab jetzt bei jeder Bewertung gespeichert — ältere Einträge haben noch keinen."
+                            : "Briefs are stored per review from now on — older entries don't have one yet."}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </div>
               </motion.div>

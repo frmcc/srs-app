@@ -284,7 +284,10 @@ export async function runGradingPipeline(opts: {
       nextPrompt = stagePrompts[generationStage].prompt;
       nextIntervalLabel = stagePrompts[generationStage].label;
     } else {
-      // Mastery loop (Tag 180 / Tag 365): include grader feedback + real answers
+      // Mastery loop (Tag 180 / Tag 365): include grader feedback + real answers.
+      // Uses mastery_quiz (free recall + cold-recall anchors + synthesis) — the
+      // old next_quiz_pass forced MC-only recognition and skipped everything
+      // already mastered, which is backwards at the longest intervals.
       nextQuizParts = [...sourceMaterialParts];
       if (srsItem.blueprint) nextQuizParts.push({ text: `Didaktischer Blueprint:\n${srsItem.blueprint}` });
       if (srsItem.coverageLedger) nextQuizParts.push({ text: `Bisheriges Coverage Ledger:\n${srsItem.coverageLedger}` });
@@ -293,7 +296,7 @@ export async function runGradingPipeline(opts: {
       nextQuizParts.push({ text: `Output des Assessment-Grader-AIs:\n${chefFeedback}` });
       nextQuizParts.push({ text: "Hier sind die Dateien. Bitte führe deine System-Instruktionen aus." });
 
-      nextPrompt = GRADE_PROMPTS.next_quiz_pass;
+      nextPrompt = GRADE_PROMPTS.mastery_quiz;
       nextIntervalLabel = generationStage === 5 ? "Tag 180" : "Tag 365";
     }
 
@@ -340,6 +343,21 @@ export async function runGradingPipeline(opts: {
   if (brief) cleanFeedback += brief;
   if (!cleanFeedback) cleanFeedback = chefFeedback;
 
+  // The Chief is told "das System fügt die Aufgabenbewertungen später automatisch
+  // ein" — this is where that actually happens. The Co-Prüfer per-task blocks
+  // ("Was eine gute Antwort zeigen müsste", "Fachliches Feedback an den
+  // Studenten") are the most valuable corrective feedback in the whole run;
+  // they used to be generated and then silently discarded. extractSection
+  // returns "" on a marker miss, so a malformed grader reply degrades to
+  // "no per-task section" instead of flooding the feedback with raw output.
+  const perTaskPart1 = extractSection(res1.text, "===QUESTION_ASSESSMENTS_PART_1_START===", "===QUESTION_ASSESSMENTS_PART_1_END===");
+  const perTaskPart2 = extractSection(res2.text, "===QUESTION_ASSESSMENTS_PART_2_START===", "===QUESTION_ASSESSMENTS_PART_2_END===");
+  const perTaskFeedback = [perTaskPart1, perTaskPart2].filter(Boolean).join("\n\n");
+  if (perTaskFeedback) {
+    const heading = language === "english" ? "# Per-Task Assessment" : "# Bewertung pro Aufgabe";
+    cleanFeedback += `\n\n---\n\n${heading}\n\n${perTaskFeedback}`;
+  }
+
   // A PASS must never advance the student over an EMPTY quiz slot. If it did,
   // currentQuizText() silently falls back to Quiz 1, the schedule has already
   // jumped to the long interval, and the regression stays invisible until the
@@ -385,6 +403,10 @@ export async function runGradingPipeline(opts: {
         subjectSub: srsItem.subjectSub,
         level: srsItem.currentLevel,
         passed: isPass,
+        // Full brief per review — SRSItem.lastFeedback only keeps the latest,
+        // the log preserves the whole learning trajectory per module.
+        feedback: cleanFeedback || null,
+        itemId: srsItem.id,
         userId: srsItem.userId,
       },
     });

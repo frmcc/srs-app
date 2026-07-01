@@ -27,6 +27,25 @@ npm run dev
 
 Die App ist anschließend unter [http://localhost:3000](http://localhost:3000) erreichbar.
 
+## 🔐 Auth (wichtig für Deployment)
+
+Die App unterstützt zwei Mechanismen (beide in `src/middleware.ts`):
+
+- **`BASIC_AUTH_USER` + `BASIC_AUTH_PASSWORD`** — schützt die gesamte App (Browser fragt nach Login).
+- **`SHORTCUT_TOKEN`** — Maschinen-Credential für die iPhone-Shortcuts. Wird als Header `x-shortcut-token: <token>` (oder `Authorization: Bearer <token>`) mitgeschickt und gilt überall als Alternative zu Basic Auth.
+
+**Fail-closed:** Ist in Produktion *keine* der Varianten konfiguriert, blockiert die Middleware alle teuren/verändernden API-Endpoints (`/api/quiz*`, `/api/grade*`, `/api/podcast*`, `/api/transcribe`, `/api/tts` sowie alle Nicht-GET-Requests) mit `503`, damit niemand mit der URL die Gemini-Quota verbrennen kann. Seiten und lesende GETs bleiben erreichbar.
+
+## 🗄 DB-Migration
+
+Nach einem Schema-Update einmal ausführen (wendet die ALTERs idempotent auf Turso an):
+
+```bash
+node migrate.mjs
+```
+
+Aktuell enthalten: `ReviewLog.feedback` + `ReviewLog.itemId` (Feedback-Historie pro Modul).
+
 ## ☁️ Deployment (Cloud Run)
 
 Um ein Update direkt in die Google Cloud (Cloud Run) zu pushen, nutze das Deployment-Skript oder den direkten Befehl:

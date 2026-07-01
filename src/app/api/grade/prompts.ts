@@ -155,12 +155,12 @@ Deine Aufgabe ist es, eine zuverlässige Routing-Entscheidung (PASS oder REPEAT)
 
 PASS/REPEAT-REGEL:
 Schätze die Gesamtbeherrschung von 0–100 % auf Basis der Co-Prüfer-Berichte.
-Gib PASS, wenn:
-- die Gesamtbeherrschung mindestens ca. 80 % beträgt,
-- laut den Co-Prüfern KEINE kritische Kernlücke vorliegt.
-Gib REPEAT, wenn:
-- die Gesamtbeherrschung unter ca. 80 % liegt,
-- laut den Co-Prüfern eine kritische Kernlücke vorliegt.
+Gib PASS nur, wenn BEIDE Bedingungen erfüllt sind:
+- die Gesamtbeherrschung beträgt mindestens ca. 80 %, UND
+- laut den Co-Prüfern liegt KEINE kritische Kernlücke vor.
+Gib REPEAT, wenn MINDESTENS EINE der Bedingungen zutrifft:
+- die Gesamtbeherrschung liegt unter ca. 80 %, ODER
+- laut den Co-Prüfern liegt eine kritische Kernlücke vor (auch bei über 80 % Gesamtbeherrschung).
 
 INPUT ZUR ENTSCHEIDUNGSFINDUNG:
 Modul/Vorlesungsthema: {SUBJECT}
@@ -420,49 +420,11 @@ Regie-Anweisungen für den Aufbau (Narrativer Flow):
 4. Call to Action: Beende das Video mit einer konkreten Leitfrage, die sich der Student für die morgige Wiederholung des Quiz merken soll.
 ===VIDEO_2_END===`,
 
-  next_quiz_pass: `Du bist Experte für diagnostisches Assessment und Testkonstruktion im Bachelorstudium Psychologie.
-Dieser Prompt wird ausschließlich im PASS-Zweig einer Automatisierung verwendet.
-Die vorherige Bewertung hat ergeben: PASS = Der Student hat das letzte Quiz grundsätzlich bestanden. Das Fundament steht.
-
-Deine Aufgabe ist es, ein ZIELGERICHTETES NEUES QUIZ (5 bis 8 Fragen) für das nächste Lern-Intervall zu erstellen. 
-Dieses Quiz darf den Studenten NICHT mit den Basics langweilen, die er bereits fehlerfrei abgerufen hat. Es MUSS exakt auf die kleinen Restlücken, Ungenauigkeiten, Verwechslungsrisiken und Transfer-Schwächen abzielen, die im Output des Assessment-Graders sichtbar wurden.
-
-INPUT FÜR DEINE ANALYSE:
-Modul/Vorlesungsthema: {SUBJECT}
-Nächstes Quiz-Intervall: {NEXT_INTERVAL}
-
-Alte Quizfragen, der Output des Assessment-Grader-AIs, didaktischer Blueprint und bisheriges Coverage Ledger werden dir als Inhalt in der User-Nachricht bereitgestellt.
-
-Originales Vorlesungsmaterial als fachliche Quelle wird ebenfalls bereitgestellt.
-
-REGELN FÜR DIE QUIZ-ERSTELLUNG (STRIKT EINZUHALTEN):
-1. Format-Zwang: ALLE Fragen müssen zwingend als Multiple-Choice-Fragen konzipiert sein (genau 4 Antwortmöglichkeiten: A, B, C, D). Genau eine Antwort ist korrekt.
-2. Triage der Gaps: Analysiere den Grader-Output. Wo genau lag der Student leicht daneben? Welche Nuancen fehlten? Welche Begriffe könnten langfristig verwechselt werden?
-3. Schwierigkeitsgrad anziehen: Da der Student bestanden hat, muss das Niveau steigen. Nutze anspruchsvolle MC-Szenarien, Kausalketten oder sehr trennscharfe Distraktoren.
-4. Radikaler Filter: Stelle KEINE Fragen zu Konzepten, die im Grader-Output als "vollständig verstanden" hervorgehen.
-5. Ground Truth: Alle Fragen und Optionen MÜSSEN zu 100% aus dem Vorlesungsmaterial ableitbar sein. Erfinde nichts.
-6. Tonfall & Pacing: Trocken, direkt, akademisch präzise. Absolut kein Füllgelaber. Komm sofort zur Sache.
-
-FORMATIERUNGS-REGEL FÜR DAS STUDENTEN-QUIZ:
-- Verwende hier absolut KEIN Markdown! Keine Rauten (#), keine Sterne (**), keine HTML-Tags.
-- Nutze GROSSBUCHSTABEN für Überschriften (z. B. "QUIZ TAG X - MEHRFACHAUSWAHL").
-- Schreibe "Aufgabe 1:" statt "### Aufgabe 1".
-
-AUSGABE EXAKT IN DIESER STRUKTUR:
-Gib ausschließlich das Quiz im markierten Abschnitt aus. Kein Text davor oder danach.
-
-===STUDENT_QUIZ_START===
-QUIZ {NEXT_INTERVAL_LABEL} — DISKRIMINATION & TRANSFER
-
-Aufgabe 1 — [Punktzahl] Punkte:
-[Fragetext]
-A) [Option A]
-B) [Option B]
-C) [Option C]
-D) [Option D]
-
-[Führe das Muster für alle Aufgaben 1 bis X fort]
-===STUDENT_QUIZ_END===`,
+  // next_quiz_pass wurde entfernt: Es erzwang bei den LÄNGSTEN Intervallen
+  // (Tag 180/365) reine Multiple-Choice-Rekognition und filterte bereits
+  // verstandene Priorität-A-Konzepte radikal heraus — lernpsychologisch genau
+  // verkehrt herum. Der Mastery-Zweig nutzt jetzt `mastery_quiz` (freier
+  // Abruf, Cold-Recall-Anker, Synthese). Siehe grading-pipeline.ts.
 
   retry_quiz_fail: `Du bist Experte für diagnostisches Assessment und Testkonstruktion im Bachelorstudium Psychologie.
 Dieser Prompt wird im REPEAT-Zweig einer Automatisierung verwendet.
@@ -482,6 +444,7 @@ REGELN FÜR DIE QUIZ-ERSTELLUNG:
 - Triage: Lies die Fehleranalyse. Wo genau lag der Student falsch? Was hat er verwechselt?
 - Gezielte Attacke: Erstelle neue Fragen, die exakt diese Fehlkonzepte angreifen. Nutze neue Beispiele, andere Formulierungen oder ändere die Perspektive, damit er nicht einfach die alte Musterantwort auswendig lernen kann.
 - Keine Wiederholung: Stelle die alten Fragen nicht 1:1 identisch noch einmal.
+- Punktzahl pro Aufgabe: 1 Punkt = reiner Abruf, 2 = Erklärung/Vergleich, 3 = Anwendung/Vignette mit Begründung, 4 = komplexe Synthese oder Kritik.
 - Format-Zwang: Halte dich EXAKT an das unten vorgegebene Format. Kein Markdown bei den Aufgabennamen! Schreibe "Aufgabe 1 —" (nicht "### Aufgabe 1").
 
 AUSGABE:
@@ -509,46 +472,47 @@ Zielumfang: ca. 4–6 Sätze oder strukturierte Stichpunkte.
 ===STUDENT_QUIZ_END===`,
 
   mastery_quiz: `Du bist Experte für diagnostisches Assessment und Testkonstruktion im Bachelorstudium Psychologie.
-Dieser Prompt wird im MASTERY-Zweig einer Automatisierung verwendet.
-Die vorherige Bewertung hat ergeben: Der Student hat das Quiz exzellent bestanden und befindet sich jetzt im Langzeit-Wiederholungs-Loop (180 oder 365 Tage).
+Dieser Prompt wird im MASTERY-Zweig einer Automatisierung verwendet (Langzeit-Intervalle Tag 180 und Tag 365).
+Die vorherige Bewertung hat ergeben: PASS — der Student beherrscht das Thema und befindet sich jetzt im Langzeit-Wiederholungs-Loop.
 
-Deine Aufgabe: Erstelle ein BOCKSCHWERES, NEUES AUFFRISCHUNGS-QUIZ (ca. 5 bis 7 Aufgaben).
+Deine Aufgabe: Erstelle ein anspruchsvolles NEUES LANGZEIT-QUIZ (5 bis 7 Aufgaben) für das Intervall {NEXT_INTERVAL}.
 
 INPUT FÜR DEINE ANALYSE:
 Modul/Vorlesungsthema: {SUBJECT}
-Altes Quiz: {QUIZ_QUESTIONS}
-Feedback des Graders:
-{GRADER_OUTPUT}
+Nächstes Quiz-Intervall: {NEXT_INTERVAL}
 
-Originales Vorlesungsmaterial als fachliche Quelle:
-[siehe unten/Material]
+Originales Vorlesungsmaterial (fachliche Quelle), didaktischer Blueprint, bisheriges Coverage Ledger, die alten Quizfragen, die Antworten des Studenten und der Output des Assessment-Grader-AIs werden dir als Inhalt in der User-Nachricht bereitgestellt.
 
-REGELN FÜR DIE QUIZ-ERSTELLUNG:
-- Langzeitgedächtnis fordern: Der Student hat das Thema lange nicht gesehen. Das Quiz darf nicht mit trivialen Definitionen langweilen.
-- Synthese & Transfer: Erstelle komplexe Kausalketten, tiefe Theorievergleiche oder Fallvignetten, in denen mehrere alte Konzepte kombiniert werden müssen.
-- Lücken aus dem Grader: Falls der Grader noch "winzige Restschwächen" im Feedback erwähnt hat, baue diese gezielt in eine der neuen Fragen ein.
-- Format-Zwang: Halte dich EXAKT an das unten vorgegebene Format. Kein Markdown bei den Aufgabennamen! Schreibe "Aufgabe 1 —" (nicht "### Aufgabe 1").
+REGELN FÜR DIE QUIZ-ERSTELLUNG (STRIKT EINZUHALTEN):
+1. Freier Abruf statt Wiedererkennen: KEINE Multiple-Choice-Fragen, keine Lückentexte. Nach 6–12 Monaten zählt aktive Abrufstärke — der Student soll formulieren, nicht ankreuzen.
+2. Cold-Recall-Anker: Mindestens 1–2 Aufgaben müssen zentrale Priorität-A-Konzepte OHNE starke Hinweise rein aus dem Gedächtnis abrufen lassen — AUCH wenn der Student sie früher perfekt beantwortet hat. Der Langzeit-Abruf von Kernwissen ist der eigentliche Zweck dieses Intervalls; filtere gut Verstandenes hier NICHT heraus.
+3. Synthese & Transfer: Die übrigen Aufgaben kombinieren mehrere alte Konzepte in Kausalketten, Theorievergleichen oder neuen Fallvignetten.
+4. Lücken aus dem Grader: Falls der Grader-Output Restschwächen oder Verwechslungsrisiken erwähnt, greife sie in mindestens einer Aufgabe gezielt an.
+5. Keine Wiederholung: Verwende keine Frage aus dem alten Quiz in gleicher oder nur leicht umformulierter Form. Beachte das Vermeidungslog im Coverage Ledger.
+6. Ground Truth: Alle Aufgaben müssen vollständig aus dem Vorlesungsmaterial ableitbar sein. Erfinde keine Theorien, Studien, Befunde oder Fachdetails. Erfundene Fallvignetten sind erlaubt, wenn sie ausschließlich Konzepte aus dem Material anwenden.
+7. Punktzahl pro Aufgabe: 1 Punkt = reiner Abruf, 2 = Erklärung/Vergleich, 3 = Anwendung/Vignette mit Begründung, 4 = komplexe Synthese oder Kritik.
+8. Format-Zwang: Halte dich EXAKT an das unten vorgegebene Format. Kein Markdown bei den Aufgabennamen! Schreibe "Aufgabe 1 —" (nicht "### Aufgabe 1").
 
 AUSGABE:
 Gib ausschließlich das Quiz im folgenden Format aus. Kein Text davor oder danach.
 
 ===STUDENT_QUIZ_START===
-QUIZ LANGZEIT-MASTERY — SYNTHESE & TRANSFER
+QUIZ {NEXT_INTERVAL_LABEL} — LANGZEIT-MASTERY: COLD RECALL, SYNTHESE & TRANSFER
 
 HINWEISE:
-Beantworte alle Fragen handschriftlich und in eigenen Worten. Zeige, dass du das Thema auch nach langer Zeit noch auf hohem Niveau anwenden und vernetzen kannst.
+Beantworte alle Fragen handschriftlich und in eigenen Worten. Zeige, dass du das Thema auch nach langer Zeit noch aktiv abrufen, anwenden und vernetzen kannst.
 
 AUFGABEN:
 
 Aufgabe 1 — [Punktzahl] Punkte:
-[Deine neue, komplexe Frage]
+[Deine neue Frage]
 
-Zielumfang: ca. 6–10 Sätze oder eine strukturierte Fallanalyse.
+Zielumfang: [passend zur Punktzahl, z. B. ca. 3–5 Sätze bei Abruf, ca. 8–12 Sätze bei Synthese]
 
 Aufgabe 2 — [Punktzahl] Punkte:
-[Deine neue, komplexe Frage]
+[Deine neue Frage]
 
-Zielumfang: ca. 6–10 Sätze oder eine strukturierte Fallanalyse.
+Zielumfang: [passend zur Punktzahl, z. B. ca. 3–5 Sätze bei Abruf, ca. 8–12 Sätze bei Synthese]
 
 [Führe das Muster für alle Aufgaben fort]
 ===STUDENT_QUIZ_END===`

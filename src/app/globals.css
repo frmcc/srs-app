@@ -123,6 +123,13 @@
     font-family: var(--font-display);
     letter-spacing: -0.018em;
     font-weight: 540;
+    /* Multi-line headlines break evenly instead of leaving a lonely last word. */
+    text-wrap: balance;
+  }
+
+  p {
+    /* Avoid single-word orphan lines in running text (progressive enhancement). */
+    text-wrap: pretty;
   }
 
   h4, h5, h6 {
@@ -162,9 +169,13 @@
       box-shadow 0.5s var(--ease-cinematic);
     will-change: transform;
   }
-  .card-surface:hover {
-    border-color: var(--border-default);
-    background: var(--surface-2);
+  /* Hover treatments only on devices that actually hover — on touch, iOS keeps
+     :hover styles "stuck" after a tap, so cards stayed lifted/brightened. */
+  @media (hover: hover) {
+    .card-surface:hover {
+      border-color: var(--border-default);
+      background: var(--surface-2);
+    }
   }
 
   .card-surface-elevated {
@@ -180,13 +191,15 @@
       box-shadow 0.5s var(--ease-cinematic);
     will-change: transform;
   }
-  .card-surface-elevated:hover {
-    border-color: var(--border-strong);
-    background: linear-gradient(180deg, var(--surface-3), var(--surface-1));
-    transform: translateY(-4px);
-    box-shadow:
-      inset 0 1px 0 rgba(255, 248, 235, 0.1),
-      0 24px 56px -16px rgba(0, 0, 0, 0.85);
+  @media (hover: hover) {
+    .card-surface-elevated:hover {
+      border-color: var(--border-strong);
+      background: linear-gradient(180deg, var(--surface-3), var(--surface-1));
+      transform: translateY(-4px);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 248, 235, 0.1),
+        0 24px 56px -16px rgba(0, 0, 0, 0.85);
+    }
   }
 
   .card-glass {
@@ -218,8 +231,10 @@
     opacity: 0.6;
     transition: opacity 0.3s;
   }
-  .gradient-border:hover::before {
-    opacity: 1;
+  @media (hover: hover) {
+    .gradient-border:hover::before {
+      opacity: 1;
+    }
   }
 
   /* ---------- Type ---------- */
@@ -256,12 +271,14 @@
       box-shadow 0.45s var(--ease-cinematic);
     will-change: transform;
   }
-  .btn-primary:hover:not(:disabled) {
-    filter: brightness(1.07);
-    transform: translateY(-2px);
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.5),
-      0 16px 38px -8px rgba(245, 158, 11, 0.7);
+  @media (hover: hover) {
+    .btn-primary:hover:not(:disabled) {
+      filter: brightness(1.07);
+      transform: translateY(-2px);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.5),
+        0 16px 38px -8px rgba(245, 158, 11, 0.7);
+    }
   }
   .btn-primary:active:not(:disabled) {
     transform: translateY(0) scale(0.985);
@@ -280,9 +297,16 @@
     font-weight: 500;
     box-shadow: inset 0 1px 0 rgba(255, 248, 235, 0.05);
   }
-  .btn-secondary:hover {
-    background: var(--surface-3);
-    border-color: var(--border-strong);
+  @media (hover: hover) {
+    .btn-secondary:hover {
+      background: var(--surface-3);
+      border-color: var(--border-strong);
+    }
+  }
+  .btn-secondary:active {
+    /* Same tactile press the primary button has — parity across the pair. */
+    transform: scale(0.98);
+    transition-duration: 0.12s;
   }
 
   /* ---------- Inputs ---------- */
@@ -296,9 +320,11 @@
   .input-dark::placeholder {
     color: var(--text-tertiary);
   }
-  .input-dark:hover {
-    border-color: rgba(255, 248, 235, 0.18);
-    background: rgba(255, 250, 240, 0.045);
+  @media (hover: hover) {
+    .input-dark:hover {
+      border-color: rgba(255, 248, 235, 0.18);
+      background: rgba(255, 250, 240, 0.045);
+    }
   }
   .input-dark:focus {
     outline: none;
@@ -340,9 +366,11 @@
     color: var(--text-secondary);
     border-radius: 0.75rem;
   }
-  .nav-item-idle:hover {
-    background: rgba(255, 250, 240, 0.05);
-    color: var(--text-primary);
+  @media (hover: hover) {
+    .nav-item-idle:hover {
+      background: rgba(255, 250, 240, 0.05);
+      color: var(--text-primary);
+    }
   }
 
   /* ---------- Progress ---------- */
@@ -392,6 +420,7 @@
 
   .custom-scrollbar::-webkit-scrollbar {
     width: 5px;
+    height: 5px; /* horizontal scrollers (e.g. the activity heatmap) too */
   }
   .custom-scrollbar::-webkit-scrollbar-thumb {
     background: rgba(245, 177, 74, 0.25);
