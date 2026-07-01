@@ -56,7 +56,7 @@ import { useState, useEffect, useCallback, useRef, useMemo, useTransition } from
 import { createPortal } from "react-dom";
 
 import { useToasts, ToastStack } from "./components/Toast";
-import { useInteractiveQuiz } from "./useInteractiveQuiz";
+import { useInteractiveQuiz, type DictationMode } from "./useInteractiveQuiz";
 import { AutoGrowTextarea } from "./components/AutoGrowTextarea";
 import StatsPanel from "./components/StatsPanel";
 
@@ -387,25 +387,45 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
   const [individualAnswers, setIndividualAnswers] = useState<Record<string, string>>({});
   const [isGrading, setIsGrading] = useState(false);
 
-  // ---- Interactive Mode: reads each question aloud (Gemini TTS), then dictates
-  // the spoken answer into the box until the user says "nächste Aufgabe". --------
-  const [dictationMode, setDictationMode] = useState<"gemini" | "browser">(() => {
-    if (typeof window === "undefined") return "gemini";
+  // ---- Interactive Mode: reads each question aloud (Gemini TTS with browser
+  // fallback), then dictates the spoken answer into the box until the user says
+  // "nächste Aufgabe". Default "hybrid": instant browser dictation, AI-polished
+  // on advance. ---------------------------------------------------------------
+  const [dictationMode, setDictationMode] = useState<DictationMode>(() => {
+    if (typeof window === "undefined") return "hybrid";
     const saved = localStorage.getItem("srs-dictation-mode");
-    return saved === "browser" || saved === "gemini" ? saved : "gemini";
+    // One-time migration: old "gemini" users get the strictly-better hybrid
+    // (same AI quality, but with instant live text). Re-selecting "Gemini" in
+    // settings afterwards is respected — the migration flag only fires once.
+    if (!localStorage.getItem("srs-dictation-migrated-hybrid")) {
+      try { localStorage.setItem("srs-dictation-migrated-hybrid", "1"); } catch { /* private mode */ }
+      if (saved === "gemini" || !saved) {
+        try { localStorage.setItem("srs-dictation-mode", "hybrid"); } catch { /* private mode */ }
+        return "hybrid";
+      }
+    }
+    return saved === "browser" || saved === "gemini" || saved === "hybrid" ? saved : "hybrid";
   });
-  const updateDictationMode = useCallback((mode: "gemini" | "browser") => {
+  const updateDictationMode = useCallback((mode: DictationMode) => {
     setDictationMode(mode);
     if (typeof window !== "undefined") localStorage.setItem("srs-dictation-mode", mode);
   }, []);
   const handleInteractiveAnswer = useCallback((taskId: string, text: string) => {
     setIndividualAnswers(prev => ({ ...prev, [taskId]: text }));
   }, []);
+  // Mirror of individualAnswers for the interactive hook: the AI overwrite must
+  // compare against the CURRENT box content (state in callbacks would be stale).
+  const individualAnswersRef = useRef(individualAnswers);
+  useEffect(() => {
+    individualAnswersRef.current = individualAnswers;
+  });
+  const getInteractiveAnswer = useCallback((taskId: string) => individualAnswersRef.current[taskId] ?? "", []);
   const interactive = useInteractiveQuiz({
     tasks: parsedTasks,
     language: language === "english" ? "English" : "German",
     dictationMode,
     onAnswer: handleInteractiveAnswer,
+    getAnswer: getInteractiveAnswer,
   });
   // Stop interactive mode (audio + mic) whenever we leave the quiz view.
   const stopInteractive = interactive.stop;
@@ -717,7 +737,8 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
     return () => window.clearTimeout(timeoutId);
   }, [snoozeArmedId]);
 
-  /** Push a review by N days from today (sick/holiday/no time). */
+  /** Push a review OUT by N days (sick/holiday/no time). The server offsets from
+   *  max(now, current due date), so snoozing can never PULL a review closer. */
   const handleSnooze = async (e: React.MouseEvent, id: string, days: number) => {
     e.stopPropagation();
     if (snoozingIds[id]) return;
@@ -3172,21 +3193,27 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                   <h4 className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em] mb-3">{language === "german" ? "Interaktiver Modus — Diktat" : "Interactive Mode — Dictation"}</h4>
                   <p className="text-xs text-white/40 mb-4 leading-relaxed">
                     {language === "german"
-                      ? "Welche Spracherkennung beim Diktieren genutzt wird. Gemini ist auf dem iPhone zuverlässiger; Standard ist sofort, aber auf iOS oft unzuverlässig."
-                      : "Which speech recognition to use when dictating. Gemini is more reliable on iPhone; Standard is instant but often unreliable on iOS."}
+                      ? "Hybrid: Die Browser-Diktierfunktion schreibt sofort mit — sagst du „nächste Aufgabe“, ersetzt die KI-Transkription deine Antwort automatisch in besserer Qualität. Gemini: nur KI (verzögert, aber zuverlässig auf dem iPhone). Standard: nur Browser (sofort, ohne KI-Korrektur)."
+                      : "Hybrid: browser dictation types instantly — when you say “nächste Aufgabe”, the AI transcription automatically replaces your answer with a higher-quality version. Gemini: AI only (delayed, but reliable on iPhone). Standard: browser only (instant, no AI polish)."}
                   </p>
                   <div className="flex gap-2 bg-white/[0.02] border border-white/[0.06] rounded-xl p-1">
                     <button
+                      onClick={() => updateDictationMode("hybrid")}
+                      className={`flex-1 py-2.5 rounded-lg text-xs sm:text-sm transition-colors cursor-pointer ${dictationMode === 'hybrid' ? 'bg-amber-400/15 text-amber-100 border border-amber-400/30 font-medium' : 'border border-transparent text-white/45 hover:bg-white/[0.04] hover:text-white/70'}`}
+                    >
+                      {language === "german" ? "Hybrid (Empfohlen)" : "Hybrid (Recommended)"}
+                    </button>
+                    <button
                       onClick={() => updateDictationMode("gemini")}
-                      className={`flex-1 py-2.5 rounded-lg text-sm transition-colors cursor-pointer ${dictationMode === 'gemini' ? 'bg-amber-400/15 text-amber-100 border border-amber-400/30 font-medium' : 'border border-transparent text-white/45 hover:bg-white/[0.04] hover:text-white/70'}`}
+                      className={`flex-1 py-2.5 rounded-lg text-xs sm:text-sm transition-colors cursor-pointer ${dictationMode === 'gemini' ? 'bg-amber-400/15 text-amber-100 border border-amber-400/30 font-medium' : 'border border-transparent text-white/45 hover:bg-white/[0.04] hover:text-white/70'}`}
                     >
                       {language === "german" ? "Gemini (KI)" : "Gemini (AI)"}
                     </button>
                     <button
                       onClick={() => updateDictationMode("browser")}
-                      className={`flex-1 py-2.5 rounded-lg text-sm transition-colors cursor-pointer ${dictationMode === 'browser' ? 'bg-amber-400/15 text-amber-100 border border-amber-400/30 font-medium' : 'border border-transparent text-white/45 hover:bg-white/[0.04] hover:text-white/70'}`}
+                      className={`flex-1 py-2.5 rounded-lg text-xs sm:text-sm transition-colors cursor-pointer ${dictationMode === 'browser' ? 'bg-amber-400/15 text-amber-100 border border-amber-400/30 font-medium' : 'border border-transparent text-white/45 hover:bg-white/[0.04] hover:text-white/70'}`}
                     >
-                      Standard (Browser)
+                      Standard
                     </button>
                   </div>
                 </div>

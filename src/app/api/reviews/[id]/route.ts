@@ -21,9 +21,12 @@ export async function GET(
 }
 
 /**
- * Snooze: manually push the next review. Body: { days: 1 | 3 | 7 | 14 }.
- * The new date is computed from NOW (not from the old due date) — snooze
- * means "I can't do this today, ask me again in N days".
+ * Snooze: manually push the next review OUT by N days. Body: { days: 1 | 3 | 7 | 14 }.
+ *
+ * Base date = the LATER of (now, current due date). A due/overdue item moves
+ * to now+N ("ask me again in N days"); a review scheduled far in the future
+ * moves to dueDate+N. Snooze must never PULL a review closer — computing from
+ * "now" alone would have collapsed a Tag-60 schedule to next week with one tap.
  */
 export async function PATCH(
   req: NextRequest,
@@ -44,12 +47,21 @@ export async function PATCH(
       return NextResponse.json({ error: "days must be one of 1, 3, 7, 14" }, { status: 400 });
     }
 
-    const next = new Date();
-    next.setDate(next.getDate() + days);
+    const existing = await prisma.sRSItem.findUnique({
+      where: { id },
+      select: { nextReviewDate: true },
+    });
+    if (!existing) {
+      return NextResponse.json({ error: "Item not found" }, { status: 404 });
+    }
+
+    const now = new Date();
+    const base = existing.nextReviewDate > now ? new Date(existing.nextReviewDate) : now;
+    base.setDate(base.getDate() + days);
 
     const item = await prisma.sRSItem.update({
       where: { id },
-      data: { nextReviewDate: next },
+      data: { nextReviewDate: base },
       select: { id: true, nextReviewDate: true, currentLevel: true },
     });
     return NextResponse.json(item);
