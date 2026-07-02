@@ -27,6 +27,7 @@ import {
   DocumentDuplicateIcon,
   CheckIcon,
   ArrowLeftIcon,
+  ArrowRightOnRectangleIcon,
   XMarkIcon,
   Bars3Icon,
   AcademicCapIcon,
@@ -60,6 +61,7 @@ import { useInteractiveQuiz, type DictationMode } from "./useInteractiveQuiz";
 import { AutoGrowTextarea } from "./components/AutoGrowTextarea";
 import StatsPanel from "./components/StatsPanel";
 import TutorPanel from "./components/TutorPanel";
+import { signOut } from "next-auth/react";
 
 const LIB_LEVEL_SHORT = ["T1", "T3", "T7", "T21", "T60", "T180", "T365"] as const;
 const LIB_LEVEL_FULL  = ["Tag 1", "Tag 3", "Tag 7", "Tag 21", "Tag 60", "Tag 180", "Tag 365"] as const;
@@ -327,7 +329,25 @@ const formatItems = (data: RawReviewItem[]): ReviewCard[] => {
   return formatted;
 };
 
-export default function DashboardClient({ initialItems, vapidPublicKey }: { initialItems: RawReviewItem[]; vapidPublicKey?: string | null }) {
+export default function DashboardClient({
+  initialItems,
+  userName,
+  userImage,
+  userEmail,
+  vapidPublicKey,
+  calendarToken,
+}: {
+  initialItems: RawReviewItem[];
+  userName?: string | null;
+  userImage?: string | null;
+  userEmail?: string | null;
+  vapidPublicKey?: string | null;
+  calendarToken?: string | null;
+}) {
+  // Query-string fragments for the ICS feed URLs (calendar clients can't log in).
+  const calTokenAnd = calendarToken ? `&token=${calendarToken}` : "";
+  const calTokenOnly = calendarToken ? `?token=${calendarToken}` : "";
+
   // `startTransition` marks background refetch state updates as non-urgent so
   // React never interrupts an ongoing animation to apply them — no more blink.
   const [, startTransition] = useTransition();
@@ -1353,6 +1373,38 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                 {language === "german" ? "Freischalten (Phase 2)" : "Unlock (Phase 2)"}
               </button>
             </div>
+
+            {/* User identity strip (Google account) */}
+            <div className="mt-4 pt-4 border-t border-white/[0.06] flex items-center gap-3 px-1">
+              {userImage ? (
+                // eslint-disable-next-line @next/next/no-img-element -- external Google avatar; next/image would need remote-domain config + fixed dimensions
+                <img
+                  src={userImage}
+                  alt={userName || "avatar"}
+                  referrerPolicy="no-referrer"
+                  className="w-8 h-8 rounded-full ring-1 ring-amber-400/[0.22] object-cover shrink-0"
+                />
+              ) : (
+                <div className="w-8 h-8 rounded-full bg-amber-400/[0.12] border border-amber-400/[0.22] flex items-center justify-center shrink-0">
+                  <span className="text-amber-300 text-xs font-bold leading-none">
+                    {userName?.[0]?.toUpperCase() ?? userEmail?.[0]?.toUpperCase() ?? "?"}
+                  </span>
+                </div>
+              )}
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-medium text-white/80 truncate leading-tight">{userName || userEmail || "User"}</p>
+                {userName && userEmail && (
+                  <p className="text-[10px] text-white/30 truncate leading-tight mt-0.5">{userEmail}</p>
+                )}
+              </div>
+              <button
+                onClick={() => signOut({ callbackUrl: "/login" })}
+                title={language === "german" ? "Abmelden" : "Sign out"}
+                className="w-7 h-7 flex items-center justify-center rounded-lg text-white/30 hover:text-rose-300 hover:bg-rose-500/[0.1] transition-all cursor-pointer shrink-0"
+              >
+                <ArrowRightOnRectangleIcon className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </motion.aside>
 
@@ -1374,14 +1426,20 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                   <div>
                     <p className="eyebrow mb-3">{language === 'german' ? 'Willkommen zurück' : 'Welcome back'}</p>
                     <h1 className="font-display text-3xl sm:text-[2.75rem] font-medium tracking-tight text-white leading-[1.08] mb-3">
-                      {language === 'german'
-                        ? <>Bereit für das <em className="text-gradient not-italic font-display italic">nächste Level</em>?</>
-                        : <>Ready to <em className="text-gradient not-italic font-display italic">level up</em>?</>}
+                      {(() => {
+                        const firstName = userName?.split(" ")[0];
+                        return language === 'german'
+                          ? <>Bereit für das nächste Level{firstName ? <>, <em className="text-gradient not-italic font-display italic">{firstName}</em></> : ''}?</>
+                          : <>Ready to level up{firstName ? <>, <em className="text-gradient not-italic font-display italic">{firstName}</em></> : ''}?</>;
+                      })()}
                     </h1>
                     <p className="text-white/45 text-sm sm:text-base">
-                      {language === 'german'
-                        ? <>Du hast <span className="text-gradient font-semibold">{upcomingReviews.filter(r => r.isDue).length}</span> Wiederholungen heute.</>
-                        : <>You have <span className="text-gradient font-semibold">{upcomingReviews.filter(r => r.isDue).length}</span> reviews due today.</>}
+                      {(() => {
+                        const dueCount = upcomingReviews.filter(r => r.isDue).length;
+                        return language === 'german'
+                          ? <>Du hast <span className="text-gradient font-semibold">{dueCount}</span> {dueCount === 1 ? 'Wiederholung' : 'Wiederholungen'} heute.</>
+                          : <>You have <span className="text-gradient font-semibold">{dueCount}</span> {dueCount === 1 ? 'review' : 'reviews'} due today.</>;
+                      })()}
                     </p>
                   </div>
                 </motion.header>
@@ -1403,7 +1461,30 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                       </button>
                     </div>
 
-                    {(() => {
+                    {isLoadingReviews ? (
+                      /* Skeleton shimmer — shown on first mount when no SSR items are available */
+                      <div className="flex flex-col gap-4">
+                        {[0, 1, 2].map((i) => (
+                          <div
+                            key={i}
+                            className="card-surface-elevated p-5 sm:p-6 overflow-hidden relative"
+                            style={{ animationDelay: `${i * 0.1}s` }}
+                          >
+                            {/* Shimmer sweep */}
+                            <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.8s_ease-in-out_infinite] bg-gradient-to-r from-transparent via-white/[0.04] to-transparent pointer-events-none" style={{ animationDelay: `${i * 0.25}s` }} />
+                            <div className="pl-2.5 space-y-3.5">
+                              <div className="flex items-center gap-2">
+                                <div className="h-5 w-16 rounded-md bg-white/[0.07]" />
+                                <div className="h-5 w-12 rounded-full bg-white/[0.04]" />
+                                <div className="h-5 w-20 rounded-md bg-white/[0.04] ml-auto" />
+                              </div>
+                              <div className="h-6 rounded-lg bg-white/[0.07]" style={{ width: `${60 + i * 10}%` }} />
+                              <div className="h-4 rounded-md bg-white/[0.04]" style={{ width: `${40 + i * 8}%` }} />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (() => {
                       const dueItems = upcomingReviews.filter(r => r.isDue);
                       const scheduledItems = upcomingReviews.filter(r => !r.isDue);
                       const itemsToRender = [
@@ -1450,6 +1531,7 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                               variants={riseChild}
                               whileHover={{ y: -4 }}
                               transition={springSoft}
+                              // eslint-disable-next-line react-hooks/refs -- startQuiz only WRITES freeTemplateRef inside the click handler, never during render
                               onClick={() => startQuiz(review)}
                               className={`card-surface-elevated p-5 sm:p-6 group cursor-pointer relative overflow-hidden ${review.isDue ? 'border-amber-400/30 hover:border-amber-300/50 shadow-[0_0_28px_-8px_rgba(245,158,11,0.3)] hover:shadow-[0_0_48px_-8px_rgba(245,158,11,0.5)]' : 'hover:shadow-[0_8px_32px_-12px_rgba(255,250,240,0.07)]'}`}
                             >
@@ -1690,6 +1772,7 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                                       {[1, 3, 7].map(days => (
                                         <button
                                           key={days}
+                                          // eslint-disable-next-line react-hooks/refs -- handleSnooze touches refs only inside the async click handler
                                           onClick={(e) => handleSnooze(e, review.id, days)}
                                           className="px-3 py-1.5 rounded-full bg-indigo-400/[0.09] border border-indigo-400/30 text-indigo-200 hover:bg-indigo-400/[0.18] hover:border-indigo-400/50 text-[10px] font-bold uppercase tracking-wide whitespace-nowrap cursor-pointer transition-all"
                                           title={language === "german" ? `Um ${days} Tag${days > 1 ? "e" : ""} verschieben` : `Snooze by ${days} day${days > 1 ? "s" : ""}`}
@@ -1785,7 +1868,7 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                 className="max-w-3xl mx-auto"
               >
                 <header className="mb-10">
-                  <p className="eyebrow mb-3">6-Stage Pipeline</p>
+                  <p className="eyebrow mb-3">{language === 'german' ? '6-Stufen Pipeline' : '6-Stage Pipeline'}</p>
                   <h1 className="font-display text-3xl sm:text-4xl font-medium tracking-tight text-white mb-3">Ironclad <em className="text-gradient italic">Generator</em></h1>
                   <p className="text-white/45 text-sm sm:text-base">{language === 'german' ? 'Füge dein Vorlesungsmaterial hier ein, um den kompletten didaktischen KI-Prozess zu starten.' : 'Paste your lecture material below to run the full 6-stage Didactic AI chain.'}</p>
                 </header>
@@ -1795,7 +1878,7 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                     <div className="w-16 h-16 rounded-2xl bg-amber-400/10 border border-amber-400/25 flex items-center justify-center mb-6">
                       <ArrowPathIcon className="w-8 h-8 text-amber-300 animate-spin" />
                     </div>
-                    <h3 className="font-display text-2xl font-medium text-white mb-2">Processing Module...</h3>
+                    <h3 className="font-display text-2xl font-medium text-white mb-2">{language === 'german' ? 'Modul wird verarbeitet...' : 'Processing Module...'}</h3>
                     <p className="text-white/50 mb-10 text-base">{progressMsg}</p>
 
                     <div className="progress-track w-full max-w-md h-2.5">
@@ -1818,11 +1901,27 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                         { step: 5, label: language === "german" ? "NotebookLM einrichten" : "NotebookLM setup" },
                         { step: 6, label: language === "german" ? "Google Drive Upload" : "Google Drive upload" },
                         { step: 7, label: language === "german" ? "In Datenbank speichern" : "Save to database" },
-                      ].map(({ step, label }) => (
-                        <div key={step} className={`flex items-center gap-3.5 text-sm ${progressStep > step ? 'text-emerald-300' : progressStep === step ? 'text-amber-200 font-medium' : 'text-white/20'}`}>
-                          {progressStep > step ? <CheckCircleIcon className="w-5 h-5 shrink-0" /> : progressStep === step ? <span className="ember-dot w-5 h-5 rounded-full border-2 border-amber-300 shrink-0 flex items-center justify-center"><span className="w-1.5 h-1.5 rounded-full bg-amber-300"></span></span> : <div className="w-5 h-5 rounded-full border-2 border-current shrink-0" />}
-                          {label}
-                        </div>
+                      ].map(({ step, label }, i) => (
+                        <motion.div
+                          key={step}
+                          initial={{ opacity: 0, x: -10 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: i * 0.05, duration: 0.5, ease: EASE_OUT }}
+                          className={`flex items-center gap-3.5 text-sm transition-colors duration-500 ${progressStep > step ? 'text-emerald-300' : progressStep === step ? 'text-amber-200 font-medium' : 'text-white/20'}`}
+                        >
+                          <AnimatePresence mode="wait">
+                            {progressStep > step ? (
+                              <motion.span key="done" initial={{ scale: 0.4, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: "spring", stiffness: 500, damping: 22 }} className="shrink-0">
+                                <CheckCircleIcon className="w-5 h-5" />
+                              </motion.span>
+                            ) : progressStep === step ? (
+                              <span key="active" className="ember-dot w-5 h-5 rounded-full border-2 border-amber-300 shrink-0 flex items-center justify-center"><span className="w-1.5 h-1.5 rounded-full bg-amber-300"></span></span>
+                            ) : (
+                              <div key="idle" className="w-5 h-5 rounded-full border-2 border-current shrink-0" />
+                            )}
+                          </AnimatePresence>
+                          <span className="tracking-wide">{label}</span>
+                        </motion.div>
                       ))}
                     </div>
                   </div>
@@ -1857,7 +1956,7 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                           type="text"
                           value={topicInput}
                           onChange={e => setTopicInput(e.target.value)}
-                          placeholder="e.g. Memory & Motivation"
+                          placeholder={language === "german" ? "z.B. Gedächtnis & Motivation" : "e.g. Memory & Motivation"}
                           className="input-dark w-full px-4 py-3.5"
                         />
                       </div>
@@ -2585,13 +2684,15 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                   <div className="mb-6 p-6 rounded-2xl bg-rose-500/[0.07] border border-rose-400/20 text-rose-200 text-sm flex flex-col gap-3">
                     <div className="flex items-center gap-2 text-rose-300 font-semibold">
                       <ExclamationTriangleIcon className="w-5 h-5" />
-                      <span>Grading Failed</span>
+                      <span>{language === "german" ? "Bewertung fehlgeschlagen" : "Grading Failed"}</span>
                     </div>
                     <pre className="text-xs font-mono bg-black/30 p-4 rounded-xl border border-white/[0.06] whitespace-pre-wrap overflow-x-auto max-h-40 overflow-y-auto leading-relaxed text-left text-rose-200/70 custom-scrollbar">
                       {gradingError}
                     </pre>
                     <p className="text-xs text-white/35 text-left leading-relaxed">
-                      Please check your database, Gemini API key, or server logs, and click below to try submitting again.
+                      {language === "german"
+                        ? "Bitte überprüfe die Datenbank, den Gemini API-Schlüssel oder die Server-Logs und versuche es erneut."
+                        : "Please check your database, Gemini API key, or server logs, and click below to try submitting again."}
                     </p>
                   </div>
                 )}
@@ -2613,13 +2714,35 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                       />
                     </div>
                     <div className="w-full max-w-md mt-8 text-left space-y-3.5">
-                      {[1,2,3,4].map(step => (
-                        <div key={step} className={`flex items-center gap-3.5 text-sm ${gradingStep > step ? 'text-emerald-300' : gradingStep === step ? 'text-amber-200 font-medium' : 'text-white/20'}`}>
-                          {gradingStep > step ? <CheckCircleIcon className="w-5 h-5 shrink-0" /> : gradingStep === step ? <span className="ember-dot w-5 h-5 rounded-full border-2 border-amber-300 shrink-0 flex items-center justify-center"><span className="w-1.5 h-1.5 rounded-full bg-amber-300"></span></span> : <div className="w-5 h-5 rounded-full border-2 border-current shrink-0" />}
-                          {step === 1 ? "Co-Prüfer 1 & 2 (Parallel Evaluation)" :
-                           step === 2 ? "Chef-Prüfer (Consolidation & Brief)" :
-                           step === 3 ? "Follow-Up Generation (Quiz & Video)" : "Saving Database Records"}
-                        </div>
+                      {[1,2,3,4].map((step, i) => (
+                        <motion.div
+                          key={step}
+                          initial={{ opacity: 0, x: -10 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: i * 0.05, duration: 0.5, ease: EASE_OUT }}
+                          className={`flex items-center gap-3.5 text-sm transition-colors duration-500 ${gradingStep > step ? 'text-emerald-300' : gradingStep === step ? 'text-amber-200 font-medium' : 'text-white/20'}`}
+                        >
+                          <AnimatePresence mode="wait">
+                            {gradingStep > step ? (
+                              <motion.span key="done" initial={{ scale: 0.4, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: "spring", stiffness: 500, damping: 22 }} className="shrink-0">
+                                <CheckCircleIcon className="w-5 h-5" />
+                              </motion.span>
+                            ) : gradingStep === step ? (
+                              <span key="active" className="ember-dot w-5 h-5 rounded-full border-2 border-amber-300 shrink-0 flex items-center justify-center"><span className="w-1.5 h-1.5 rounded-full bg-amber-300"></span></span>
+                            ) : (
+                              <div key="idle" className="w-5 h-5 rounded-full border-2 border-current shrink-0" />
+                            )}
+                          </AnimatePresence>
+                          {language === "german" ? (
+                            step === 1 ? "KI-Gutachter 1 & 2 (Parallel)" :
+                            step === 2 ? "Chef-Gutachter (Konsolidierung)" :
+                            step === 3 ? "Quiz & Video generieren" : "Datenbank speichern"
+                          ) : (
+                            step === 1 ? "AI Examiner 1 & 2 (Parallel)" :
+                            step === 2 ? "Head Examiner (Consolidation)" :
+                            step === 3 ? "Generate Quiz & Video Prompts" : "Save Database Records"
+                          )}
+                        </motion.div>
                       ))}
                     </div>
                   </div>
@@ -2634,12 +2757,13 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                         </span>
                         <h2 className="font-display text-3xl sm:text-4xl font-medium text-white mt-5 tracking-tight">
                           {gradingResult.isPass
-                            ? <>Level <em className="text-gradient italic">Promoted!</em></>
-                            : <>Remediation <em className="italic text-rose-200">Scheduled</em></>}
+                            ? (language === "german" ? <>Level <em className="text-gradient italic">Aufgestiegen!</em></> : <>Level <em className="text-gradient italic">Promoted!</em></>)
+                            : (language === "german" ? <>Wiederholung <em className="italic text-rose-200">Eingeplant</em></> : <>Remediation <em className="italic text-rose-200">Scheduled</em></>)}
                         </h2>
                         {gradingResult.nextReviewDate && (
                           <p className="text-white/50 mt-3 text-sm">
-                            Next review set to: <strong className="text-amber-200 font-semibold">{new Date(gradingResult.nextReviewDate).toLocaleDateString()}</strong>
+                            {language === "german" ? "Nächste Wiederholung: " : "Next review set to: "}
+                            <strong className="text-amber-200 font-semibold">{new Date(gradingResult.nextReviewDate).toLocaleDateString()}</strong>
                             {gradingResult.currentLevel !== null && <> (Level {gradingResult.currentLevel + 1})</>}
                           </p>
                         )}
@@ -2659,7 +2783,7 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                     <div className="card-surface-elevated overflow-hidden">
                       <div className="border-b border-white/[0.06] bg-white/[0.02] px-6 py-4 flex items-center gap-2.5">
                         <DocumentTextIcon className="w-4 h-4 text-amber-300" />
-                        <h3 className="text-xs font-bold uppercase tracking-[0.16em] text-white/60">Remediation Brief</h3>
+                        <h3 className="text-xs font-bold uppercase tracking-[0.16em] text-white/60">{language === "german" ? "Korrektur-Feedback" : "Remediation Brief"}</h3>
                       </div>
 
                       <div className="p-6 md:p-8">
@@ -2720,7 +2844,7 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                               </div>
 
                               <div className="border-t border-white/[0.06] pt-6">
-                                <span className="block text-[10px] font-bold text-white/30 uppercase tracking-[0.2em] mb-3">Your Answer:</span>
+                                <span className="block text-[10px] font-bold text-white/30 uppercase tracking-[0.2em] mb-3">{language === "german" ? "Deine Antwort:" : "Your Answer:"}</span>
                                 <AutoGrowTextarea
                                   value={individualAnswers[task.id] || ""}
                                   onChange={e => {
@@ -2767,11 +2891,11 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                           {extractStudentQuiz(selectedReview.raw.currentQuizText || "")}
                         </div>
 
-                        <span className="block text-[10px] font-bold text-white/30 uppercase tracking-[0.2em] mb-3">Your Answer:</span>
+                        <span className="block text-[10px] font-bold text-white/30 uppercase tracking-[0.2em] mb-3">{language === "german" ? "Deine Antwort:" : "Your Answer:"}</span>
                         <textarea
                           value={studentAnswers}
                           onChange={e => setStudentAnswers(e.target.value)}
-                          placeholder="Write your answers here..."
+                          placeholder={language === "german" ? "Schreibe deine Antworten hier..." : "Write your answers here..."}
                           className="input-dark flex-1 w-full p-5 text-sm leading-relaxed resize-none min-h-[300px] mb-6"
                         />
                         <div className="flex gap-3">
@@ -2791,7 +2915,7 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                             className="btn-primary flex-1 py-5 text-xs font-bold uppercase tracking-[0.14em] flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-40"
                           >
                             <SparklesIcon className="w-5 h-5" />
-                            Submit Answer for AI Grading
+                            {language === "german" ? "ANTWORT ZUR KI-BEWERTUNG EINREICHEN" : "Submit Answer for AI Grading"}
                           </motion.button>
                         </div>
                       </div>
@@ -2815,7 +2939,7 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                   className="card-glass w-full max-w-lg overflow-hidden flex flex-col max-h-[85dvh] border border-white/[0.1]"
                 >
                   <div className="p-6 border-b border-white/[0.06] flex justify-between items-center">
-                    <h3 className="font-display text-xl font-medium text-white">Video Archive</h3>
+                    <h3 className="font-display text-xl font-medium text-white">{language === "german" ? "Video-Archiv" : "Video Archive"}</h3>
                     <button
                       onClick={() => setArchiveModalData(null)}
                       className="w-8 h-8 rounded-full bg-white/[0.06] hover:bg-white/[0.1] flex items-center justify-center text-white/40 hover:text-white transition-colors cursor-pointer"
@@ -2837,7 +2961,7 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                           className="btn-secondary px-4 py-2 text-xs flex items-center gap-2"
                         >
                           <VideoCameraIcon className="w-4 h-4 text-amber-300" />
-                          Watch
+                          {language === "german" ? "Ansehen" : "Watch"}
                         </a>
                       </div>
                     ))}
@@ -2989,7 +3113,7 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                 <div className="flex items-center justify-between mb-2">
                   <h2 className="font-display text-xl font-medium flex items-center gap-2.5 text-white">
                     <CalendarDaysIcon className="w-5 h-5 text-amber-300" />
-                    Calendar Sync
+                    {language === "german" ? "Kalender-Sync" : "Calendar Sync"}
                   </h2>
                   <button onClick={() => setShowCalendarModal(false)} className="text-white/40 hover:text-white p-2 transition-colors cursor-pointer">
                     <XMarkIcon className="w-5 h-5" />
@@ -2997,18 +3121,20 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                 </div>
 
                 <p className="text-sm text-white/45 mb-7 leading-relaxed">
-                  Subscribe once — all future reviews will automatically appear in your calendar.
+                  {language === "german"
+                    ? "Einmal abonnieren — alle zukünftigen Wiederholungen erscheinen automatisch in deinem Kalender."
+                    : "Subscribe once — all future reviews will automatically appear in your calendar."}
                 </p>
 
                 {/* Apple Calendar */}
                 <div className="mb-5">
                   <h3 className="text-xs font-bold uppercase tracking-[0.14em] mb-2.5 flex items-center gap-2 text-white/70">🍎 Apple Calendar (Mac/iPhone)</h3>
                   <a
-                    href={`webcal://${typeof window !== 'undefined' ? window.location.host : 'localhost:3000'}/api/calendar?lang=${language}`}
+                    href={`webcal://${typeof window !== 'undefined' ? window.location.host : 'localhost:3000'}/api/calendar?lang=${language}${calTokenAnd}`}
                     className="btn-secondary flex items-center justify-center gap-2 w-full py-3.5 text-sm"
                   >
                     <CalendarDaysIcon className="w-4 h-4 text-amber-300" />
-                    Subscribe in Apple Calendar
+                    {language === "german" ? "In Apple Kalender abonnieren" : "Subscribe in Apple Calendar"}
                   </a>
 
                 </div>
@@ -3019,12 +3145,12 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                   <div className="flex gap-2">
                     <input
                       readOnly
-                      value={`${typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000'}/api/calendar?lang=${language}`}
+                      value={`${typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000'}/api/calendar?lang=${language}${calTokenAnd}`}
                       className="input-dark flex-1 px-4 py-2.5 text-xs font-mono truncate"
                     />
                     <button
                       onClick={() => {
-                        navigator.clipboard.writeText(`${window.location.origin}/api/calendar?lang=${language}`)
+                        navigator.clipboard.writeText(`${window.location.origin}/api/calendar?lang=${language}${calTokenAnd}`)
                           .catch(() => addToast("error", language === "german" ? "Kopieren fehlgeschlagen." : "Copy failed."));
                         setCalendarUrlCopied(true);
                         setTimeout(() => setCalendarUrlCopied(false), 2000);
@@ -3032,38 +3158,46 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                       className="btn-secondary px-4 py-2.5 text-xs font-medium flex items-center gap-2 cursor-pointer shrink-0"
                     >
                       {calendarUrlCopied ? <CheckIcon className="w-4 h-4 text-emerald-300" /> : <DocumentDuplicateIcon className="w-4 h-4" />}
-                      {calendarUrlCopied ? "Copied!" : "Copy"}
+                      {calendarUrlCopied
+                        ? (language === "german" ? "Kopiert!" : "Copied!")
+                        : (language === "german" ? "Kopieren" : "Copy")}
                     </button>
                   </div>
                   <p className="text-xs text-white/30 mt-2.5 ml-1 leading-relaxed">
-                    Google Calendar → Other calendars (+) → From URL → Paste the URL above.
+                    {language === "german"
+                      ? "Google Kalender → Weitere Kalender (+) → Per URL → URL oben einfügen."
+                      : "Google Calendar → Other calendars (+) → From URL → Paste the URL above."}
                   </p>
                 </div>
 
                 {/* Done Calendar */}
                 <div className="mb-5">
-                  <h3 className="text-xs font-bold uppercase tracking-[0.14em] mb-2.5 flex items-center gap-2 text-white/70">🟢 Done Calendar (Optional)</h3>
+                  <h3 className="text-xs font-bold uppercase tracking-[0.14em] mb-2.5 flex items-center gap-2 text-white/70">
+                    🟢 {language === "german" ? "Erledigt-Kalender (Optional)" : "Done Calendar (Optional)"}
+                  </h3>
                   <a
-                    href={`webcal://${typeof window !== 'undefined' ? window.location.host : 'localhost:3000'}/api/calendar/done`}
+                    href={`webcal://${typeof window !== 'undefined' ? window.location.host : 'localhost:3000'}/api/calendar/done${calTokenOnly}`}
                     className="flex items-center justify-center gap-2 w-full py-2.5 bg-emerald-400/[0.08] hover:bg-emerald-400/[0.16] rounded-xl text-xs font-medium text-emerald-300 transition-all border border-emerald-400/20"
                   >
                     <CalendarDaysIcon className="w-4 h-4" />
-                    Subscribe to Log History
+                    {language === "german" ? "Verlaufshistorie abonnieren" : "Subscribe to Log History"}
                   </a>
                   <p className="text-[10px] text-white/30 mt-2.5 ml-1 leading-relaxed">
-                    Track your daily progress by subscribing to your completed reviews.
+                    {language === "german"
+                      ? "Verfolge deinen täglichen Fortschritt durch Abonnieren deiner erledigten Wiederholungen."
+                      : "Track your daily progress by subscribing to your completed reviews."}
                   </p>
                 </div>
 
                 {/* One-time download fallback */}
                 <div className="pt-5 border-t border-white/[0.06]">
                   <a
-                    href="/api/calendar"
+                    href={`/api/calendar${calTokenOnly}`}
                     download="srs-reviews.ics"
                     className="flex items-center justify-center gap-2 w-full py-2.5 bg-white/[0.03] hover:bg-white/[0.06] rounded-xl text-xs font-medium text-white/40 hover:text-white/65 transition-all border border-white/[0.06]"
                   >
                     <DocumentTextIcon className="w-4 h-4" />
-                    Download .ics file (one-time import)
+                    {language === "german" ? ".ics-Datei herunterladen (Einmal-Import)" : "Download .ics file (one-time import)"}
                   </a>
                 </div>
               </motion.div>
@@ -3114,7 +3248,7 @@ export default function DashboardClient({ initialItems, vapidPublicKey }: { init
                   <h4 className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em] mb-3">{language === "german" ? "Modul-Voreinstellungen" : "Module Presets"}</h4>
                   <div className="space-y-2 mb-3">
                     {modulePresets.length === 0 ? (
-                      <div className="text-white/30 text-sm italic py-2">No modules defined yet.</div>
+                      <div className="text-white/30 text-sm italic py-2">{language === "german" ? "Noch keine Module definiert." : "No modules defined yet."}</div>
                     ) : (
                       modulePresets.map((preset, idx) => (
                         <div key={idx} className="flex items-center justify-between card-surface px-4 py-3">

@@ -434,6 +434,26 @@
   }
 }
 
+/* Slowly drifting ambient orbs — used on the login brand panel */
+@keyframes drift-slow {
+  0%, 100% { transform: translate(0px, 0px) scale(1); }
+  33%       { transform: translate(18px, -14px) scale(1.04); }
+  66%       { transform: translate(-12px, 10px) scale(0.97); }
+}
+
+@keyframes drift-slower {
+  0%, 100% { transform: translate(0px, 0px) scale(1); }
+  50%       { transform: translate(-22px, 16px) scale(1.07); }
+}
+
+.ambient-drift-slow {
+  animation: drift-slow 22s ease-in-out infinite;
+}
+
+.ambient-drift-slower {
+  animation: drift-slower 30s ease-in-out infinite;
+}
+
 @keyframes ember-pulse {
   0%, 100% {
     opacity: 1;
@@ -480,7 +500,9 @@
 
 @media (prefers-reduced-motion: reduce) {
   .progress-fill::after,
-  .ember-dot {
+  .ember-dot,
+  .ambient-drift-slow,
+  .ambient-drift-slower {
     animation: none;
   }
   .card-surface-elevated:hover,

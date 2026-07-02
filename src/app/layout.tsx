@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Fraunces, Inter } from "next/font/google";
 import "./globals.css";
+import { Providers } from "@/components/Providers";
 
 const fraunces = Fraunces({
   variable: "--font-fraunces",
@@ -50,7 +51,9 @@ export default function RootLayout({
         <meta name="theme-color" content="#0b0908" />
       </head>
       <body className="min-h-full flex flex-col bg-background text-foreground font-sans selection:bg-amber-400/25 selection:text-amber-50">
-        {children}
+        <Providers>
+          {children}
+        </Providers>
         <script
           dangerouslySetInnerHTML={{
             __html: `

@@ -1,71 +1,89 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getToken } from "next-auth/jwt";
+import { calendarTokenFor } from "@/lib/auth-token";
 
 /**
- * App auth. Two credential mechanisms:
+ * App auth — Google sign-in via NextAuth (same flow as the SaaS), plus the
+ * machine credentials the personal app has always supported. Checked in order:
  *
- * 1. HTTP Basic Auth — protects the WHOLE app (pages + API):
- *      BASIC_AUTH_USER=frank
- *      BASIC_AUTH_PASSWORD=<long random string>
- *    Browsers prompt natively; iPhone Shortcuts add the Authorization header.
+ * 1. SHORTCUT_TOKEN — machine credential (iPhone Shortcuts, backend fetches):
+ *      `x-shortcut-token: <token>` or `Authorization: Bearer <token>`.
+ * 2. NextAuth session (JWT cookie) — THE way browsers authenticate now.
+ *    Set by the Google login on /login; lives ~180 days per device.
+ * 3. Calendar feeds only: GET /api/calendar* accepts `?token=<calendarToken>`
+ *    (read-only derived token), because calendar clients can't log in.
+ *    Still derived from BASIC_AUTH_USER/PASSWORD so EXISTING calendar
+ *    subscriptions keep working — keep those two env vars set.
  *
- * 2. SHORTCUT_TOKEN — machine credential, accepted ANYWHERE as an alternative
- *    to Basic (so Shortcuts don't need user:pass baked in):
- *      SHORTCUT_TOKEN=<long random string>
- *    Sent as `x-shortcut-token: <token>` or `Authorization: Bearer <token>`.
+ * The old password form + `srs_session` cookie are gone, and so is the
+ * `WWW-Authenticate: Basic` challenge that made iPhones pop the ugly native
+ * username/password dialog. Unauthenticated HTML navigations are redirected
+ * to /login; API requests get a plain 401 JSON.
  *
- * FAIL-CLOSED RULE (fixes H3 from CODE_REVIEW_2026-06-25):
- * Previously, deploying without BASIC_AUTH_* left every AI endpoint public —
- * anyone with the URL could burn Gemini/Drive/NotebookLM quota. Now, when
- * Basic Auth is NOT configured and NODE_ENV is production, all expensive or
- * mutating API endpoints are blocked unless a valid SHORTCUT_TOKEN is sent.
- * Pages and read-only GETs stay reachable (the app isn't bricked), but the
- * wallet is closed. Development behavior is unchanged.
+ * FAIL-CLOSED RULE (H3): when NO auth is configured at all and NODE_ENV is
+ * production, every expensive or mutating API endpoint is blocked so a public
+ * deployment can't burn Gemini/Drive/NotebookLM quota. Dev stays open.
  */
 
 /** Endpoints that cost real money — never public in production. */
-const EXPENSIVE_API = /^\/api\/(quiz|grade|podcast|transcribe|tts)(\/|$)/;
+const EXPENSIVE_API = /^\/api\/(quiz|grade|podcast|transcribe|tts|tutor\/chat)(\/|$)/;
 
-export function middleware(req: NextRequest) {
-  const user = process.env.BASIC_AUTH_USER;
-  const password = process.env.BASIC_AUTH_PASSWORD;
+export async function middleware(req: NextRequest) {
   const shortcutToken = process.env.SHORTCUT_TOKEN;
-  const basicConfigured = !!(user && password);
+  const authConfigured = !!process.env.NEXTAUTH_SECRET;
+  const { pathname, search } = req.nextUrl;
 
-  // A valid shortcut token authenticates any request, in any mode.
+  // The login screen and NextAuth's own endpoints must stay reachable,
+  // or nobody can ever log in.
+  if (pathname === "/login" || pathname.startsWith("/api/auth/")) {
+    return NextResponse.next();
+  }
+
+  // 1) Machine token authenticates any request, in any mode.
   if (shortcutToken && hasValidToken(req, shortcutToken)) {
     return NextResponse.next();
   }
 
-  if (basicConfigured) {
-    // Basic Auth protects everything (previous behavior).
-    const header = req.headers.get("authorization") || "";
-    if (header.startsWith("Basic ")) {
-      try {
-        const [givenUser, ...rest] = atob(header.slice(6)).split(":");
-        const givenPass = rest.join(":");
-        if (timingSafeEqual(givenUser, user!) && timingSafeEqual(givenPass, password!)) {
-          return NextResponse.next();
-        }
-      } catch {
-        /* malformed base64 — fall through to 401 */
+  if (authConfigured) {
+    // 2) NextAuth session (Google login).
+    const session = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
+    if (session) return NextResponse.next();
+
+    // 3) Calendar feeds: read-only derived token in the URL (Apple/Google
+    //    calendar clients can neither log in nor send custom headers).
+    if (req.method === "GET" && pathname.startsWith("/api/calendar")) {
+      const user = process.env.BASIC_AUTH_USER;
+      const password = process.env.BASIC_AUTH_PASSWORD;
+      const urlToken = req.nextUrl.searchParams.get("token") || "";
+      if (urlToken && user && password) {
+        const expected = await calendarTokenFor(user, password);
+        if (timingSafeEqual(urlToken, expected)) return NextResponse.next();
       }
     }
-    return new NextResponse("Authentication required", {
-      status: 401,
-      headers: { "WWW-Authenticate": 'Basic realm="SRS", charset="UTF-8"' },
-    });
+
+    // Unauthenticated. Browsers navigating to a page → Google login screen.
+    const wantsHtml = (req.headers.get("accept") || "").includes("text/html");
+    if (wantsHtml && (req.method === "GET" || req.method === "HEAD") && !pathname.startsWith("/api/")) {
+      const loginUrl = new URL("/login", req.url);
+      const nextPath = pathname + search;
+      if (nextPath && nextPath !== "/") loginUrl.searchParams.set("callbackUrl", nextPath);
+      return NextResponse.redirect(loginUrl);
+    }
+
+    // APIs/tools → plain 401. Deliberately NO WWW-Authenticate header: the
+    // Basic challenge is what made phones show the native password dialog.
+    return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   }
 
-  // ---- No Basic Auth configured --------------------------------------------
+  // ---- No auth configured ----------------------------------------------------
   if (process.env.NODE_ENV !== "production") return NextResponse.next();
 
-  const { pathname } = req.nextUrl;
   const isApi = pathname.startsWith("/api/");
   const isMutation = req.method !== "GET" && req.method !== "HEAD" && req.method !== "OPTIONS";
   if (isApi && (EXPENSIVE_API.test(pathname) || isMutation)) {
-    console.warn(`[auth] Blocked unauthenticated ${req.method} ${pathname} — configure BASIC_AUTH_USER/BASIC_AUTH_PASSWORD (and optionally SHORTCUT_TOKEN for Shortcuts).`);
+    console.warn(`[auth] Blocked unauthenticated ${req.method} ${pathname} — configure NEXTAUTH_SECRET (+ AUTH_GOOGLE_CLIENT_ID/SECRET) and optionally SHORTCUT_TOKEN for Shortcuts.`);
     return NextResponse.json(
-      { error: "Auth ist nicht konfiguriert — dieser Endpoint ist gesperrt. Setze BASIC_AUTH_USER/BASIC_AUTH_PASSWORD (Web) bzw. SHORTCUT_TOKEN (Shortcuts) in den Umgebungsvariablen." },
+      { error: "Auth ist nicht konfiguriert — dieser Endpoint ist gesperrt. Setze NEXTAUTH_SECRET und AUTH_GOOGLE_CLIENT_ID/AUTH_GOOGLE_CLIENT_SECRET (Web) bzw. SHORTCUT_TOKEN (Shortcuts) in den Umgebungsvariablen." },
       { status: 503 }
     );
   }
