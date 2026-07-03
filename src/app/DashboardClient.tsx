@@ -51,7 +51,7 @@ import {
   MagnifyingGlassIcon,
 } from "@heroicons/react/24/outline";
 
-import { useState, useEffect, useCallback, useRef, useMemo, useTransition } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo, useTransition, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import { useToasts, ToastStack } from "./components/Toast";
@@ -303,6 +303,70 @@ function detectFeedbackLanguage(text: string): "german" | "english" | "unknown" 
   return de > en ? "german" : "english";
 }
 
+/** Colorize standalone PASS/REPEAT verdicts inside feedback text. */
+function colorizeVerdicts(text: string, keyPrefix: string): ReactNode[] {
+  return text.split(/\b(PASS|BESTANDEN|REPEAT|WIEDERHOLEN)\b/).map((part, i) => {
+    if (/^(PASS|BESTANDEN)$/.test(part)) return <span key={`${keyPrefix}-v${i}`} className="font-semibold text-[#4A6845]">{part}</span>;
+    if (/^(REPEAT|WIEDERHOLEN)$/.test(part)) return <span key={`${keyPrefix}-v${i}`} className="font-semibold text-[#96543C]">{part}</span>;
+    return <span key={`${keyPrefix}-v${i}`}>{part}</span>;
+  });
+}
+
+/** Inline markdown-lite: **bold** plus verdict coloring. */
+function renderFeedbackInline(text: string, keyPrefix: string): ReactNode[] {
+  return text.split(/(\*\*[^*]+\*\*)/g).map((part, i) => {
+    const key = `${keyPrefix}-b${i}`;
+    if (/^\*\*[^*]+\*\*$/.test(part)) {
+      return <strong key={key} className="font-semibold text-ink-900">{colorizeVerdicts(part.slice(2, -2), key)}</strong>;
+    }
+    return <span key={key}>{colorizeVerdicts(part, key)}</span>;
+  });
+}
+
+/**
+ * Presentational renderer for grading briefs. The pipeline emits markdown-ish
+ * text (## headings, "- Label: value" bullets, **bold**) — this renders it as
+ * calm typography instead of raw backend output. Dependency-free on purpose.
+ */
+function FeedbackBody({ text, size = "base" }: { text: string; size?: "base" | "sm" }) {
+  const bodyCls = size === "sm" ? "text-xs leading-[1.65] text-ink-600" : "text-[14.5px] leading-[1.7] text-ink-900/80";
+  const out: ReactNode[] = [];
+  const lines = text.replace(/\r\n/g, "\n").split("\n");
+  lines.forEach((raw, i) => {
+    const line = raw.trim();
+    const key = `fb-${i}`;
+    if (!line) { out.push(<div key={key} className="h-2.5" aria-hidden="true" />); return; }
+    if (/^[-—_]{3,}$/.test(line)) { out.push(<div key={key} className="h-px bg-[rgba(33,27,18,0.07)] my-2.5" aria-hidden="true" />); return; }
+    const heading = line.match(/^#{1,6}\s+(.*)$/);
+    if (heading) {
+      out.push(
+        <p key={key} className={`caps-label !text-ink-600 ${out.length === 0 ? "" : "mt-4"} mb-1`}>
+          {heading[1].replace(/\*\*/g, "")}
+        </p>
+      );
+      return;
+    }
+    const bullet = line.match(/^(?:[-*•]|\d+[.)])\s+(.*)$/);
+    if (bullet) {
+      const content = bullet[1];
+      const kv = content.match(/^([^:*]{2,48}):\s+(.+)$/);
+      out.push(
+        <div key={key} className={`flex gap-2 ${bodyCls}`}>
+          <span className="text-ink-300 shrink-0 select-none">–</span>
+          <span className="min-w-0">
+            {kv
+              ? (<><span className="font-semibold text-ink-900">{kv[1]}:</span>{" "}{renderFeedbackInline(kv[2], key)}</>)
+              : renderFeedbackInline(content, key)}
+          </span>
+        </div>
+      );
+      return;
+    }
+    out.push(<p key={key} className={bodyCls}>{renderFeedbackInline(line, key)}</p>);
+  });
+  return <div className="flex flex-col gap-[3px]">{out}</div>;
+}
+
 /** Resolve the latest playable video URL from the stored value (plain URL or a JSON history array). */
 function latestVideoUrlOf(videoUrl: string | null): string | null {
   if (!videoUrl) return null;
@@ -537,6 +601,9 @@ export default function DashboardClient({
   const [feedbackHistory, setFeedbackHistory] = useState<FeedbackHistoryEntry[] | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [expandedHistoryIds, setExpandedHistoryIds] = useState<Set<string>>(new Set());
+  /** Per-history-entry translations, keyed `${logId}:${targetLang}`. */
+  const [historyTranslations, setHistoryTranslations] = useState<Record<string, string>>({});
+  const [historyTranslating, setHistoryTranslating] = useState<Record<string, boolean>>({});
   const [showCalendarModal, setShowCalendarModal] = useState(false);
   const [calendarUrlCopied, setCalendarUrlCopied] = useState(false);
   const [archiveModalData, setArchiveModalData] = useState<{level: number, url: string, date?: string}[] | null>(null);
@@ -834,6 +901,48 @@ export default function DashboardClient({
     run();
     return () => { cancelled = true; };
   }, [activeFeedbackItem, language]);
+
+  // Auto-translate EXPANDED history entries that aren't in the UI language.
+  // Same localStorage cache strategy as the main brief (one call per entry+language).
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      if (!feedbackHistory) return;
+      const target = language === "german" ? "german" : "english";
+      for (const entry of feedbackHistory) {
+        if (cancelled) return;
+        if (!expandedHistoryIds.has(entry.id) || !entry.feedback) continue;
+        const trKey = `${entry.id}:${target}`;
+        if (historyTranslations[trKey] !== undefined || historyTranslating[trKey]) continue;
+        const detected = detectFeedbackLanguage(entry.feedback);
+        if (detected === "unknown" || detected === target) continue;
+        const cacheKey = `srs-fb-tr:log:${entry.id}:${target}:${entry.feedback.length}`;
+        let cached: string | null = null;
+        try { cached = localStorage.getItem(cacheKey); } catch { /* private mode */ }
+        if (cached) {
+          const hit = cached;
+          setHistoryTranslations(prev => ({ ...prev, [trKey]: hit }));
+          continue;
+        }
+        setHistoryTranslating(prev => ({ ...prev, [trKey]: true }));
+        try {
+          const res = await fetch("/api/translate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ logId: entry.id, target }),
+          });
+          const data = await res.json();
+          if (!cancelled && data.translated) {
+            setHistoryTranslations(prev => ({ ...prev, [trKey]: data.translated }));
+            try { localStorage.setItem(cacheKey, data.translated); } catch { /* quota */ }
+          }
+        } catch { /* quiet — the original stays readable */ }
+        finally { if (!cancelled) setHistoryTranslating(prev => ({ ...prev, [trKey]: false })); }
+      }
+    };
+    run();
+    return () => { cancelled = true; };
+  }, [expandedHistoryIds, feedbackHistory, language, historyTranslations, historyTranslating]);
 
   // Global Escape key — closes whichever modal is currently on top.
   useEffect(() => {
@@ -2937,9 +3046,7 @@ export default function DashboardClient({
                         </h3>
                       </div>
                       <div className="p-6 md:p-8">
-                        <div className="whitespace-pre-wrap font-sans text-ink-900/80 text-[14.5px] leading-[1.7]">
-                          {gradingResult.feedback}
-                        </div>
+                        <FeedbackBody text={gradingResult.feedback} />
                       </div>
                     </div>
 
@@ -3207,9 +3314,7 @@ export default function DashboardClient({
 
                 {/* Body */}
                 <div className="flex-1 overflow-y-auto p-6 md:p-8 custom-scrollbar">
-                  <div className="whitespace-pre-wrap font-sans text-ink-900/80 text-[14.5px] leading-[1.7]">
-                    {feedbackTranslation && !showFeedbackOriginal ? feedbackTranslation : activeFeedbackItem.lastFeedback}
-                  </div>
+                  <FeedbackBody text={feedbackTranslation && !showFeedbackOriginal ? feedbackTranslation : (activeFeedbackItem.lastFeedback ?? "")} />
 
                   {/* Review history: every graded attempt of this module (ReviewLog) */}
                   <div className="mt-8 pt-6 border-t border-[rgba(33,27,18,0.08)]">
@@ -3272,10 +3377,31 @@ export default function DashboardClient({
                                     exit="exit"
                                     style={{ overflow: "hidden" }}
                                   >
-                                    <div className="px-4 pb-4 pt-1 border-t border-[rgba(33,27,18,0.08)]">
-                                      <div className="whitespace-pre-wrap font-sans text-ink-600 text-xs leading-relaxed max-h-64 overflow-y-auto custom-scrollbar">
-                                        {entry.feedback}
-                                      </div>
+                                    <div className="px-4 pb-4 pt-2.5 border-t border-[rgba(33,27,18,0.08)]">
+                                      {(() => {
+                                        const target = language === "german" ? "german" : "english";
+                                        const trKey = `${entry.id}:${target}`;
+                                        const translated = historyTranslations[trKey];
+                                        const busy = historyTranslating[trKey];
+                                        return (
+                                          <>
+                                            {busy && (
+                                              <div className="flex items-center gap-1.5 text-[10px] text-ink-400 mb-2">
+                                                <ArrowPathIcon className="w-3 h-3 animate-spin" />
+                                                {language === "german" ? "Übersetze…" : "Translating…"}
+                                              </div>
+                                            )}
+                                            {translated && !showFeedbackOriginal && (
+                                              <p className="text-[10px] text-ink-300 mb-2">
+                                                {language === "german" ? "Automatisch übersetzt" : "Auto-translated"}
+                                              </p>
+                                            )}
+                                            <div className="max-h-64 overflow-y-auto custom-scrollbar">
+                                              <FeedbackBody text={translated && !showFeedbackOriginal ? translated : (entry.feedback ?? "")} size="sm" />
+                                            </div>
+                                          </>
+                                        );
+                                      })()}
                                     </div>
                                   </motion.div>
                                 )}

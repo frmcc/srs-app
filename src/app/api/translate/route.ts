@@ -12,30 +12,35 @@ export const maxDuration = 60;
  * brief is translated at most once per language.
  */
 export async function POST(req: NextRequest) {
-  let body: { itemId?: string; target?: string };
+  let body: { itemId?: string; logId?: string; target?: string };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const { itemId, target } = body;
-  if (!itemId || (target !== "german" && target !== "english")) {
-    return NextResponse.json({ error: "itemId and target ('german'|'english') are required" }, { status: 400 });
+  const { itemId, logId, target } = body;
+  if ((!itemId && !logId) || (target !== "german" && target !== "english")) {
+    return NextResponse.json({ error: "itemId or logId, and target ('german'|'english') are required" }, { status: 400 });
   }
 
-  const item = await prisma.sRSItem.findUnique({
-    where: { id: itemId },
-    select: { lastFeedback: true },
-  });
-  if (!item?.lastFeedback) {
-    return NextResponse.json({ error: "No feedback stored for this item." }, { status: 404 });
+  // Either the item's latest brief or one specific history entry (ReviewLog).
+  let feedback: string | null = null;
+  if (logId) {
+    const log = await prisma.reviewLog.findUnique({ where: { id: logId }, select: { feedback: true } });
+    feedback = log?.feedback ?? null;
+  } else if (itemId) {
+    const item = await prisma.sRSItem.findUnique({ where: { id: itemId }, select: { lastFeedback: true } });
+    feedback = item?.lastFeedback ?? null;
+  }
+  if (!feedback) {
+    return NextResponse.json({ error: "No feedback stored for this entry." }, { status: 404 });
   }
 
   const targetName = target === "german" ? "German" : "English";
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
   const res = await generateContentWithRetry(ai, "gemini-3.1-flash-lite", {
-    contents: [{ role: "user", parts: [{ text: item.lastFeedback }] }],
+    contents: [{ role: "user", parts: [{ text: feedback }] }],
     config: {
       systemInstruction:
         `Translate the following study-feedback brief into ${targetName}. ` +
