@@ -37,15 +37,10 @@ export default async function TutorPage({ params }: { params: Params }) {
   return (
     <main className="min-h-screen bg-transparent">
       {/* Header bar */}
-      <header className="sticky top-0 z-10 border-b border-[rgba(33,27,18,0.08)] bg-[#0b0908]/80 backdrop-blur-xl">
+      <header className="sticky top-0 z-10 border-b border-[rgba(33,27,18,0.07)] bg-[#F6F3EC]/92 backdrop-blur-xl">
         <div className="mx-auto flex max-w-3xl items-center gap-4 px-6 py-4">
-          <div
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-sm shadow-lg shadow-black/40"
-            style={{
-              background: "linear-gradient(135deg, #f5b14a 0%, #d97d06 100%)",
-            }}
-          >
-            🤖
+          <div className="brand-tile flex h-10 w-10 shrink-0 items-center justify-center">
+            <span className="font-display italic font-semibold text-lg text-[#2A1D07] -translate-y-px">S</span>
           </div>
           <div className="min-w-0 flex-1">
             <h1 className="truncate font-display text-lg font-semibold text-ink-900">
@@ -70,13 +65,13 @@ export default async function TutorPage({ params }: { params: Params }) {
           {/* Metadata badges */}
           <div className="mb-8 flex flex-wrap gap-2">
             <span className="inline-flex items-center gap-1.5 rounded-full border border-[rgba(239,159,31,0.22)] bg-[rgba(239,159,31,0.10)] px-4 py-1.5 text-xs font-semibold text-[#A15E03]">
-              📚 {item.subjectMain}
+              {item.subjectMain}
             </span>
             <span className="inline-flex items-center gap-1.5 rounded-full border border-[rgba(33,27,18,0.10)] bg-paper-2 px-4 py-1.5 text-xs font-medium text-ink-600">
-              📖 {item.subjectSub}
+              {item.subjectSub}
             </span>
             <span className="inline-flex items-center gap-1.5 rounded-full border border-[rgba(94,125,88,0.30)] bg-[rgba(94,125,88,0.14)] px-4 py-1.5 text-xs font-semibold text-[#4A6845]">
-              🎯 Level {item.currentLevel + 1}
+              Level {item.currentLevel + 1}
             </span>
           </div>
 

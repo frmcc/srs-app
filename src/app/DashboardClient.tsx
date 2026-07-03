@@ -266,6 +266,43 @@ const parseQuizTasks = (studentQuizText: string) => {
   return tasks;
 };
 
+/**
+ * Parse the structured "# Gesamtbewertung" header the grading pipeline puts at
+ * the top of every feedback brief into a small, localizable summary. Tolerant
+ * of language variants; anything unparsable falls back to a plain snippet.
+ */
+function parseFeedbackSummary(feedback: string): { decision: "PASS" | "REPEAT" | null; mastery: number | null; snippet: string } {
+  const head = feedback.slice(0, 600);
+  const decisionMatch = head.match(/\b(PASS|BESTANDEN|REPEAT|WIEDERHOLEN)\b/i);
+  const decision = decisionMatch
+    ? (/PASS|BESTANDEN/i.test(decisionMatch[1]) ? ("PASS" as const) : ("REPEAT" as const))
+    : null;
+  const masteryMatch = head.match(/(\d{1,3})\s*%/);
+  const mastery = masteryMatch ? Math.min(100, parseInt(masteryMatch[1], 10)) : null;
+  // First prose line that isn't a heading/bullet — usually the brief's opening sentence.
+  const prose = feedback
+    .split("\n")
+    .map(l => l.trim())
+    .find(l => l.length > 40 && !l.startsWith("#") && !l.startsWith("-") && !l.startsWith("*"));
+  const snippet = (prose ?? feedback.replace(/\s+/g, " ").trim()).slice(0, 160);
+  return { decision, mastery, snippet };
+}
+
+/** Crude language sniff for feedback briefs — decides whether to auto-translate. */
+function detectFeedbackLanguage(text: string): "german" | "english" | "unknown" {
+  const sample = text.slice(0, 1200);
+  let de = 0;
+  let en = 0;
+  for (const w of ["Gesamtbewertung", "Entscheidung", "Beherrschung", "Aufgabe", "nicht", "und", "wird", "eine"]) {
+    if (new RegExp(`\\b${w}\\b`, "i").test(sample)) de++;
+  }
+  for (const w of ["Decision", "Mastery", "assessment", "the", "and", "your", "answer", "with"]) {
+    if (new RegExp(`\\b${w}\\b`, "i").test(sample)) en++;
+  }
+  if (de === en) return "unknown";
+  return de > en ? "german" : "english";
+}
+
 /** Resolve the latest playable video URL from the stored value (plain URL or a JSON history array). */
 function latestVideoUrlOf(videoUrl: string | null): string | null {
   if (!videoUrl) return null;
@@ -509,6 +546,12 @@ export default function DashboardClient({
 
   // Prompt viewer modal (podcast prompts + video scripts)
   const [promptModal, setPromptModal] = useState<{ title: string; content: string } | null>(null);
+  /** One quiet entry point for all of a lecture's debug prompts (podcast + video scripts). */
+  const [promptsModal, setPromptsModal] = useState<{ title: string; prompts: { label: string; content: string }[] } | null>(null);
+  // Auto-translation of the open feedback brief into the UI language.
+  const [feedbackTranslation, setFeedbackTranslation] = useState<string | null>(null);
+  const [feedbackTranslating, setFeedbackTranslating] = useState(false);
+  const [showFeedbackOriginal, setShowFeedbackOriginal] = useState(false);
 
   // Library tab — free-text search over module + lecture names
   const [librarySearch, setLibrarySearch] = useState("");
@@ -744,11 +787,60 @@ export default function DashboardClient({
     return () => { cancelled = true; };
   }, [activeFeedbackItem]);
 
+  /** Opens the feedback brief with fresh translation state. */
+  const openFeedbackItem = useCallback((item: RawReviewItem) => {
+    setFeedbackTranslation(null);
+    setShowFeedbackOriginal(false);
+    setFeedbackTranslating(false);
+    setActiveFeedbackItem(item);
+  }, []);
+
+  // Fetch (or reuse a cached) translation whenever the open brief isn't in the
+  // UI language. Cached per item + language + text length in localStorage, so
+  // each brief costs at most one flash-lite call per language.
+  useEffect(() => {
+    const item = activeFeedbackItem;
+    const fb = item?.lastFeedback;
+    if (!item || !fb) return;
+    let cancelled = false;
+    const run = async () => {
+      const target = language === "german" ? "german" : "english";
+      const detected = detectFeedbackLanguage(fb);
+      if (detected === "unknown" || detected === target) {
+        if (!cancelled) { setFeedbackTranslation(null); setFeedbackTranslating(false); }
+        return;
+      }
+      const cacheKey = `srs-fb-tr:${item.id}:${target}:${fb.length}`;
+      try {
+        const cached = localStorage.getItem(cacheKey);
+        if (cached) { if (!cancelled) setFeedbackTranslation(cached); return; }
+      } catch { /* private mode */ }
+      if (cancelled) return;
+      setFeedbackTranslating(true);
+      try {
+        const res = await fetch("/api/translate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ itemId: item.id, target }),
+        });
+        const data = await res.json();
+        if (!cancelled && data.translated) {
+          setFeedbackTranslation(data.translated);
+          try { localStorage.setItem(cacheKey, data.translated); } catch { /* quota */ }
+        }
+      } catch { /* quiet — the original stays readable */ }
+      finally { if (!cancelled) setFeedbackTranslating(false); }
+    };
+    run();
+    return () => { cancelled = true; };
+  }, [activeFeedbackItem, language]);
+
   // Global Escape key — closes whichever modal is currently on top.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       if (promptModal) { setPromptModal(null); return; }
+      if (promptsModal) { setPromptsModal(null); return; }
       if (showCalendarModal) { setShowCalendarModal(false); return; }
       if (showSettingsModal) { setShowSettingsModal(false); return; }
       if (activeFeedbackItem) { setActiveFeedbackItem(null); return; }
@@ -756,7 +848,7 @@ export default function DashboardClient({
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [promptModal, showCalendarModal, showSettingsModal, activeFeedbackItem, archiveModalData]);
+  }, [promptModal, promptsModal, showCalendarModal, showSettingsModal, activeFeedbackItem, archiveModalData]);
 
   // The inline "Wirklich löschen?" prompt resets itself if not confirmed.
   useEffect(() => {
@@ -1648,7 +1740,7 @@ export default function DashboardClient({
                                           </button>
                                           {review.raw.lastFeedback && (
                                             <button
-                                              onClick={() => setActiveFeedbackItem(review.raw)}
+                                              onClick={() => openFeedbackItem(review.raw)}
                                               className="inline-flex items-center gap-1.5 text-xs text-ink-400 hover:text-ink-600 transition-colors cursor-pointer"
                                               style={{ fontWeight: 550 }}
                                             >
@@ -2376,45 +2468,26 @@ export default function DashboardClient({
                                                                     href={`/api/source/${item.id}`}
                                                                     target="_blank"
                                                                     rel="noopener noreferrer"
-                                                                    className="flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg bg-[rgba(239,159,31,0.08)] border border-[rgba(239,159,31,0.22)] text-amber-600 hover:text-[#A15E03] hover:bg-[rgba(239,159,31,0.10)] transition-all"
+                                                                    className="chip chip-amber"
                                                                   >
-                                                                    <DocumentTextIcon className="w-3 h-3" />
+                                                                    <DocumentTextIcon className="w-3.5 h-3.5" strokeWidth={1.6} />
                                                                     {language === "german" ? "Original-PDF" : "Original PDF"}
                                                                   </a>
                                                                 ) : (
-                                                                  <div className="flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg bg-paper-0 border border-[rgba(33,27,18,0.08)] text-ink-300">
-                                                                    <DocumentTextIcon className="w-3 h-3" />
+                                                                  <div className="chip chip-dashed">
+                                                                    <DocumentTextIcon className="w-3.5 h-3.5" strokeWidth={1.6} />
                                                                     {language === "german" ? "Keine PDF" : "No PDF"}
                                                                   </div>
                                                                 )}
-                                                                {(() => {
-                                                                  const vurl = latestVideoUrlOf(item.videoUrl);
-                                                                  return vurl ? (
-                                                                    <a
-                                                                      href={vurl}
-                                                                      target="_blank"
-                                                                      rel="noopener noreferrer"
-                                                                      className="flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg bg-[rgba(94,125,88,0.14)] border border-[rgba(94,125,88,0.30)] text-[#4A6845] hover:text-[#4A6845] hover:bg-[rgba(94,125,88,0.14)] transition-all"
-                                                                    >
-                                                                      <VideoCameraIcon className="w-3 h-3" />
-                                                                      Video
-                                                                    </a>
-                                                                  ) : (
-                                                                    <div className="flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg bg-paper-0 border border-[rgba(33,27,18,0.08)] text-ink-300">
-                                                                      <VideoCameraIcon className="w-3 h-3" />
-                                                                      {language === "german" ? "Kein Video" : "No Video"}
-                                                                    </div>
-                                                                  );
-                                                                })()}
                                                                 {item.tutorPromptDocId && (
                                                                   <a
                                                                     href={`/tutor/${item.tutorPromptDocId}`}
                                                                     target="_blank"
                                                                     rel="noopener noreferrer"
-                                                                    className="flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg bg-[rgba(239,159,31,0.08)] border border-[rgba(239,159,31,0.22)] text-amber-600 hover:text-[#A15E03] hover:bg-[rgba(239,159,31,0.10)] transition-all"
+                                                                    className="chip"
                                                                   >
-                                                                    <AcademicCapIcon className="w-3 h-3" />
-                                                                    {language === "german" ? "Tutor-Prompt" : "Tutor Prompt"}
+                                                                    <AcademicCapIcon className="w-3.5 h-3.5" strokeWidth={1.6} />
+                                                                    {language === "german" ? "Tutor-Brief" : "Tutor brief"}
                                                                   </a>
                                                                 )}
                                                                 {/* Podcast links — show actual links when available, otherwise generation buttons */}
@@ -2423,21 +2496,21 @@ export default function DashboardClient({
                                                                     href={item.prePodcastUrl}
                                                                     target="_blank"
                                                                     rel="noopener noreferrer"
-                                                                    className="flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg bg-paper-2 border border-[rgba(33,27,18,0.10)] text-ink-600 hover:text-ink-900 hover:bg-paper-2 transition-all"
+                                                                    className="chip"
                                                                   >
-                                                                    <SpeakerWaveIcon className="w-3 h-3" />
-                                                                    {language === "german" ? "Audio 1" : "Audio 1"}
+                                                                    <SpeakerWaveIcon className="w-3.5 h-3.5" strokeWidth={1.6} />
+                                                                    {language === "german" ? "Audio · vorher" : "Audio · before"}
                                                                   </a>
                                                                 ) : item.prePodcastPrompt ? (
                                                                   <button
                                                                     onClick={(e) => { e.stopPropagation(); handleGeneratePodcast(e, item.id, "pre"); }}
                                                                     disabled={!!generatingPodcasts[`${item.id}-pre`]}
-                                                                    className="flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg bg-paper-2 border border-[rgba(33,27,18,0.10)] text-ink-400 hover:text-[#A15E03] hover:bg-paper-2 transition-all cursor-pointer disabled:cursor-wait"
+                                                                    className="chip chip-dashed !cursor-pointer hover:!text-ink-600 disabled:!cursor-wait"
                                                                   >
-                                                                    <SpeakerWaveIcon className="w-3 h-3" />
+                                                                    <SpeakerWaveIcon className="w-3.5 h-3.5" strokeWidth={1.6} />
                                                                     {generatingPodcasts[`${item.id}-pre`]
-                                                                      ? (language === "german" ? "Gestartet…" : "Started…")
-                                                                      : (language === "german" ? "Podcast 1 generieren" : "Generate Podcast 1")}
+                                                                      ? (language === "german" ? "Audio · vorher — gestartet…" : "Audio · before — started…")
+                                                                      : (language === "german" ? "Audio · vorher — erstellen" : "Audio · before — generate")}
                                                                   </button>
                                                                 ) : null}
                                                                 {item.postPodcastUrl && item.postPodcastUrl.startsWith("http") ? (
@@ -2445,86 +2518,89 @@ export default function DashboardClient({
                                                                     href={item.postPodcastUrl}
                                                                     target="_blank"
                                                                     rel="noopener noreferrer"
-                                                                    className="flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg bg-paper-2 border border-[rgba(33,27,18,0.10)] text-ink-600 hover:text-ink-900 hover:bg-paper-2 transition-all"
+                                                                    className="chip"
                                                                   >
-                                                                    <SpeakerWaveIcon className="w-3 h-3" />
-                                                                    {language === "german" ? "Audio 2" : "Audio 2"}
+                                                                    <SpeakerWaveIcon className="w-3.5 h-3.5" strokeWidth={1.6} />
+                                                                    {language === "german" ? "Audio · nachher" : "Audio · after"}
                                                                   </a>
                                                                 ) : item.postPodcastPrompt ? (
                                                                   <button
                                                                     onClick={(e) => { e.stopPropagation(); handleGeneratePodcast(e, item.id, "post"); }}
                                                                     disabled={!!generatingPodcasts[`${item.id}-post`]}
-                                                                    className="flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg bg-paper-2 border border-[rgba(33,27,18,0.10)] text-ink-400 hover:text-[#A15E03] hover:bg-paper-2 transition-all cursor-pointer disabled:cursor-wait"
+                                                                    className="chip chip-dashed !cursor-pointer hover:!text-ink-600 disabled:!cursor-wait"
                                                                   >
-                                                                    <SpeakerWaveIcon className="w-3 h-3" />
+                                                                    <SpeakerWaveIcon className="w-3.5 h-3.5" strokeWidth={1.6} />
                                                                     {generatingPodcasts[`${item.id}-post`]
-                                                                      ? (language === "german" ? "Gestartet…" : "Started…")
-                                                                      : (language === "german" ? "Podcast 2 generieren" : "Generate Podcast 2")}
+                                                                      ? (language === "german" ? "Audio · nachher — gestartet…" : "Audio · after — started…")
+                                                                      : (language === "german" ? "Audio · nachher — erstellen" : "Audio · after — generate")}
                                                                   </button>
                                                                 ) : null}
-                                                                {item.prePodcastPrompt && (
+                                                                {(() => {
+                                                                  const vurl = latestVideoUrlOf(item.videoUrl);
+                                                                  return vurl ? (
+                                                                    <a
+                                                                      href={vurl}
+                                                                      target="_blank"
+                                                                      rel="noopener noreferrer"
+                                                                      className="chip"
+                                                                    >
+                                                                      <VideoCameraIcon className="w-3.5 h-3.5" strokeWidth={1.6} />
+                                                                      Video
+                                                                    </a>
+                                                                  ) : (
+                                                                    <div className="chip chip-dashed">
+                                                                      <VideoCameraIcon className="w-3.5 h-3.5" strokeWidth={1.6} />
+                                                                      {language === "german" ? "Video — nach Bewertung" : "Video — after grading"}
+                                                                    </div>
+                                                                  );
+                                                                })()}
+                                                                {(item.prePodcastPrompt || item.postPodcastPrompt || item.lastVideoPrompt1 || item.lastVideoPrompt2) && (
                                                                   <button
-                                                                    onClick={() => setPromptModal({
-                                                                      title: language === "german" ? `Podcast Pre-Prompt — ${item.subjectSub}` : `Pre-Podcast Prompt — ${item.subjectSub}`,
-                                                                      content: item.prePodcastPrompt!,
+                                                                    onClick={() => setPromptsModal({
+                                                                      title: item.subjectSub,
+                                                                      prompts: [
+                                                                        ...(item.prePodcastPrompt ? [{ label: language === "german" ? "Podcast-Prompt · vorher" : "Podcast prompt · pre", content: item.prePodcastPrompt }] : []),
+                                                                        ...(item.postPodcastPrompt ? [{ label: language === "german" ? "Podcast-Prompt · nachher" : "Podcast prompt · post", content: item.postPodcastPrompt }] : []),
+                                                                        ...(item.lastVideoPrompt1 ? [{ label: language === "german" ? "Video-Skript 1" : "Video script 1", content: item.lastVideoPrompt1 }] : []),
+                                                                        ...(item.lastVideoPrompt2 ? [{ label: language === "german" ? "Video-Skript 2" : "Video script 2", content: item.lastVideoPrompt2 }] : []),
+                                                                      ],
                                                                     })}
-                                                                    className="flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg bg-paper-2 border border-[rgba(33,27,18,0.10)] text-ink-600 hover:text-ink-900 hover:bg-paper-2 transition-all cursor-pointer"
+                                                                    className="chip cursor-pointer"
                                                                   >
-                                                                    <DocumentTextIcon className="w-3 h-3" />
-                                                                    {language === "german" ? "Podcast Pre-Prompt" : "Pre-Podcast Prompt"}
-                                                                  </button>
-                                                                )}
-                                                                {item.postPodcastPrompt && (
-                                                                  <button
-                                                                    onClick={() => setPromptModal({
-                                                                      title: language === "german" ? `Podcast Post-Prompt — ${item.subjectSub}` : `Post-Podcast Prompt — ${item.subjectSub}`,
-                                                                      content: item.postPodcastPrompt!,
-                                                                    })}
-                                                                    className="flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg bg-paper-2 border border-[rgba(33,27,18,0.10)] text-ink-600 hover:text-ink-900 hover:bg-paper-2 transition-all cursor-pointer"
-                                                                  >
-                                                                    <DocumentTextIcon className="w-3 h-3" />
-                                                                    {language === "german" ? "Podcast Post-Prompt" : "Post-Podcast Prompt"}
-                                                                  </button>
-                                                                )}
-                                                                {item.lastVideoPrompt1 && (
-                                                                  <button
-                                                                    onClick={() => setPromptModal({
-                                                                      title: language === "german" ? `Video-Skript 1 — ${item.subjectSub}` : `Video Script 1 — ${item.subjectSub}`,
-                                                                      content: item.lastVideoPrompt1!,
-                                                                    })}
-                                                                    className="flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg bg-paper-2 border border-[rgba(33,27,18,0.10)] text-ink-600 hover:text-ink-900 hover:bg-paper-2 transition-all cursor-pointer"
-                                                                  >
-                                                                    <VideoCameraIcon className="w-3 h-3" />
-                                                                    {language === "german" ? "Video-Skript 1" : "Video Script 1"}
-                                                                  </button>
-                                                                )}
-                                                                {item.lastVideoPrompt2 && (
-                                                                  <button
-                                                                    onClick={() => setPromptModal({
-                                                                      title: language === "german" ? `Video-Skript 2 — ${item.subjectSub}` : `Video Script 2 — ${item.subjectSub}`,
-                                                                      content: item.lastVideoPrompt2!,
-                                                                    })}
-                                                                    className="flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg bg-paper-2 border border-[rgba(33,27,18,0.10)] text-ink-600 hover:text-ink-900 hover:bg-paper-2 transition-all cursor-pointer"
-                                                                  >
-                                                                    <VideoCameraIcon className="w-3 h-3" />
-                                                                    {language === "german" ? "Video-Skript 2" : "Video Script 2"}
+                                                                    <DocumentTextIcon className="w-3.5 h-3.5" strokeWidth={1.6} />
+                                                                    Prompts
                                                                   </button>
                                                                 )}
                                                               </div>
                                                             </div>
                                                           )}
 
-                                                          {/* Last feedback snippet */}
-                                                          {item.lastFeedback && (
-                                                            <div>
-                                                              <p className="caps-label mb-2">
-                                                                {language === "german" ? "Letztes Feedback" : "Last Assessment"}
-                                                              </p>
-                                                              <div className="bg-paper-0 rounded-xl border border-[rgba(33,27,18,0.08)] p-3.5 max-h-28 overflow-y-auto custom-scrollbar">
-                                                                <p className="text-xs text-ink-600 leading-relaxed whitespace-pre-wrap">{item.lastFeedback}</p>
+                                                          {/* Last feedback — parsed summary; opens the full brief (auto-translated) */}
+                                                          {item.lastFeedback && (() => {
+                                                            const summary = parseFeedbackSummary(item.lastFeedback);
+                                                            return (
+                                                              <div>
+                                                                <p className="caps-label mb-2">
+                                                                  {language === "german" ? "Letztes Feedback" : "Last feedback"}
+                                                                </p>
+                                                                <button
+                                                                  onClick={() => openFeedbackItem(item)}
+                                                                  className="w-full flex items-center gap-2.5 text-left bg-paper-0 hover:bg-[#FBF9F4] rounded-xl border border-[rgba(33,27,18,0.08)] px-4 py-3 transition-colors cursor-pointer group/fb"
+                                                                >
+                                                                  {summary.decision && (
+                                                                    <span className={`text-[9px] font-bold uppercase tracking-[0.12em] px-2 py-0.5 rounded-full border shrink-0 ${summary.decision === "PASS" ? "bg-[rgba(94,125,88,0.14)] text-[#4A6845] border-[rgba(94,125,88,0.30)]" : "bg-[rgba(176,106,78,0.12)] text-[#96543C] border-[rgba(176,106,78,0.25)]"}`}>
+                                                                      {summary.decision === "PASS" ? (language === "german" ? "Bestanden" : "Passed") : (language === "german" ? "Wiederholen" : "Repeat")}
+                                                                    </span>
+                                                                  )}
+                                                                  {summary.mastery !== null && (
+                                                                    <span className="text-xs font-semibold text-ink-600 tnum shrink-0">≈ {summary.mastery} %</span>
+                                                                  )}
+                                                                  <span className="text-xs text-ink-400 flex-1 min-w-0 truncate">{summary.snippet}</span>
+                                                                  <ChevronRightIcon className="w-3.5 h-3.5 text-ink-300 group-hover/fb:text-ink-600 transition-colors shrink-0" strokeWidth={2} />
+                                                                </button>
                                                               </div>
-                                                            </div>
-                                                          )}
+                                                            );
+                                                          })()}
 
                                                           {/* Meta row */}
                                                           <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-xs text-ink-400 pt-1 border-t border-[rgba(33,27,18,0.08)]">
@@ -3110,12 +3186,29 @@ export default function DashboardClient({
                 <div className="border-b border-[rgba(33,27,18,0.08)] bg-paper-0 px-6 py-3.5 flex items-center gap-2.5">
                   <DocumentTextIcon className="w-4 h-4 text-amber-600" />
                   <h3 className="caps-label !text-ink-600">{language === "german" ? "Feedback & Auswertung" : "Examiner's brief"}</h3>
+                  <span className="flex-1" />
+                  {feedbackTranslating ? (
+                    <span className="flex items-center gap-1.5 text-[11px] text-ink-400">
+                      <ArrowPathIcon className="w-3 h-3 animate-spin" />
+                      {language === "german" ? "Übersetze…" : "Translating…"}
+                    </span>
+                  ) : feedbackTranslation ? (
+                    <button
+                      onClick={() => setShowFeedbackOriginal(prev => !prev)}
+                      className="text-[11px] text-ink-400 hover:text-ink-600 transition-colors cursor-pointer"
+                      style={{ fontWeight: 550 }}
+                    >
+                      {showFeedbackOriginal
+                        ? (language === "german" ? "Übersetzung anzeigen" : "Show translation")
+                        : (language === "german" ? "Automatisch übersetzt · Original anzeigen" : "Auto-translated · show original")}
+                    </button>
+                  ) : null}
                 </div>
 
                 {/* Body */}
                 <div className="flex-1 overflow-y-auto p-6 md:p-8 custom-scrollbar">
-                  <div className="whitespace-pre-wrap font-sans text-ink-600 text-sm leading-relaxed">
-                    {activeFeedbackItem.lastFeedback}
+                  <div className="whitespace-pre-wrap font-sans text-ink-900/80 text-[14.5px] leading-[1.7]">
+                    {feedbackTranslation && !showFeedbackOriginal ? feedbackTranslation : activeFeedbackItem.lastFeedback}
                   </div>
 
                   {/* Review history: every graded attempt of this module (ReviewLog) */}
@@ -3637,6 +3730,54 @@ export default function DashboardClient({
 
       {/* Toast notifications (non-blocking alert replacement) */}
       <ToastStack toasts={toasts} onDismiss={dismissToast} />
+
+      {/* Prompts list — one quiet entry point for a lecture's debug prompts */}
+      <AnimatePresence>
+        {promptsModal && (
+          <motion.div
+            {...overlayMotion}
+            key="prompts-list-backdrop"
+            className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-[rgba(33,27,18,0.32)] backdrop-blur-[3px]"
+            onClick={() => setPromptsModal(null)}
+          >
+            <motion.div
+              {...modalPanel}
+              key="prompts-list-modal"
+              onClick={(e) => e.stopPropagation()}
+              className="card-glass border border-[rgba(33,27,18,0.10)] w-full max-w-md overflow-hidden"
+            >
+              <div className="flex items-start justify-between gap-4 px-6 py-5 border-b border-[rgba(33,27,18,0.07)]">
+                <div className="min-w-0">
+                  <p className="caps-label mb-1">Prompts</p>
+                  <h3 className="text-[15px] font-semibold text-ink-900 truncate">{promptsModal.title}</h3>
+                </div>
+                <button
+                  onClick={() => setPromptsModal(null)}
+                  className="w-8 h-8 flex items-center justify-center rounded-[10px] text-ink-400 hover:text-ink-900 hover:bg-[rgba(33,27,18,0.06)] transition-colors cursor-pointer shrink-0"
+                >
+                  <XMarkIcon className="w-4 h-4" strokeWidth={1.8} />
+                </button>
+              </div>
+              <div className="p-4 flex flex-col gap-2">
+                {promptsModal.prompts.map((p) => (
+                  <button
+                    key={p.label}
+                    onClick={() => setPromptModal({ title: `${p.label} — ${promptsModal.title}`, content: p.content })}
+                    className="w-full flex items-center gap-3 bg-paper-0 hover:bg-[#FBF9F4] border border-[rgba(33,27,18,0.08)] rounded-xl px-4 py-3 text-left transition-colors cursor-pointer group/pr"
+                  >
+                    <DocumentTextIcon className="w-4 h-4 text-ink-400 shrink-0" strokeWidth={1.6} />
+                    <span className="flex-1 text-[13px] font-medium text-ink-900">{p.label}</span>
+                    <ChevronRightIcon className="w-3.5 h-3.5 text-ink-300 group-hover/pr:text-ink-600 transition-colors shrink-0" strokeWidth={2} />
+                  </button>
+                ))}
+                <p className="text-[11px] text-ink-400 px-1 pt-1.5">
+                  {language === "german" ? "Zum Debuggen — öffnet den Prompt-Viewer." : "For debugging — opens the prompt viewer."}
+                </p>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Prompt viewer modal — podcast prompts & video scripts */}
       <AnimatePresence>

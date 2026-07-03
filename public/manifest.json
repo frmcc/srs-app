@@ -4,8 +4,8 @@
   "description": "Spaced Repetition Quiz Generator & Grader",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0a0a0f",
-  "theme_color": "#6366f1",
+  "background_color": "#F6F3EC",
+  "theme_color": "#F6F3EC",
   "icons": [
     {
       "src": "/icon-192.svg",
