@@ -5,7 +5,6 @@ import { signIn } from "next-auth/react";
 import { motion, MotionConfig } from "framer-motion";
 import { riseChild, staggerContainer, EASE_OUT, DUR } from "@/lib/motion";
 import {
-  CpuChipIcon,
   ArrowPathIcon,
   ExclamationTriangleIcon,
   LockClosedIcon,
@@ -48,28 +47,15 @@ export default function LoginClient({ error, callbackUrl = "/" }: { error?: stri
   return (
     <MotionConfig reducedMotion="user">
     <main className="min-h-[100dvh] flex flex-col bg-transparent relative overflow-x-clip">
-      {/* Slowly drifting ambient orbs — fixed to viewport so nothing clips them */}
-      <div className="fixed inset-0 pointer-events-none z-0" aria-hidden="true">
-        <div
-          className="ambient-drift-slow absolute rounded-full"
-          style={{
-            width: "700px", height: "700px",
-            background: "radial-gradient(circle, rgba(245,158,11,0.13) 0%, transparent 65%)",
-            top: "-15%", left: "-10%",
-          }}
-        />
-        <div
-          className="ambient-drift-slower absolute rounded-full"
-          style={{
-            width: "420px", height: "420px",
-            background: "radial-gradient(circle, rgba(253,211,141,0.07) 0%, transparent 65%)",
-            bottom: "5%", right: "5%",
-          }}
-        />
-      </div>
+      {/* ONE static lamp wash, top-left — no drifting orbs, no noise */}
+      <div
+        className="fixed inset-0 pointer-events-none z-0"
+        aria-hidden="true"
+        style={{ background: "radial-gradient(900px 600px at 14% -6%, rgba(239,159,31,0.09), transparent 62%)" }}
+      />
 
-      <div className="flex-1 flex items-center justify-center px-5 py-12 relative z-10">
-        <div className="w-full max-w-5xl grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-20 items-center">
+      <div className="flex-1 flex items-center justify-center px-5 py-12 lg:px-16 relative z-10">
+        <div className="w-full max-w-[1040px] grid grid-cols-1 lg:grid-cols-[1fr_420px] gap-10 lg:gap-24 items-center">
 
           {/* Brand panel */}
           <motion.section
@@ -79,58 +65,57 @@ export default function LoginClient({ error, callbackUrl = "/" }: { error?: stri
             className="flex flex-col items-center lg:items-start text-center lg:text-left"
           >
 
-            <motion.div variants={riseChild} className="flex items-center gap-3.5 mb-10">
-              <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-amber-300 to-amber-600 flex items-center justify-center shadow-[0_6px_20px_-6px_rgba(245,158,11,0.65)] ring-1 ring-amber-200/40">
-                <CpuChipIcon className="text-stone-950 w-5 h-5" strokeWidth={2} />
+            <motion.div variants={riseChild} className="flex items-center gap-3">
+              <div className="brand-tile !rounded-xl w-10 h-10">
+                <span className="font-display italic font-semibold text-[21px] text-[#2A1D07] -translate-y-px">S</span>
               </div>
-              <h1 className="font-display text-[22px] font-medium tracking-tight leading-none text-white">SRS<span className="text-gradient italic">Master</span></h1>
+              <h1 className="text-[17px] font-bold tracking-[-0.01em] leading-none text-ink-900 font-sans">SRS <span className="font-display italic font-medium text-[#C97706]">Master</span></h1>
             </motion.div>
 
-            <motion.p variants={riseChild} className="eyebrow mb-4">Spaced Repetition System</motion.p>
-            <motion.h2 variants={riseChild} className="font-display text-3xl sm:text-[2.75rem] font-medium tracking-tight text-white leading-[1.08] mb-5">
+            <motion.h2 variants={riseChild} className="font-display text-4xl sm:text-[54px] tracking-[-0.022em] text-ink-900 leading-[1.06] mt-11" style={{ fontWeight: 460 }}>
               Lerne weniger.<br />
-              Behalte <em className="text-gradient not-italic font-display italic">mehr</em>.
+              Behalte <em className="font-display italic text-[#C97706]">mehr</em>.
             </motion.h2>
-            <motion.p variants={riseChild} className="text-white/45 text-sm sm:text-base leading-relaxed max-w-md mb-10">
-              Lade deine Vorlesungsunterlagen hoch — die KI erstellt Quizze, Tutor-Prompts
-              und Podcasts und plant deine Wiederholungen genau dann, wenn dein Gehirn sie braucht.
+            <motion.p variants={riseChild} className="text-ink-600 text-[15px] sm:text-base leading-[1.6] max-w-[440px] mt-5">
+              Lade deine Vorlesungsunterlagen hoch — die KI schreibt deine Quizze, brieft deinen Tutor,
+              nimmt dein Audio auf und plant jede Wiederholung genau dann, wenn dein Gedächtnis sie braucht.
             </motion.p>
 
-            <motion.ul variants={riseChild} className="space-y-3.5 text-sm text-white/55">
+            <motion.ul variants={riseChild} className="flex flex-col gap-3.5 text-[14.5px] text-ink-900 mt-9">
               <li className="flex items-center gap-3">
-                <span className="ember-dot w-1.5 h-1.5 rounded-full bg-amber-300 shrink-0"></span>
-                KI-generierte Quizze aus deinen eigenen Unterlagen
+                <span className="w-1.5 h-1.5 rounded-full bg-[#EF9F1F] shrink-0"></span>
+                Quizze, generiert aus deinen eigenen Unterlagen
               </li>
               <li className="flex items-center gap-3">
-                <span className="ember-dot w-1.5 h-1.5 rounded-full bg-amber-300 shrink-0"></span>
-                Intelligente Wiederholungsplanung mit Kalender-Sync
+                <span className="w-1.5 h-1.5 rounded-full bg-[#EF9F1F] shrink-0"></span>
+                Wiederholungen über Monate verteilt, mit Kalender-Sync
               </li>
               <li className="flex items-center gap-3">
-                <span className="ember-dot w-1.5 h-1.5 rounded-full bg-amber-300 shrink-0"></span>
-                Audio-Podcasts &amp; KI-Tutor zu jedem Modul
+                <span className="w-1.5 h-1.5 rounded-full bg-[#EF9F1F] shrink-0"></span>
+                Tutor und Audio-Begleiter neben jedem Quiz
               </li>
             </motion.ul>
           </motion.section>
 
           {/* Auth card */}
           <motion.section
-            initial={{ opacity: 0, y: 24, filter: "blur(10px)" }}
-            animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-            transition={{ duration: DUR.slow, ease: EASE_OUT, delay: 0.35 }}
-            className="w-full max-w-md mx-auto lg:mx-0 lg:justify-self-end"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: DUR.gentle, ease: EASE_OUT, delay: 0.2 }}
+            className="w-full max-w-[420px] mx-auto lg:mx-0 lg:justify-self-end"
           >
-            <div className="card-glass gradient-border p-8 md:p-10 border border-white/[0.1]">
-              <p className="eyebrow mb-3">Willkommen zurück</p>
-              <h3 className="font-display text-2xl font-medium tracking-tight text-white mb-2">
-                In dein <em className="text-gradient not-italic font-display italic">Studienarchiv</em>
+            <div className="card-glass px-[34px] py-9 border border-[rgba(33,27,18,0.08)]">
+              <p className="caps-label tracking-[0.13em]">Willkommen zurück</p>
+              <h3 className="font-display text-[26px] tracking-[-0.015em] text-ink-900 mt-2.5" style={{ fontWeight: 480 }}>
+                In dein Studienarchiv
               </h3>
-              <p className="text-sm text-white/45 leading-relaxed mb-8">
-                Melde dich mit deinem Google-Konto an, um deine Module, Quizze und Wiederholungen zu öffnen.
+              <p className="text-[13.5px] text-ink-600 leading-[1.55] mt-2">
+                Melde dich mit Google an, um deine Module, Quizze und deinen Zeitplan zu öffnen.
               </p>
 
               {errorMessage && (
-                <div className="mb-6 p-4 rounded-xl bg-rose-500/[0.07] border border-rose-400/20 text-rose-200 text-sm flex items-start gap-2.5 leading-relaxed">
-                  <ExclamationTriangleIcon className="w-5 h-5 shrink-0 mt-0.5 text-rose-300" />
+                <div className="mt-6 p-4 rounded-xl bg-[rgba(176,106,78,0.08)] border border-[rgba(176,106,78,0.22)] text-[#96543C] text-[13px] flex items-start gap-2.5 leading-relaxed">
+                  <ExclamationTriangleIcon className="w-[18px] h-[18px] shrink-0 mt-0.5 text-[#B06A4E]" strokeWidth={1.6} />
                   <span>{errorMessage}</span>
                 </div>
               )}
@@ -138,29 +123,29 @@ export default function LoginClient({ error, callbackUrl = "/" }: { error?: stri
               <button
                 onClick={handleSignIn}
                 disabled={isSigningIn}
-                className="w-full bg-white hover:bg-amber-50 text-stone-900 font-medium rounded-xl py-3.5 px-5 flex items-center justify-center gap-3 text-sm transition-all cursor-pointer border border-white/80 shadow-[0_8px_24px_-8px_rgba(255,255,255,0.25)] hover:-translate-y-px hover:shadow-[0_12px_30px_-8px_rgba(255,255,255,0.3)] active:translate-y-0 disabled:opacity-60 disabled:cursor-wait disabled:hover:translate-y-0"
+                className="w-full h-[50px] mt-[26px] bg-paper-1 hover:bg-[#FBF9F4] text-ink-900 font-semibold rounded-[14px] px-5 flex items-center justify-center gap-[11px] text-[14.5px] transition-all cursor-pointer border border-[rgba(33,27,18,0.13)] shadow-[0_1px_2px_rgba(50,38,20,0.05)] hover:-translate-y-px hover:shadow-[0_6px_18px_-8px_rgba(50,38,20,0.25)] active:translate-y-0 active:scale-[0.99] disabled:opacity-60 disabled:cursor-wait disabled:hover:translate-y-0"
               >
                 {isSigningIn ? (
                   <>
-                    <ArrowPathIcon className="w-5 h-5 animate-spin text-stone-500" />
+                    <ArrowPathIcon className="w-[19px] h-[19px] animate-spin text-ink-400" strokeWidth={1.6} />
                     Verbinde mit Google…
                   </>
                 ) : (
                   <>
                     <GoogleMark />
-                    Mit Google anmelden
+                    {error === "AccessDenied" ? "Mit anderem Konto versuchen" : "Mit Google anmelden"}
                   </>
                 )}
               </button>
 
               <div className="flex items-center gap-3 my-7">
-                <div className="flex-1 h-px bg-white/[0.07]"></div>
-                <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/25">Sicher</span>
-                <div className="flex-1 h-px bg-white/[0.07]"></div>
+                <div className="flex-1 h-px bg-[rgba(33,27,18,0.08)]"></div>
+                <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-ink-400">Privat</span>
+                <div className="flex-1 h-px bg-[rgba(33,27,18,0.08)]"></div>
               </div>
 
-              <p className="text-xs text-white/35 leading-relaxed flex items-start gap-2">
-                <LockClosedIcon className="w-3.5 h-3.5 shrink-0 mt-0.5 text-amber-300/70" />
+              <p className="text-xs text-ink-600 leading-relaxed flex items-start gap-2">
+                <LockClosedIcon className="w-3.5 h-3.5 shrink-0 mt-0.5 text-amber-600" strokeWidth={1.6} />
                 <span>
                   Privater Lernbereich — nur freigeschaltete Google-Konten können sich anmelden.
                   Google bestätigt deine Identität, mehr nicht.
@@ -171,7 +156,7 @@ export default function LoginClient({ error, callbackUrl = "/" }: { error?: stri
         </div>
       </div>
 
-      <footer className="py-6 text-center text-xs text-white/20 relative z-10">
+      <footer className="py-6 text-center text-xs text-ink-400 relative z-10">
         © {new Date().getFullYear()} SRS Master · Built for serious students
       </footer>
     </main>

@@ -20,7 +20,6 @@ import {
   CalendarDaysIcon,
   ChevronRightIcon,
   SparklesIcon,
-  CheckCircleIcon,
   ClockIcon,
   ArrowPathIcon,
   DocumentTextIcon,
@@ -409,6 +408,20 @@ export default function DashboardClient({
   const [parsedTasks, setParsedTasks] = useState<ReturnType<typeof parseQuizTasks>>([]);
   const [individualAnswers, setIndividualAnswers] = useState<Record<string, string>>({});
   const [isGrading, setIsGrading] = useState(false);
+
+  // Right-rail pass-rate card (last 30 days) — fetched lazily, non-blocking.
+  const [passRate30, setPassRate30] = useState<{ passed: number; total: number } | null>(null);
+  useEffect(() => {
+    fetch("/api/stats")
+      .then((r) => r.json())
+      .then((d) => {
+        if (!Array.isArray(d?.logs)) return;
+        const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+        const recent = d.logs.filter((l: { completedAt: string }) => new Date(l.completedAt).getTime() >= cutoff);
+        setPassRate30({ passed: recent.filter((l: { passed: boolean }) => l.passed).length, total: recent.length });
+      })
+      .catch(() => {});
+  }, []);
 
   // ---- Interactive Mode: reads each question aloud (Gemini TTS with browser
   // fallback), then dictates the spoken answer into the box until the user says
@@ -1281,128 +1294,127 @@ export default function DashboardClient({
       <div className="flex flex-col md:flex-row w-full print:hidden">
 
         {/* Mobile Top Bar */}
-        <div className="md:hidden flex items-center justify-between px-5 pb-4 pt-[max(1rem,env(safe-area-inset-top))] border-b border-white/[0.07] bg-[#0e0c0a]/90 backdrop-blur-xl fixed top-0 left-0 right-0 z-50">
-          <button onClick={() => { setActiveTab("dashboard"); setShowMobileMenu(false); }} className="flex items-center gap-3 cursor-pointer text-left transition-opacity hover:opacity-80">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-300 to-amber-600 flex items-center justify-center shadow-[0_4px_16px_-4px_rgba(245,158,11,0.6)]">
-              <CpuChipIcon className="text-stone-950 w-4.5 h-4.5" strokeWidth={2} />
+        <div className="md:hidden flex items-center justify-between px-5 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] border-b border-[rgba(33,27,18,0.07)] bg-[#F6F3EC]/92 backdrop-blur-xl fixed top-0 left-0 right-0 z-50">
+          <button onClick={() => { setActiveTab("dashboard"); setShowMobileMenu(false); }} className="flex items-center gap-2.5 cursor-pointer text-left transition-opacity hover:opacity-80">
+            <div className="brand-tile w-7 h-7 rounded-[8px]">
+              <span className="font-display italic font-semibold text-[13px] text-[#2A1D07] -translate-y-px">S</span>
             </div>
-            <h1 className="font-display text-xl font-medium tracking-tight text-white">SRS<span className="text-gradient italic">Master</span></h1>
+            <h1 className="text-[15px] font-bold tracking-[-0.01em] text-ink-900">SRS <span className="font-display italic font-medium text-[#C97706]">Master</span></h1>
           </button>
-          <button onClick={() => setShowMobileMenu(!showMobileMenu)} className="p-2 text-white/50 hover:text-white cursor-pointer">
+          <button onClick={() => setShowMobileMenu(!showMobileMenu)} className="p-2 -mr-2 text-ink-600 hover:text-ink-900 cursor-pointer">
             {showMobileMenu ? <XMarkIcon className="w-6 h-6" /> : <Bars3Icon className="w-6 h-6" />}
           </button>
         </div>
 
         {/* Spacer for fixed Mobile Top Bar */}
-        <div className="md:hidden px-5 pb-4 pt-[max(1rem,env(safe-area-inset-top))] opacity-0 pointer-events-none">
-          <div className="h-9"></div>
+        <div className="md:hidden px-5 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] opacity-0 pointer-events-none">
+          <div className="h-7"></div>
         </div>
 
         {/* Sidebar */}
         <motion.aside
-          initial={{ x: -300, opacity: 0 }}
+          initial={{ x: -24, opacity: 0 }}
           animate={{ x: 0, opacity: 1 }}
-          transition={{ duration: 0.7, ease: EASE_OUT }}
-          className={`${showMobileMenu ? 'flex' : 'hidden'} app-shell-sidebar md:flex w-full md:w-[268px] sidebar-gradient border-r border-white/[0.07] flex-col px-5 pt-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] md:sticky md:top-0 min-h-[calc(100dvh_-_69px)] md:min-h-0 md:h-[100dvh] z-40 overflow-y-auto custom-scrollbar`}
+          transition={{ duration: 0.32, ease: EASE_OUT }}
+          className={`${showMobileMenu ? 'flex' : 'hidden'} app-shell-sidebar md:flex w-full md:w-[264px] sidebar-gradient border-r border-[rgba(33,27,18,0.07)] flex-col px-[18px] pt-[26px] pb-[max(1.25rem,env(safe-area-inset-bottom))] md:sticky md:top-0 min-h-[calc(100dvh_-_61px)] md:min-h-0 md:h-[100dvh] z-40 overflow-y-auto custom-scrollbar`}
         >
-          <button onClick={() => { setActiveTab("dashboard"); setShowMobileMenu(false); }} className="hidden md:flex items-center gap-3.5 mb-10 px-1 cursor-pointer text-left transition-opacity hover:opacity-80">
-            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-amber-300 to-amber-600 flex items-center justify-center shadow-[0_6px_20px_-6px_rgba(245,158,11,0.65)] ring-1 ring-amber-200/40">
-              <CpuChipIcon className="text-stone-950 w-5 h-5" strokeWidth={2} />
+          <button onClick={() => { setActiveTab("dashboard"); setShowMobileMenu(false); }} className="hidden md:flex items-center gap-[11px] px-2 cursor-pointer text-left transition-opacity hover:opacity-80">
+            <div className="brand-tile w-[34px] h-[34px]">
+              <span className="font-display italic font-semibold text-lg text-[#2A1D07] -translate-y-px">S</span>
             </div>
-            <div className="flex flex-col">
-              <h1 className="font-display text-[22px] font-medium tracking-tight leading-none text-white">SRS<span className="text-gradient italic">Master</span></h1>
-              <div className="mt-2 text-[10px] font-bold uppercase tracking-[0.18em] text-amber-200/70 bg-amber-400/[0.08] px-2.5 py-1 rounded-full border border-amber-400/15 self-start">
+            <div className="flex flex-col gap-[3px]">
+              <h1 className="text-[15px] font-bold tracking-[-0.01em] leading-none text-ink-900 font-sans">SRS <span className="font-display italic font-medium text-[#C97706]">Master</span></h1>
+              <div className="text-[10.5px] font-semibold uppercase tracking-[0.13em] text-ink-400">
                 Semester {currentSemester}
               </div>
             </div>
           </button>
 
-          <nav className="flex flex-col gap-1.5">
-            <button onClick={() => { setActiveTab("dashboard"); setShowMobileMenu(false); }} className={`flex items-center gap-3.5 px-4 py-3 transition-all duration-200 cursor-pointer ${activeTab === 'dashboard' ? 'nav-item-active' : 'nav-item-idle'}`}>
-              <CalendarDaysIcon className="w-5 h-5 shrink-0" />
-              <span className="text-sm font-medium whitespace-nowrap">Dashboard</span>
+          <nav className="flex flex-col gap-0.5 md:mt-[30px]">
+            <button onClick={() => { setActiveTab("dashboard"); setShowMobileMenu(false); }} className={`flex items-center gap-3 h-[38px] px-3 cursor-pointer ${activeTab === 'dashboard' ? 'nav-item-active' : 'nav-item-idle'}`}>
+              <CalendarDaysIcon className={`w-[18px] h-[18px] shrink-0 ${activeTab === 'dashboard' ? 'text-ink-900' : 'text-ink-400'}`} strokeWidth={1.6} />
+              <span className={`text-sm whitespace-nowrap ${activeTab === 'dashboard' ? 'font-semibold' : 'font-medium'}`}>Dashboard</span>
             </button>
-            <button onClick={() => { setActiveTab("upload"); setShowMobileMenu(false); }} className={`flex items-center gap-3.5 px-4 py-3 transition-all duration-200 cursor-pointer ${activeTab === 'upload' ? 'nav-item-active' : 'nav-item-idle'}`}>
-              <CloudArrowUpIcon className="w-5 h-5 shrink-0" />
-              <span className="text-sm font-medium whitespace-nowrap">{language === 'german' ? 'Material hochladen' : 'Upload Material'}</span>
+            <button onClick={() => { setActiveTab("upload"); setShowMobileMenu(false); }} className={`flex items-center gap-3 h-[38px] px-3 cursor-pointer ${activeTab === 'upload' ? 'nav-item-active' : 'nav-item-idle'}`}>
+              <CloudArrowUpIcon className={`w-[18px] h-[18px] shrink-0 ${activeTab === 'upload' ? 'text-ink-900' : 'text-ink-400'}`} strokeWidth={1.6} />
+              <span className={`text-sm whitespace-nowrap ${activeTab === 'upload' ? 'font-semibold' : 'font-medium'}`}>{language === 'german' ? 'Material hochladen' : 'Upload material'}</span>
             </button>
-            <button onClick={() => { setActiveTab("library"); setShowMobileMenu(false); }} className={`flex items-center gap-3.5 px-4 py-3 transition-all duration-200 cursor-pointer ${activeTab === 'library' ? 'nav-item-active' : 'nav-item-idle'}`}>
-              <BookOpenIcon className="w-5 h-5 shrink-0" />
-              <span className="text-sm font-medium whitespace-nowrap">{language === 'german' ? 'Bibliothek' : 'Library'}</span>
+            <button onClick={() => { setActiveTab("library"); setShowMobileMenu(false); }} className={`flex items-center gap-3 h-[38px] px-3 cursor-pointer ${activeTab === 'library' ? 'nav-item-active' : 'nav-item-idle'}`}>
+              <BookOpenIcon className={`w-[18px] h-[18px] shrink-0 ${activeTab === 'library' ? 'text-ink-900' : 'text-ink-400'}`} strokeWidth={1.6} />
+              <span className={`text-sm whitespace-nowrap ${activeTab === 'library' ? 'font-semibold' : 'font-medium'}`}>{language === 'german' ? 'Bibliothek' : 'Library'}</span>
             </button>
-            <button onClick={() => { setActiveTab("stats"); setShowMobileMenu(false); }} className={`flex items-center gap-3.5 px-4 py-3 transition-all duration-200 cursor-pointer ${activeTab === 'stats' ? 'nav-item-active' : 'nav-item-idle'}`}>
-              <ChartBarIcon className="w-5 h-5 shrink-0" />
-              <span className="text-sm font-medium whitespace-nowrap">{language === 'german' ? 'Statistik' : 'Statistics'}</span>
+            <button onClick={() => { setActiveTab("stats"); setShowMobileMenu(false); }} className={`flex items-center gap-3 h-[38px] px-3 cursor-pointer ${activeTab === 'stats' ? 'nav-item-active' : 'nav-item-idle'}`}>
+              <ChartBarIcon className={`w-[18px] h-[18px] shrink-0 ${activeTab === 'stats' ? 'text-ink-900' : 'text-ink-400'}`} strokeWidth={1.6} />
+              <span className={`text-sm whitespace-nowrap ${activeTab === 'stats' ? 'font-semibold' : 'font-medium'}`}>{language === 'german' ? 'Statistik' : 'Statistics'}</span>
             </button>
-            <button onClick={() => { setShowSettingsModal(true); }} className="flex items-center gap-3.5 px-4 py-3 transition-all duration-200 cursor-pointer nav-item-idle">
-              <Cog8ToothIcon className="w-5 h-5 shrink-0" />
+            <button onClick={() => { setShowSettingsModal(true); }} className="flex items-center gap-3 h-[38px] px-3 cursor-pointer nav-item-idle">
+              <Cog8ToothIcon className="w-[18px] h-[18px] shrink-0 text-ink-400" strokeWidth={1.6} />
               <span className="text-sm font-medium whitespace-nowrap">{language === 'german' ? 'Einstellungen' : 'Settings'}</span>
             </button>
           </nav>
 
-          <div className="mt-auto flex flex-col gap-4 pt-8">
+          <div className="mt-auto flex flex-col pt-8">
             {/* Push Notification Toggle */}
             <button
               onClick={togglePush}
-              className={`flex items-center gap-3.5 px-4 py-3 rounded-xl transition-all duration-200 cursor-pointer border ${
-                pushPermission === "granted" && pushSubscribed
-                  ? "bg-emerald-400/[0.08] text-emerald-300 border-emerald-400/20"
-                  : "nav-item-idle border-white/[0.07]"
-              }`}
+              className="flex items-center gap-3 h-[38px] px-3 cursor-pointer nav-item-idle"
             >
               {pushPermission === "granted" && pushSubscribed ? (
-                <BellIcon className="w-5 h-5 shrink-0" />
+                <BellIcon className="w-[18px] h-[18px] shrink-0 text-ink-400" strokeWidth={1.6} />
               ) : (
-                <BellSlashIcon className="w-5 h-5 shrink-0" />
+                <BellSlashIcon className="w-[18px] h-[18px] shrink-0 text-ink-400" strokeWidth={1.6} />
               )}
-              <span className="font-medium text-sm whitespace-nowrap">
+              <span className="font-medium text-[13px] whitespace-nowrap flex-1 text-left">
                 {pushPermission === "granted" && pushSubscribed
-                  ? language === "german" ? "Mitteilungen an" : "Notifications On"
+                  ? language === "german" ? "Mitteilungen an" : "Notifications on"
                   : pushPermission === "denied"
-                  ? language === "german" ? "Blockiert" : "Notifications Blocked"
-                  : language === "german" ? "Mitteilungen erlauben" : "Enable Notifications"}
+                  ? language === "german" ? "Mitteilungen blockiert" : "Notifications blocked"
+                  : language === "german" ? "Mitteilungen aus" : "Notifications off"}
+              </span>
+              <span className={`w-7 h-[17px] rounded-full relative inline-block transition-colors ${pushPermission === "granted" && pushSubscribed ? "bg-ink-900" : "bg-[rgba(33,27,18,0.18)]"}`}>
+                <span className={`absolute top-0.5 w-[13px] h-[13px] rounded-full bg-paper-1 transition-transform ${pushPermission === "granted" && pushSubscribed ? "right-0.5" : "left-0.5"}`}></span>
               </span>
             </button>
 
-            <div className="gradient-border rounded-2xl bg-gradient-to-b from-amber-400/[0.07] via-transparent to-transparent p-5 relative overflow-hidden">
-              <SparklesIcon className="w-5 h-5 text-amber-300 mb-3" />
-              <h3 className="font-display text-base font-medium text-white mb-1.5">Live Tutor Pro</h3>
-              <p className="text-xs text-white/40 leading-relaxed mb-4">{language === "german" ? "Optimiere dein Lernen mit Sprach-KI." : "Upgrade your learning with voice AI."}</p>
-              <button className="w-full py-2.5 bg-white/[0.04] rounded-lg text-xs font-medium border border-white/[0.08] text-white/30 cursor-not-allowed transition-colors flex items-center justify-center gap-2">
-                <LockClosedIcon className="w-3.5 h-3.5" />
-                {language === "german" ? "Freischalten (Phase 2)" : "Unlock (Phase 2)"}
-              </button>
+            <div className="mt-3 card-surface p-4">
+              <SparklesIcon className="w-[17px] h-[17px] text-ink-9000 mb-2.5" strokeWidth={1.6} />
+              <h3 className="text-sm font-semibold text-ink-900">Live Tutor Pro</h3>
+              <p className="text-[12.5px] leading-normal text-ink-600 mt-1">{language === "german" ? "Sprach-Tutoring neben jedem Quiz." : "Voice tutoring beside every quiz."}</p>
+              <div className="mt-3 h-8 rounded-[10px] border border-[rgba(33,27,18,0.10)] flex items-center justify-center gap-[7px] text-ink-400 text-xs font-semibold">
+                <LockClosedIcon className="w-[13px] h-[13px]" strokeWidth={1.8} />
+                {language === "german" ? "Demnächst" : "Coming soon"}
+              </div>
             </div>
 
             {/* User identity strip (Google account) */}
-            <div className="mt-4 pt-4 border-t border-white/[0.06] flex items-center gap-3 px-1">
+            <div className="mt-4 pt-3.5 px-2 border-t border-[rgba(33,27,18,0.07)] flex items-center gap-2.5">
               {userImage ? (
                 // eslint-disable-next-line @next/next/no-img-element -- external Google avatar; next/image would need remote-domain config + fixed dimensions
                 <img
                   src={userImage}
                   alt={userName || "avatar"}
                   referrerPolicy="no-referrer"
-                  className="w-8 h-8 rounded-full ring-1 ring-amber-400/[0.22] object-cover shrink-0"
+                  className="w-8 h-8 rounded-full object-cover shrink-0"
                 />
               ) : (
-                <div className="w-8 h-8 rounded-full bg-amber-400/[0.12] border border-amber-400/[0.22] flex items-center justify-center shrink-0">
-                  <span className="text-amber-300 text-xs font-bold leading-none">
+                <div className="w-8 h-8 rounded-full bg-[rgba(239,159,31,0.14)] flex items-center justify-center shrink-0">
+                  <span className="text-[#A15E03] text-[11.5px] font-bold leading-none tracking-[0.02em]">
                     {userName?.[0]?.toUpperCase() ?? userEmail?.[0]?.toUpperCase() ?? "?"}
                   </span>
                 </div>
               )}
               <div className="min-w-0 flex-1">
-                <p className="text-xs font-medium text-white/80 truncate leading-tight">{userName || userEmail || "User"}</p>
+                <p className="text-[13px] font-semibold text-ink-900 truncate leading-tight">{userName || userEmail || "User"}</p>
                 {userName && userEmail && (
-                  <p className="text-[10px] text-white/30 truncate leading-tight mt-0.5">{userEmail}</p>
+                  <p className="text-[11px] text-ink-400 truncate leading-snug">{userEmail}</p>
                 )}
               </div>
               <button
                 onClick={() => signOut({ callbackUrl: "/login" })}
                 title={language === "german" ? "Abmelden" : "Sign out"}
-                className="w-7 h-7 flex items-center justify-center rounded-lg text-white/30 hover:text-rose-300 hover:bg-rose-500/[0.1] transition-all cursor-pointer shrink-0"
+                className="w-7 h-7 flex items-center justify-center rounded-[9px] text-ink-400 hover:text-[#B06A4E] hover:bg-[rgba(176,106,78,0.10)] transition-all cursor-pointer shrink-0"
               >
-                <ArrowRightOnRectangleIcon className="w-4 h-4" />
+                <ArrowRightOnRectangleIcon className="w-[15px] h-[15px]" strokeWidth={1.6} />
               </button>
             </div>
           </div>
@@ -1420,441 +1432,440 @@ export default function DashboardClient({
                 initial="initial"
                 animate="animate"
                 exit="exit"
-                className="max-w-5xl mx-auto"
+                className="max-w-[980px] mx-auto"
               >
-                <motion.header variants={riseChild} className="mb-8 md:mb-14 flex justify-between items-end">
-                  <div>
-                    <p className="eyebrow mb-3">{language === 'german' ? 'Willkommen zurück' : 'Welcome back'}</p>
-                    <h1 className="font-display text-3xl sm:text-[2.75rem] font-medium tracking-tight text-white leading-[1.08] mb-3">
-                      {(() => {
-                        const firstName = userName?.split(" ")[0];
-                        return language === 'german'
-                          ? <>Bereit für das nächste Level{firstName ? <>, <em className="text-gradient not-italic font-display italic">{firstName}</em></> : ''}?</>
-                          : <>Ready to level up{firstName ? <>, <em className="text-gradient not-italic font-display italic">{firstName}</em></> : ''}?</>;
-                      })()}
-                    </h1>
-                    <p className="text-white/45 text-sm sm:text-base">
-                      {(() => {
-                        const dueCount = upcomingReviews.filter(r => r.isDue).length;
-                        return language === 'german'
-                          ? <>Du hast <span className="text-gradient font-semibold">{dueCount}</span> {dueCount === 1 ? 'Wiederholung' : 'Wiederholungen'} heute.</>
-                          : <>You have <span className="text-gradient font-semibold">{dueCount}</span> {dueCount === 1 ? 'review' : 'reviews'} due today.</>;
-                      })()}
-                    </p>
-                  </div>
-                </motion.header>
+                {(() => {
+                  const de = language === "german";
+                  const dueItems = upcomingReviews.filter(r => r.isDue);
+                  const scheduledItems = upcomingReviews.filter(r => !r.isDue);
+                  const visibleScheduled = showAllScheduled ? scheduledItems : scheduledItems.slice(0, 6);
+                  const firstName = userName?.split(" ")[0];
+                  const now = new Date();
+                  const hour = now.getHours();
+                  const greeting = de
+                    ? (hour < 11 ? "Guten Morgen" : hour < 18 ? "Guten Tag" : "Guten Abend")
+                    : (hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening");
+                  const dateEyebrow = now.toLocaleDateString(de ? "de-DE" : "en-GB", { weekday: "long", day: "numeric", month: "long" });
+                  const nextUp = scheduledItems[0] ? new Date(scheduledItems[0].raw.nextReviewDate) : null;
+                  const fmtLong = (d: Date) => d.toLocaleDateString(de ? "de-DE" : "en-GB", { weekday: "long", day: "numeric", month: "long" });
+                  const fmtShort = (d: Date) => d.toLocaleDateString(de ? "de-DE" : "en-GB", { weekday: "short", day: "numeric", month: "short" });
+                  const minutes = dueItems.length * 7;
+                  return (
+                    <>
+                      <motion.header variants={riseChild} className="flex flex-col sm:flex-row sm:items-end justify-between gap-6">
+                        <div>
+                          <p className="caps-label tracking-[0.14em]">{dateEyebrow}</p>
+                          <h1 className="font-display text-[34px] sm:text-[44px] tracking-[-0.02em] leading-[1.05] text-ink-900 mt-2.5" style={{ fontWeight: 470 }}>
+                            {greeting}{firstName ? `, ${firstName}` : ""}.
+                          </h1>
+                          <p className="text-[15px] text-ink-600 mt-3 leading-normal">
+                            {isLoadingReviews
+                              ? (de ? "Einen Moment …" : "One moment …")
+                              : dueItems.length > 0
+                              ? (de
+                                  ? `${dueItems.length} ${dueItems.length === 1 ? "Wiederholung ist" : "Wiederholungen sind"} bereit — etwa ${minutes} Minuten.`
+                                  : `${dueItems.length} ${dueItems.length === 1 ? "review is" : "reviews are"} ready — about ${minutes} minutes.`)
+                              : nextUp
+                              ? (de ? `Heute ist nichts fällig. Die nächste Wiederholung kommt am ${fmtLong(nextUp)}.` : `Nothing due today. The next review lands ${fmtLong(nextUp)}.`)
+                              : (de ? "Lade deine erste Vorlesung hoch — der Rest plant sich selbst." : "Upload your first lecture — the rest schedules itself.")}
+                          </p>
+                        </div>
+                        {dueItems.length > 0 ? (
+                           
+                          <button onClick={() => startQuiz(dueItems[0])} className="btn-primary h-11 px-6 text-sm shrink-0 cursor-pointer">
+                            {de ? "Jetzt wiederholen" : "Start reviewing"}
+                          </button>
+                        ) : scheduledItems.length > 0 ? (
+                           
+                          <button onClick={() => startQuiz(scheduledItems[0])} className="btn-secondary h-11 px-6 text-sm shrink-0 cursor-pointer">
+                            {de ? "Vorarbeiten" : "Review ahead"}
+                          </button>
+                        ) : null}
+                      </motion.header>
 
-                <motion.div variants={riseChild} className="grid grid-cols-1 lg:grid-cols-3 gap-5 md:gap-8">
-                  {/* Reviews List — spans full width on the empty state so it reads clean */}
-                  <div className={`flex flex-col gap-4 ${upcomingReviews.length === 0 ? "lg:col-span-3" : "lg:col-span-2"}`}>
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-3 gap-3">
-                      <h3 className="font-display text-xl sm:text-2xl font-medium text-white flex items-center gap-2.5">
-                        <ClockIcon className="w-5 h-5 text-amber-300" />
-                        {language === 'german' ? 'Anstehende Wiederholungen' : 'Upcoming Reviews'}
-                      </h3>
-                      <button
-                        onClick={() => setShowCalendarModal(true)}
-                        className="btn-secondary flex items-center justify-center gap-2 px-4 py-2.5 text-xs cursor-pointer w-full sm:w-auto"
-                      >
-                        <CalendarDaysIcon className="w-4 h-4 text-amber-300" />
-                        {language === 'german' ? 'Kalender synchronisieren' : 'Sync to Calendar'}
-                      </button>
-                    </div>
+                      {!isLoadingReviews && dueItems.length === 0 && upcomingReviews.length > 0 && (
+                        <motion.div
+                          initial={{ scaleX: 0 }}
+                          animate={{ scaleX: 1 }}
+                          transition={{ duration: 1, ease: EASE_OUT, delay: 0.15 }}
+                          className="h-0.5 mt-7 rounded-full origin-left"
+                          style={{ background: "linear-gradient(90deg, #F5B14A, #EF9F1F 60%, rgba(239,159,31,0))" }}
+                        />
+                      )}
 
-                    {isLoadingReviews ? (
-                      /* Skeleton shimmer — shown on first mount when no SSR items are available */
-                      <div className="flex flex-col gap-4">
-                        {[0, 1, 2].map((i) => (
-                          <div
-                            key={i}
-                            className="card-surface-elevated p-5 sm:p-6 overflow-hidden relative"
-                            style={{ animationDelay: `${i * 0.1}s` }}
-                          >
-                            {/* Shimmer sweep */}
-                            <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.8s_ease-in-out_infinite] bg-gradient-to-r from-transparent via-white/[0.04] to-transparent pointer-events-none" style={{ animationDelay: `${i * 0.25}s` }} />
-                            <div className="pl-2.5 space-y-3.5">
-                              <div className="flex items-center gap-2">
-                                <div className="h-5 w-16 rounded-md bg-white/[0.07]" />
-                                <div className="h-5 w-12 rounded-full bg-white/[0.04]" />
-                                <div className="h-5 w-20 rounded-md bg-white/[0.04] ml-auto" />
+                      <motion.div variants={riseChild} className="flex flex-col xl:flex-row gap-8 xl:gap-9 mt-10 items-start">
+                        <div className="flex-1 min-w-0 w-full">
+                          {isLoadingReviews ? (
+                            /* Skeleton — static paper blocks, no shimmer */
+                            <div className="flex flex-col gap-2.5">
+                              {[0, 1, 2].map((i) => (
+                                <div key={i} className="card-surface p-5 space-y-3">
+                                  <div className="h-3 w-28 rounded bg-paper-2" />
+                                  <div className="h-4 rounded bg-paper-2" style={{ width: `${58 + i * 10}%` }} />
+                                </div>
+                              ))}
+                            </div>
+                          ) : upcomingReviews.length === 0 ? (
+                            /* Empty state */
+                            <div className="card-surface-elevated p-9 flex flex-col items-start">
+                              <div className="w-[52px] h-[52px] rounded-2xl bg-paper-2 flex items-center justify-center">
+                                <BookOpenIcon className="w-6 h-6 text-ink-400" strokeWidth={1.6} />
                               </div>
-                              <div className="h-6 rounded-lg bg-white/[0.07]" style={{ width: `${60 + i * 10}%` }} />
-                              <div className="h-4 rounded-md bg-white/[0.04]" style={{ width: `${40 + i * 8}%` }} />
+                              <h3 className="font-display text-[22px] text-ink-900 mt-4" style={{ fontWeight: 470 }}>
+                                {de ? "Hier ist noch nichts" : "Nothing here yet"}
+                              </h3>
+                              <p className="text-[13.5px] text-ink-600 leading-relaxed mt-1.5 max-w-sm">
+                                {de
+                                  ? "Deine erste Vorlesung wird in etwa einer Minute zum Quiz — und alles, was du erstellst, wohnt hier."
+                                  : "Your first lecture becomes a quiz in about a minute — and everything you make lives here."}
+                              </p>
+                              <button
+                                onClick={() => { setActiveTab("upload"); setShowMobileMenu(false); }}
+                                className="btn-primary h-11 px-6 text-sm mt-6 cursor-pointer"
+                              >
+                                {de ? "Erste Vorlesung hochladen" : "Upload your first lecture"}
+                              </button>
                             </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (() => {
-                      const dueItems = upcomingReviews.filter(r => r.isDue);
-                      const scheduledItems = upcomingReviews.filter(r => !r.isDue);
-                      const itemsToRender = [
-                        ...dueItems,
-                        ...(showAllScheduled ? scheduledItems : scheduledItems.slice(0, 12))
-                      ];
-
-                      if (itemsToRender.length === 0) {
-                        return (
-                          <motion.div
-                            initial={{ opacity: 0, y: 24, filter: "blur(8px)" }}
-                            animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                            transition={{ duration: DUR.base, ease: EASE_OUT }}
-                            className="card-surface p-14 md:p-20 flex flex-col items-center text-center"
-                          >
-                            <div className="w-14 h-14 rounded-2xl bg-white/[0.04] border border-white/[0.09] flex items-center justify-center mb-6">
-                              <AcademicCapIcon className="w-7 h-7 text-white/25" strokeWidth={1.5} />
+                          ) : dueItems.length === 0 ? (
+                            /* All clear */
+                            <div className="card-surface-elevated p-8">
+                              <div className="w-10 h-10 rounded-full bg-[rgba(94,125,88,0.14)] flex items-center justify-center">
+                                <CheckIcon className="w-[18px] h-[18px] text-[#5E7D58]" strokeWidth={2} />
+                              </div>
+                              <div className="text-base tracking-[-0.011em] text-ink-900 mt-3.5" style={{ fontWeight: 650 }}>{de ? "Alles erledigt." : "All clear."}</div>
+                              <p className="text-[13.5px] leading-relaxed text-ink-600 mt-1.5">
+                                {nextUp
+                                  ? (de ? `Das war alles bis ${fmtLong(nextUp)}. Pausen sind Teil der Methode.` : `That's everything until ${fmtLong(nextUp)}. Rest is part of the method.`)
+                                  : (de ? "Pausen sind Teil der Methode." : "Rest is part of the method.")}
+                              </p>
                             </div>
-                            <p className="eyebrow mb-3">{language === 'german' ? 'Lernarchiv leer' : 'Archive empty'}</p>
-                            <h3 className="font-display text-xl font-medium text-white mb-2">
-                              {language === 'german' ? 'Noch keine Module' : 'No modules yet'}
-                            </h3>
-                            <p className="text-white/35 text-sm leading-relaxed max-w-xs mb-7">
-                              {language === 'german'
-                                ? 'Lade dein erstes Vorlesungsmaterial hoch, um den 6-Stufen KI-Prozess zu starten.'
-                                : 'Upload your first lecture material to start the 6-stage AI generation pipeline.'}
-                            </p>
-                            <button
-                              onClick={() => { setActiveTab("upload"); setShowMobileMenu(false); }}
-                              className="btn-primary px-6 py-3 text-sm flex items-center gap-2 cursor-pointer"
-                            >
-                              <CloudArrowUpIcon className="w-5 h-5" />
-                              {language === 'german' ? 'Jetzt hochladen' : 'Upload Now'}
-                            </button>
-                          </motion.div>
-                        );
-                      }
+                          ) : (
+                            /* Due today */
+                            <div>
+                              <div className="flex items-center gap-2 mb-3.5">
+                                <span className="w-1.5 h-1.5 rounded-full bg-[#EF9F1F] shadow-[0_0_8px_rgba(239,159,31,0.5)]"></span>
+                                <h2 className="text-base tracking-[-0.011em] text-ink-900 font-sans" style={{ fontWeight: 650 }}>{de ? "Heute fällig" : "Due today"}</h2>
+                              </div>
+                              <motion.div variants={staggerContainer} initial="initial" animate="animate" className="flex flex-col gap-2.5">
+                                {dueItems.map((review) => {
+                                  let latestVideoUrl = review.raw.videoUrl;
+                                  let videoHistory: { level: number; url: string; date?: string }[] = [];
+                                  let latestVideoLevel = 0;
+                                  if (latestVideoUrl && latestVideoUrl.startsWith("[")) {
+                                    try {
+                                      videoHistory = JSON.parse(latestVideoUrl);
+                                      if (videoHistory.length > 0) {
+                                        const lastVid = videoHistory[videoHistory.length - 1];
+                                        latestVideoUrl = lastVid.url;
+                                        latestVideoLevel = lastVid.level ?? 0;
+                                      } else {
+                                        latestVideoUrl = null;
+                                      }
+                                    } catch { /* malformed history JSON — treat as no videos */ }
+                                  } else if (latestVideoUrl && latestVideoUrl.startsWith("http")) {
+                                    videoHistory = [{ level: 0, url: latestVideoUrl }];
+                                    latestVideoLevel = 0;
+                                  }
+                                  const isWaitingForNewVideo = latestVideoLevel < review.level;
+                                  const archiveVideos = isWaitingForNewVideo ? videoHistory : videoHistory.slice(0, -1);
+                                  const materialsOpen = expandedCards.has(review.id);
 
-                      return (
-                        <motion.div variants={staggerContainer} initial="initial" animate="animate" className="flex flex-col gap-4">
-                          {itemsToRender.map((review) => (
-                            <motion.div
-                              key={review.id}
-                              variants={riseChild}
-                              whileHover={{ y: -4 }}
-                              transition={springSoft}
-                              // eslint-disable-next-line react-hooks/refs -- startQuiz only WRITES freeTemplateRef inside the click handler, never during render
-                              onClick={() => startQuiz(review)}
-                              className={`card-surface-elevated p-5 sm:p-6 group cursor-pointer relative overflow-hidden ${review.isDue ? 'border-amber-400/30 hover:border-amber-300/50 shadow-[0_0_28px_-8px_rgba(245,158,11,0.3)] hover:shadow-[0_0_48px_-8px_rgba(245,158,11,0.5)]' : 'hover:shadow-[0_8px_32px_-12px_rgba(255,250,240,0.07)]'}`}
-                            >
-                              {/* Ember spine — lit when due, faint on hover otherwise */}
-                              <div className={`absolute left-0 top-0 bottom-0 w-[3px] rounded-r transition-opacity duration-300 ${review.isDue ? 'bg-gradient-to-b from-amber-200 via-amber-400 to-amber-600 opacity-100' : 'bg-white/30 opacity-0 group-hover:opacity-50'}`}></div>
-
-                              <div className="flex justify-between items-start pl-2.5">
-                                <div className="flex-1 min-w-0 pr-4">
-                                  <div className="flex flex-wrap items-center gap-2 mb-3">
-                                    <span className={`text-[10px] font-bold uppercase tracking-[0.12em] px-2.5 py-1 rounded-md ${review.isDue ? 'badge-due' : 'badge-level'}`}>Level {review.level + 1}</span>
-                                    <span className="text-[10px] font-semibold text-white/45 bg-white/[0.04] px-2.5 py-1 rounded-full border border-white/[0.08]">
-                                      Sem {review.semester}
-                                    </span>
-                                    <div className="text-right">
-                                      {review.isDue ? (
-                                        <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-amber-400/10 text-amber-200 border border-amber-400/25 text-[10px] font-bold uppercase tracking-[0.12em]">
-                                          <span className="ember-dot w-1.5 h-1.5 rounded-full bg-amber-300 mr-2"></span>
-                                          {language === 'german' ? 'JETZT FÄLLIG' : 'DUE NOW'}
-                                        </span>
-                                      ) : (
-                                        <span className="text-xs text-white/35">{language === 'german' ? `Geplant: ${review.dueDate}` : `Scheduled: ${review.dueDate}`}</span>
-                                      )}
-                                    </div>
-                                  </div>
-                                  <h4 className="font-display text-xl font-medium text-white truncate tracking-tight">{review.subject}</h4>
-                                  <p className="text-sm text-white/40 truncate mt-0.5">{review.topic}</p>
-
-                                  {review.raw.lastFeedback && (
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setActiveFeedbackItem(review.raw);
-                                      }}
-                                      className="mt-4 text-xs bg-white/[0.04] hover:bg-white/[0.07] border border-white/[0.09] hover:border-white/[0.16] text-white/55 hover:text-white/80 px-3.5 py-2 rounded-lg flex items-center gap-2 transition-all cursor-pointer"
+                                  return (
+                                    <motion.div
+                                      key={review.id}
+                                      variants={riseChild}
+                                      whileHover={{ y: -1 }}
+                                      transition={springSoft}
+                                       
+                                      onClick={() => startQuiz(review)}
+                                      className="card-surface-elevated group cursor-pointer relative overflow-hidden pl-[26px] pr-5 pt-[18px] pb-4"
                                     >
-                                      <DocumentTextIcon className="w-4 h-4 text-amber-300/80" />
-                                      {language === "german" ? "Feedback ansehen" : "View Remediation Brief"}
-                                    </button>
-                                  )}
+                                      {/* Amber thread — the due signal */}
+                                      <span className="amber-thread absolute left-0 top-3.5 bottom-3.5 w-[3px]"></span>
 
-                                  {(() => {
-                                    let latestVideoUrl = review.raw.videoUrl;
-                                    let videoHistory: { level: number; url: string; date?: string }[] = [];
-                                    let latestVideoLevel = 0;
-                                    if (latestVideoUrl && latestVideoUrl.startsWith("[")) {
-                                      try {
-                                        videoHistory = JSON.parse(latestVideoUrl);
-                                        if (videoHistory.length > 0) {
-                                          const lastVid = videoHistory[videoHistory.length - 1];
-                                          latestVideoUrl = lastVid.url;
-                                          latestVideoLevel = lastVid.level ?? 0;
-                                        } else {
-                                          latestVideoUrl = null;
-                                        }
-                                      } catch { /* malformed history JSON — treat as no videos */ }
-                                    } else if (latestVideoUrl && latestVideoUrl.startsWith("http")) {
-                                      videoHistory = [{ level: 0, url: latestVideoUrl }];
-                                      latestVideoLevel = 0;
-                                    }
-
-                                    const isWaitingForNewVideo = latestVideoLevel < review.level;
-                                    const archiveVideos = isWaitingForNewVideo ? videoHistory : videoHistory.slice(0, -1);
-
-                                    return (
-                                      <>
-                                        {archiveVideos.length > 0 && (
-                                          <button
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              setArchiveModalData(archiveVideos);
-                                            }}
-                                            className="mt-2 text-xs bg-indigo-400/[0.07] hover:bg-indigo-400/[0.14] border border-indigo-400/20 text-indigo-300 px-3.5 py-2 rounded-lg flex items-center gap-2 transition-all cursor-pointer"
+                                      <div className="flex items-center gap-3 sm:gap-4">
+                                        <div className="flex-1 min-w-0">
+                                          <div className="caps-label truncate">{review.subject}</div>
+                                          <div className="text-base font-semibold tracking-[-0.011em] text-ink-900 mt-[5px] truncate">{review.topic}</div>
+                                        </div>
+                                        <span className="hidden sm:inline-block text-xs text-ink-600 border border-[rgba(33,27,18,0.10)] rounded-full px-2.5 py-1 whitespace-nowrap tnum" style={{ fontWeight: 550 }}>
+                                          Level {review.level + 1} {de ? "von" : "of"} 7
+                                        </span>
+                                        {snoozeArmedId === review.id && !snoozingIds[review.id] ? (
+                                          <motion.div
+                                            initial={{ opacity: 0, scale: 0.9, y: -4 }}
+                                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                                            transition={springTactile}
+                                            className="flex items-center gap-1"
+                                            onClick={(e) => e.stopPropagation()}
                                           >
-                                            <ClockIcon className="w-4 h-4" />
-                                            {language === "german" ? `Video-Archiv ansehen (${archiveVideos.length})` : `View Video Archive (${archiveVideos.length})`}
+                                            {[1, 3, 7].map(days => (
+                                              <button
+                                                key={days}
+                                                 
+                                                onClick={(e) => handleSnooze(e, review.id, days)}
+                                                className="h-7 px-2.5 rounded-full border border-[rgba(33,27,18,0.13)] bg-paper-1 hover:bg-paper-2 text-[11px] font-semibold text-ink-600 whitespace-nowrap cursor-pointer transition-colors"
+                                                title={de ? `Um ${days} Tag${days > 1 ? "e" : ""} verschieben` : `Snooze by ${days} day${days > 1 ? "s" : ""}`}
+                                              >
+                                                +{days}{de ? " T" : " d"}
+                                              </button>
+                                            ))}
+                                          </motion.div>
+                                        ) : (
+                                          <button
+                                            onClick={(e) => { e.stopPropagation(); if (!snoozingIds[review.id]) setSnoozeArmedId(review.id); }}
+                                            disabled={!!snoozingIds[review.id]}
+                                            className="btn-ghost-icon w-8 h-8 flex items-center justify-center shrink-0 cursor-pointer disabled:cursor-wait"
+                                            title={de ? "Wiederholung verschieben" : "Snooze review"}
+                                          >
+                                            {snoozingIds[review.id] ? (
+                                              <ArrowPathIcon className="w-4 h-4 animate-spin" />
+                                            ) : (
+                                              <ClockIcon className="w-4 h-4" strokeWidth={1.6} />
+                                            )}
                                           </button>
                                         )}
+                                        <ChevronRightIcon className="w-4 h-4 text-ink-300 shrink-0" strokeWidth={1.8} />
+                                      </div>
 
-                                        <div className="mt-5">
-                                          {/* Collapsible toggle */}
+                                      {/* Footer: materials disclosure + quiet links + demoted delete */}
+                                      <div className="border-t border-[rgba(33,27,18,0.06)] mt-3.5 pt-[11px]" onClick={(e) => e.stopPropagation()}>
+                                        <div className="flex flex-wrap items-center gap-x-[18px] gap-y-2">
                                           <button
-                                            onClick={(e) => {
-                                              e.stopPropagation();
+                                            onClick={() => {
                                               setExpandedCards(prev => {
                                                 const next = new Set(prev);
                                                 if (next.has(review.id)) { next.delete(review.id); } else { next.add(review.id); }
                                                 return next;
                                               });
                                             }}
-                                            className="flex items-center gap-2 text-[10px] font-bold text-white/30 hover:text-white/55 uppercase tracking-[0.2em] transition-colors cursor-pointer group mb-0"
+                                            className="inline-flex items-center gap-1.5 text-xs text-ink-400 hover:text-ink-600 transition-colors cursor-pointer"
+                                            style={{ fontWeight: 550 }}
                                           >
-                                            <motion.span
-                                              animate={{ rotate: expandedCards.has(review.id) ? 180 : 0 }}
-                                              transition={springTactile}
-                                              className="text-white/25 group-hover:text-white/45"
-                                            >
-                                              <ChevronDownIcon className="w-3.5 h-3.5" />
+                                            <motion.span animate={{ rotate: materialsOpen ? 180 : 0 }} transition={springTactile} className="flex">
+                                              <ChevronDownIcon className="w-3 h-3" strokeWidth={2} />
                                             </motion.span>
-                                            {language === 'german' ? 'Lernmaterialien' : 'Study Materials'}
+                                            {de ? "Materialien" : "Materials"}
                                           </button>
-
-                                          <AnimatePresence initial={false}>
-                                            {expandedCards.has(review.id) && (
-                                              <motion.div
-                                                key="materials"
-                                                variants={accordion}
-                                                initial="initial"
-                                                animate="animate"
-                                                exit="exit"
-                                                style={{ overflow: "hidden" }}
-                                              >
-                                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 p-3 bg-black/30 rounded-2xl border border-white/[0.05] mt-2.5">
-                                                  {/* QUELLE / SOURCE */}
-                                                  <div className="flex-1 min-w-0">
-                                                    <h5 className="text-[10px] font-bold text-white/30 uppercase tracking-[0.14em] mb-2 truncate">{language === "german" ? "Quelle" : "Source"}</h5>
-                                                    {review.raw.hasSource ? (
-                                                      <a
-                                                        href={`/api/source/${review.id}`}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        onClick={(e) => e.stopPropagation()}
-                                                        className="text-[10px] font-medium bg-white/[0.04] hover:bg-amber-400/[0.1] border border-white/[0.09] hover:border-amber-400/30 text-white/50 hover:text-amber-200 px-2 py-2.5 rounded-lg flex items-center justify-center gap-2 w-full text-center transition-all cursor-pointer truncate"
-                                                      >
-                                                        <DocumentTextIcon className="w-3.5 h-3.5 shrink-0 text-amber-400/60" />
-                                                        Original PDF
-                                                      </a>
-                                                    ) : (
-                                                      <div className="text-[10px] font-medium bg-white/[0.01] border border-white/[0.05] text-white/[0.18] px-2 py-2.5 rounded-lg flex items-center gap-2 w-full justify-center text-center">
-                                                        {language === 'german' ? 'Kein Original' : 'No Source'}
-                                                      </div>
-                                                    )}
-                                                  </div>
-
-                                                  {/* PRE-PODCAST */}
-                                                  <div className="flex-1 min-w-0">
-                                                    <h5 className="text-[10px] font-bold text-white/30 uppercase tracking-[0.14em] mb-2 truncate">{language === "german" ? "Vorbereitung" : "Pre-Lecture"}</h5>
-                                                    {review.raw.prePodcastUrl && review.raw.prePodcastUrl.startsWith("http") ? (
-                                                      <a
-                                                        href={review.raw.prePodcastUrl}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        onClick={(e) => e.stopPropagation()}
-                                                        className="text-[10px] font-medium bg-white/[0.04] hover:bg-amber-400/[0.1] border border-white/[0.09] hover:border-amber-400/30 text-white/50 hover:text-amber-200 px-2 py-2.5 rounded-lg flex items-center justify-center gap-2 w-full text-center transition-all cursor-pointer truncate"
-                                                      >
-                                                        <SpeakerWaveIcon className="w-3.5 h-3.5 shrink-0 text-amber-400/60" />
-                                                        Audio 1
-                                                      </a>
-                                                    ) : (
-                                                      <button
-                                                        onClick={(e) => handleGeneratePodcast(e, review.id, "pre")}
-                                                        disabled={!!generatingPodcasts[`${review.id}-pre`]}
-                                                        className="text-[10px] font-medium bg-white/[0.02] hover:bg-amber-400/[0.08] border border-white/[0.08] hover:border-amber-400/25 text-white/35 hover:text-amber-200/80 disabled:hover:bg-white/[0.02] disabled:hover:text-white/35 disabled:cursor-wait px-2 py-2.5 rounded-lg flex items-center gap-2 w-full justify-center text-center transition-all cursor-pointer"
-                                                      >
-                                                        <span className="ember-dot w-1 h-1 rounded-full bg-amber-400/60 shrink-0"></span>
-                                                        {generatingPodcasts[`${review.id}-pre`]
-                                                          ? (language === 'german' ? 'Gestartet…' : 'Started…')
-                                                          : (language === 'german' ? 'Generieren' : 'Generate')}
-                                                      </button>
-                                                    )}
-                                                  </div>
-
-                                                  {/* POST-PODCAST */}
-                                                  <div className="flex-1 min-w-0">
-                                                    <h5 className="text-[10px] font-bold text-white/30 uppercase tracking-[0.14em] mb-2 truncate">{language === "german" ? "Nachbereitung" : "Post-Lecture"}</h5>
-                                                    {review.raw.postPodcastUrl && review.raw.postPodcastUrl.startsWith("http") ? (
-                                                      <a
-                                                        href={review.raw.postPodcastUrl}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        onClick={(e) => e.stopPropagation()}
-                                                        className="text-[10px] font-medium bg-white/[0.04] hover:bg-amber-400/[0.1] border border-white/[0.09] hover:border-amber-400/30 text-white/50 hover:text-amber-200 px-2 py-2.5 rounded-lg flex items-center justify-center gap-2 w-full text-center transition-all cursor-pointer truncate"
-                                                      >
-                                                        <SpeakerWaveIcon className="w-3.5 h-3.5 shrink-0 text-amber-400/60" />
-                                                        Audio 2
-                                                      </a>
-                                                    ) : (
-                                                      <button
-                                                        onClick={(e) => handleGeneratePodcast(e, review.id, "post")}
-                                                        disabled={!!generatingPodcasts[`${review.id}-post`]}
-                                                        className="text-[10px] font-medium bg-white/[0.02] hover:bg-amber-400/[0.08] border border-white/[0.08] hover:border-amber-400/25 text-white/35 hover:text-amber-200/80 disabled:hover:bg-white/[0.02] disabled:hover:text-white/35 disabled:cursor-wait px-2 py-2.5 rounded-lg flex items-center gap-2 w-full justify-center text-center transition-all cursor-pointer"
-                                                      >
-                                                        <span className="ember-dot w-1 h-1 rounded-full bg-amber-400/60 shrink-0"></span>
-                                                        {generatingPodcasts[`${review.id}-post`]
-                                                          ? (language === 'german' ? 'Gestartet…' : 'Started…')
-                                                          : (language === 'german' ? 'Generieren' : 'Generate')}
-                                                      </button>
-                                                    )}
-                                                  </div>
-
-                                                  {/* VIDEO STUDIO */}
-                                                  <div className="flex-1 min-w-0">
-                                                    <h5 className="text-[10px] font-bold text-white/30 uppercase tracking-[0.14em] mb-2 truncate">{language === "german" ? "Videostudio" : "Video Studio"}</h5>
-                                                    {!isWaitingForNewVideo && latestVideoUrl && latestVideoUrl.startsWith("http") ? (
-                                                      <a
-                                                        href={latestVideoUrl}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        onClick={(e) => e.stopPropagation()}
-                                                        className="text-[10px] font-medium bg-white/[0.04] hover:bg-emerald-400/[0.1] border border-white/[0.09] hover:border-emerald-400/30 text-white/50 hover:text-emerald-200 px-2 py-2.5 rounded-lg flex items-center justify-center gap-2 w-full text-center transition-all cursor-pointer truncate"
-                                                      >
-                                                        <VideoCameraIcon className="w-3.5 h-3.5 shrink-0 text-emerald-400/60" />
-                                                        Video
-                                                      </a>
-                                                    ) : isWaitingForNewVideo ? (
-                                                      <div className="text-[10px] font-medium bg-white/[0.01] border border-white/[0.05] text-white/[0.22] px-2 py-2.5 rounded-lg flex items-center gap-2 w-full justify-center text-center">
-                                                        <span className="ember-dot w-1 h-1 rounded-full bg-amber-400/50 shrink-0"></span>
-                                                        {language === 'german' ? 'Wird erstellt…' : 'Rendering…'}
-                                                      </div>
-                                                    ) : (
-                                                      <div className="text-[10px] font-medium bg-white/[0.01] border border-white/[0.05] text-white/[0.18] px-2 py-2.5 rounded-lg flex items-center gap-2 w-full justify-center text-center">
-                                                        {language === 'german' ? 'Nach Bewertung' : 'After grading'}
-                                                      </div>
-                                                    )}
-                                                  </div>
-                                                </div>
-                                              </motion.div>
-                                            )}
-                                          </AnimatePresence>
+                                          {review.raw.lastFeedback && (
+                                            <button
+                                              onClick={() => setActiveFeedbackItem(review.raw)}
+                                              className="inline-flex items-center gap-1.5 text-xs text-ink-400 hover:text-ink-600 transition-colors cursor-pointer"
+                                              style={{ fontWeight: 550 }}
+                                            >
+                                              <DocumentTextIcon className="w-[13px] h-[13px]" strokeWidth={1.6} />
+                                              {de ? "Letztes Feedback" : "Last feedback"}
+                                            </button>
+                                          )}
+                                          {archiveVideos.length > 0 && (
+                                            <button
+                                              onClick={() => setArchiveModalData(archiveVideos)}
+                                              className="inline-flex items-center gap-1.5 text-xs text-ink-400 hover:text-ink-600 transition-colors cursor-pointer"
+                                              style={{ fontWeight: 550 }}
+                                            >
+                                              <VideoCameraIcon className="w-[13px] h-[13px]" strokeWidth={1.6} />
+                                              {de ? `Video-Archiv (${archiveVideos.length})` : `Video archive (${archiveVideos.length})`}
+                                            </button>
+                                          )}
+                                          <span className="flex-1" />
+                                          {confirmingDeleteId === review.id && !deletingIds[review.id] ? (
+                                            <motion.button
+                                              initial={{ opacity: 0, scale: 0.92 }}
+                                              animate={{ opacity: 1, scale: 1 }}
+                                              transition={springTactile}
+                                              onClick={(e) => handleDeleteModule(e, review.id)}
+                                              className="inline-flex items-center gap-1.5 h-[30px] px-3 rounded-[10px] bg-[rgba(176,106,78,0.12)] text-[#96543C] text-xs font-semibold cursor-pointer"
+                                            >
+                                              <TrashIcon className="w-3.5 h-3.5" strokeWidth={1.6} />
+                                              {de ? "Wirklich löschen?" : "Really delete?"}
+                                            </motion.button>
+                                          ) : (
+                                            <button
+                                              onClick={(e) => handleDeleteModule(e, review.id)}
+                                              disabled={!!deletingIds[review.id]}
+                                              title={de ? "Modul löschen" : "Delete module"}
+                                              className="btn-ghost-icon w-8 h-8 flex items-center justify-center opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:!text-[#B06A4E] disabled:opacity-60 disabled:cursor-wait cursor-pointer transition-opacity"
+                                            >
+                                              {deletingIds[review.id] ? (
+                                                <ArrowPathIcon className="w-4 h-4 animate-spin" />
+                                              ) : (
+                                                <TrashIcon className="w-4 h-4" strokeWidth={1.6} />
+                                              )}
+                                            </button>
+                                          )}
                                         </div>
-                                      </>
-                                    );
-                                  })()}
 
-
-                                </div>
-                                <div className="flex flex-col items-center gap-2 shrink-0">
-                                  <button className="hidden sm:flex w-11 h-11 rounded-full items-center justify-center transition-all bg-white/[0.04] border border-white/[0.07] text-white/40 group-hover:bg-amber-400/15 group-hover:border-amber-400/30 group-hover:text-amber-200 group-hover:scale-110 cursor-pointer">
-                                    <ChevronRightIcon className="w-5 h-5" />
-                                  </button>
-                                  {/* Snooze: sick/holiday → push the review without touching the SRS level */}
-                                  {snoozeArmedId === review.id && !snoozingIds[review.id] ? (
-                                    <motion.div
-                                      initial={{ opacity: 0, scale: 0.86, y: -4 }}
-                                      animate={{ opacity: 1, scale: 1, y: 0 }}
-                                      transition={springTactile}
-                                      className="flex flex-col gap-1"
-                                    >
-                                      {[1, 3, 7].map(days => (
-                                        <button
-                                          key={days}
-                                          // eslint-disable-next-line react-hooks/refs -- handleSnooze touches refs only inside the async click handler
-                                          onClick={(e) => handleSnooze(e, review.id, days)}
-                                          className="px-3 py-1.5 rounded-full bg-indigo-400/[0.09] border border-indigo-400/30 text-indigo-200 hover:bg-indigo-400/[0.18] hover:border-indigo-400/50 text-[10px] font-bold uppercase tracking-wide whitespace-nowrap cursor-pointer transition-all"
-                                          title={language === "german" ? `Um ${days} Tag${days > 1 ? "e" : ""} verschieben` : `Snooze by ${days} day${days > 1 ? "s" : ""}`}
-                                        >
-                                          +{days} {language === "german" ? (days === 1 ? "Tag" : "Tage") : (days === 1 ? "day" : "days")}
-                                        </button>
-                                      ))}
+                                        <AnimatePresence initial={false}>
+                                          {materialsOpen && (
+                                            <motion.div
+                                              key="materials"
+                                              variants={accordion}
+                                              initial="initial"
+                                              animate="animate"
+                                              exit="exit"
+                                              style={{ overflow: "hidden" }}
+                                            >
+                                              <div className="flex flex-wrap gap-2 mt-2.5 pb-0.5">
+                                                {review.raw.hasSource ? (
+                                                  <a href={`/api/source/${review.id}`} target="_blank" rel="noopener noreferrer" className="chip">
+                                                    <DocumentTextIcon className="w-[13px] h-[13px]" strokeWidth={1.6} />
+                                                    {de ? "Vorlesungs-PDF" : "Lecture PDF"}
+                                                  </a>
+                                                ) : (
+                                                  <span className="chip chip-dashed">{de ? "Kein Original" : "No source"}</span>
+                                                )}
+                                                {review.raw.prePodcastUrl && review.raw.prePodcastUrl.startsWith("http") ? (
+                                                  <a href={review.raw.prePodcastUrl} target="_blank" rel="noopener noreferrer" className="chip">
+                                                    <SpeakerWaveIcon className="w-[13px] h-[13px]" strokeWidth={1.6} />
+                                                    {de ? "Audio · vorher" : "Audio · before"}
+                                                  </a>
+                                                ) : (
+                                                  <button
+                                                    onClick={(e) => handleGeneratePodcast(e, review.id, "pre")}
+                                                    disabled={!!generatingPodcasts[`${review.id}-pre`]}
+                                                    className="chip chip-dashed !cursor-pointer hover:!text-ink-600 disabled:!cursor-wait"
+                                                  >
+                                                    <SpeakerWaveIcon className="w-[13px] h-[13px]" strokeWidth={1.6} />
+                                                    {generatingPodcasts[`${review.id}-pre`]
+                                                      ? (de ? "Audio · vorher — gestartet…" : "Audio · before — started…")
+                                                      : (de ? "Audio · vorher — erstellen" : "Audio · before — generate")}
+                                                  </button>
+                                                )}
+                                                {review.raw.postPodcastUrl && review.raw.postPodcastUrl.startsWith("http") ? (
+                                                  <a href={review.raw.postPodcastUrl} target="_blank" rel="noopener noreferrer" className="chip">
+                                                    <SpeakerWaveIcon className="w-[13px] h-[13px]" strokeWidth={1.6} />
+                                                    {de ? "Audio · nachher" : "Audio · after"}
+                                                  </a>
+                                                ) : (
+                                                  <button
+                                                    onClick={(e) => handleGeneratePodcast(e, review.id, "post")}
+                                                    disabled={!!generatingPodcasts[`${review.id}-post`]}
+                                                    className="chip chip-dashed !cursor-pointer hover:!text-ink-600 disabled:!cursor-wait"
+                                                  >
+                                                    <SpeakerWaveIcon className="w-[13px] h-[13px]" strokeWidth={1.6} />
+                                                    {generatingPodcasts[`${review.id}-post`]
+                                                      ? (de ? "Audio · nachher — gestartet…" : "Audio · after — started…")
+                                                      : (de ? "Audio · nachher — erstellen" : "Audio · after — generate")}
+                                                  </button>
+                                                )}
+                                                {!isWaitingForNewVideo && latestVideoUrl && latestVideoUrl.startsWith("http") ? (
+                                                  <a href={latestVideoUrl} target="_blank" rel="noopener noreferrer" className="chip">
+                                                    <VideoCameraIcon className="w-[13px] h-[13px]" strokeWidth={1.6} />
+                                                    Video
+                                                  </a>
+                                                ) : isWaitingForNewVideo ? (
+                                                  <span className="chip chip-dashed">
+                                                    <span className="ember-dot w-1 h-1 rounded-full bg-amber-500 shrink-0"></span>
+                                                    {de ? "Video — wird erstellt" : "Video — rendering"}
+                                                  </span>
+                                                ) : (
+                                                  <span className="chip chip-dashed">
+                                                    <VideoCameraIcon className="w-[13px] h-[13px]" strokeWidth={1.6} />
+                                                    {de ? "Video — nach Bewertung" : "Video — after grading"}
+                                                  </span>
+                                                )}
+                                              </div>
+                                            </motion.div>
+                                          )}
+                                        </AnimatePresence>
+                                      </div>
                                     </motion.div>
-                                  ) : (
-                                    <button
-                                      onClick={(e) => { e.stopPropagation(); if (!snoozingIds[review.id]) setSnoozeArmedId(review.id); }}
-                                      disabled={!!snoozingIds[review.id]}
-                                      className="w-10 h-10 sm:w-11 sm:h-11 rounded-full flex items-center justify-center transition-all bg-white/[0.04] border border-white/[0.07] text-white/35 hover:bg-indigo-400/[0.09] hover:border-indigo-400/30 hover:text-indigo-300 cursor-pointer disabled:opacity-60 disabled:cursor-wait"
-                                      title={language === "german" ? "Review verschieben" : "Snooze review"}
+                                  );
+                                })}
+                              </motion.div>
+                            </div>
+                          )}
+
+                          {/* Upcoming */}
+                          {!isLoadingReviews && scheduledItems.length > 0 && (
+                            <div className="mt-10">
+                              <div className="flex items-center justify-between mb-3.5">
+                                <h2 className="text-base tracking-[-0.011em] text-ink-900 font-sans" style={{ fontWeight: 650 }}>{de ? "Demnächst" : "Upcoming"}</h2>
+                                <button
+                                  onClick={() => setShowCalendarModal(true)}
+                                  className="inline-flex items-center gap-[7px] text-[13px] text-ink-600 hover:text-ink-900 transition-colors cursor-pointer"
+                                  style={{ fontWeight: 550 }}
+                                >
+                                  <CalendarDaysIcon className="w-[15px] h-[15px]" strokeWidth={1.6} />
+                                  {de ? "Mit Kalender synchronisieren" : "Sync to calendar"}
+                                </button>
+                              </div>
+                              <div className="card-surface overflow-hidden">
+                                {visibleScheduled.map((review, idx) => (
+                                  <div key={review.id}>
+                                    {idx > 0 && <div className="h-px bg-[rgba(33,27,18,0.06)] mx-[22px]" />}
+                                    <div
+                                       
+                                      onClick={() => startQuiz(review)}
+                                      className="grid grid-cols-[1fr_auto_auto] items-center gap-4 sm:gap-6 py-[13px] px-[22px] cursor-pointer hover:bg-[#FBF9F4] transition-colors"
                                     >
-                                      {snoozingIds[review.id] ? (
-                                        <ArrowPathIcon className="w-4 h-4 animate-spin text-indigo-300" />
-                                      ) : (
-                                        <ClockIcon className="w-4 h-4" />
-                                      )}
-                                    </button>
-                                  )}
-                                  {confirmingDeleteId === review.id && !deletingIds[review.id] ? (
-                                    <motion.button
-                                      initial={{ opacity: 0, scale: 0.86, y: -4 }}
-                                      animate={{ opacity: 1, scale: 1, y: 0 }}
-                                      transition={springTactile}
-                                      onClick={(e) => handleDeleteModule(e, review.id)}
-                                      className="px-3 py-2 rounded-full flex items-center justify-center gap-1.5 transition-all bg-rose-500/15 border border-rose-400/40 text-rose-200 hover:bg-rose-500/25 hover:border-rose-400/60 text-[10px] font-bold uppercase tracking-wide whitespace-nowrap cursor-pointer"
-                                      title={language === 'german' ? 'Wirklich löschen?' : 'Really delete?'}
-                                    >
-                                      <TrashIcon className="w-3.5 h-3.5" />
-                                      {language === 'german' ? 'Wirklich löschen?' : 'Really delete?'}
-                                    </motion.button>
-                                  ) : (
-                                    <button
-                                      onClick={(e) => handleDeleteModule(e, review.id)}
-                                      disabled={!!deletingIds[review.id]}
-                                      className="w-10 h-10 sm:w-11 sm:h-11 rounded-full flex items-center justify-center transition-all bg-white/[0.04] border border-white/[0.07] text-white/35 hover:bg-rose-500/15 hover:border-rose-400/30 hover:text-rose-300 cursor-pointer disabled:opacity-60 disabled:cursor-wait"
-                                      title={language === 'german' ? 'Modul löschen' : 'Delete Module'}
-                                    >
-                                      {deletingIds[review.id] ? (
-                                        <ArrowPathIcon className="w-4 h-4 animate-spin text-rose-300" />
-                                      ) : (
-                                        <TrashIcon className="w-4 h-4" />
-                                      )}
-                                    </button>
-                                  )}
+                                      <div className="min-w-0">
+                                        <div className="text-sm tracking-[-0.008em] text-ink-900 truncate" style={{ fontWeight: 570 }}>{review.topic}</div>
+                                        <div className="text-xs text-ink-400 mt-0.5 truncate">{review.subject}</div>
+                                      </div>
+                                      <span className="text-xs text-ink-400 whitespace-nowrap">Level {review.level + 1}</span>
+                                      <span className="text-[13px] text-ink-600 tnum w-[84px] text-right whitespace-nowrap" style={{ fontWeight: 550 }}>{fmtShort(new Date(review.raw.nextReviewDate))}</span>
+                                    </div>
+                                  </div>
+                                ))}
+                                {scheduledItems.length > 6 && !showAllScheduled && (
+                                  <button
+                                    onClick={() => setShowAllScheduled(true)}
+                                    className="w-full border-t border-[rgba(33,27,18,0.06)] flex items-center justify-center gap-[7px] py-3 text-[13px] text-ink-400 hover:text-ink-900 hover:bg-[#FBF9F4] transition-colors cursor-pointer"
+                                    style={{ fontWeight: 550 }}
+                                  >
+                                    <ChevronDownIcon className="w-[13px] h-[13px]" strokeWidth={2} />
+                                    {de ? `Alle ${scheduledItems.length} anzeigen` : `Show all ${scheduledItems.length} upcoming`}
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Right rail — hidden on the empty state */}
+                        {!isLoadingReviews && upcomingReviews.length > 0 && (
+                          <div className="w-full xl:w-[288px] shrink-0 flex flex-col gap-4">
+                            <div className="card-surface-elevated p-5">
+                              <div className="w-[34px] h-[34px] rounded-[10px] bg-paper-2 flex items-center justify-center">
+                                <CloudArrowUpIcon className="w-[18px] h-[18px] text-ink-600" strokeWidth={1.6} />
+                              </div>
+                              <div className="text-[15px] font-semibold tracking-[-0.01em] text-ink-900 mt-3">{de ? "Material hinzufügen" : "Add material"}</div>
+                              <p className="text-[13px] leading-relaxed text-ink-600 mt-[5px]">
+                                {de
+                                  ? "Wirf eine Vorlesung hinein und ein Quiz-Set entsteht von selbst. Die erste Wiederholung kommt morgen."
+                                  : "Drop in a lecture and a quiz set drafts itself. The first review lands tomorrow."}
+                              </p>
+                              <button
+                                onClick={() => { setActiveTab("upload"); setShowMobileMenu(false); }}
+                                className="mt-3.5 w-full h-[38px] rounded-xl border border-[rgba(33,27,18,0.13)] bg-transparent hover:bg-paper-2 text-ink-900 text-[13px] font-semibold cursor-pointer transition-colors"
+                              >
+                                {de ? "Vorlesung hochladen" : "Upload lecture"}
+                              </button>
+                            </div>
+
+                            {passRate30 && passRate30.total > 0 && (
+                              <div className="card-surface p-5">
+                                <div className="caps-label">{de ? "Bestehensquote · 30 Tage" : "Pass rate · last 30 days"}</div>
+                                <div className="font-display text-[34px] tracking-[-0.01em] text-ink-900 mt-2 leading-none tnum" style={{ fontWeight: 520 }}>
+                                  {Math.round((passRate30.passed / passRate30.total) * 100)}%
+                                </div>
+                                <div className="text-[12.5px] text-ink-600 mt-1.5">
+                                  {de
+                                    ? `${passRate30.passed} von ${passRate30.total} Wiederholungen bestanden`
+                                    : `${passRate30.passed} of ${passRate30.total} reviews passed`}
+                                </div>
+                                <div className="h-[3px] rounded-full bg-paper-2 mt-3.5 overflow-hidden">
+                                  <div className="h-full rounded-full bg-[#5E7D58]" style={{ width: `${Math.round((passRate30.passed / passRate30.total) * 100)}%` }}></div>
                                 </div>
                               </div>
-                            </motion.div>
-                          ))}
-
-                          {!showAllScheduled && scheduledItems.length > 12 && (
-                            <button
-                              onClick={() => setShowAllScheduled(true)}
-                              className="w-full mt-2 py-4 rounded-2xl card-surface flex items-center justify-center gap-2 text-sm text-white/45 hover:text-amber-200 transition-all cursor-pointer font-medium"
-                            >
-                              <ChevronDownIcon className="w-4 h-4" />
-                              {language === 'german' ? `Alle ${scheduledItems.length} anstehenden anzeigen` : `Show all ${scheduledItems.length} upcoming`}
-                            </button>
-                          )}
-                        </motion.div>
-                      );
-                    })()}
-                  </div>
-
-                  {/* Quick Actions — hidden on the empty state (its CTA lives in the empty card instead) */}
-                  {upcomingReviews.length > 0 && (
-                    <div className="flex flex-col gap-6">
-                      <motion.div whileHover={{ y: -4 }} whileTap={{ scale: 0.99 }} transition={springSoft} className="card-surface-elevated gradient-border p-6 cursor-pointer transition-colors" onClick={() => { setActiveTab("upload"); setShowMobileMenu(false); }}>
-                        <p className="eyebrow mb-3">Pipeline</p>
-                        <h3 className="font-display text-xl font-medium mb-2 text-white">{language === 'german' ? 'Material hochladen' : 'Upload Material'}</h3>
-                        <p className="text-sm text-white/40 leading-relaxed mb-6">{language === 'german' ? 'Füttere die KI mit einem neuen Modul, um den generativen Prozess zu starten.' : 'Feed the engine a new module to start the generative AI pipeline.'}</p>
-                        <button className="btn-primary w-full py-3.5 px-4 text-sm flex items-center justify-center gap-2 cursor-pointer">
-                          <CloudArrowUpIcon className="w-5 h-5" />
-                          {language === 'german' ? 'Jetzt hochladen' : 'Upload Now'}
-                        </button>
+                            )}
+                          </div>
+                        )}
                       </motion.div>
-                    </div>
-                  )}
-                </motion.div>
+                    </>
+                  );
+                })()}
               </motion.div>
             )}
 
@@ -1868,28 +1879,31 @@ export default function DashboardClient({
                 className="max-w-3xl mx-auto"
               >
                 <header className="mb-10">
-                  <p className="eyebrow mb-3">{language === 'german' ? '6-Stufen Pipeline' : '6-Stage Pipeline'}</p>
-                  <h1 className="font-display text-3xl sm:text-4xl font-medium tracking-tight text-white mb-3">Ironclad <em className="text-gradient italic">Generator</em></h1>
-                  <p className="text-white/45 text-sm sm:text-base">{language === 'german' ? 'Füge dein Vorlesungsmaterial hier ein, um den kompletten didaktischen KI-Prozess zu starten.' : 'Paste your lecture material below to run the full 6-stage Didactic AI chain.'}</p>
+                  <p className="caps-label tracking-[0.14em] mb-3">{language === 'german' ? 'Neues Modul' : 'New module'}</p>
+                  <h1 className="font-display text-[34px] sm:text-[40px] tracking-[-0.02em] leading-[1.05] text-ink-900 mb-3" style={{ fontWeight: 470 }}>
+                    {language === 'german' ? <>Aus einer Vorlesung wird ein <em className="italic">Quiz</em>.</> : <>Turn a lecture into a <em className="italic">quiz</em>.</>}
+                  </h1>
+                  <p className="text-ink-600 text-sm sm:text-[15px] leading-relaxed">{language === 'german' ? 'Lade dein Material hoch — Blueprint, Quiz und Tutor entstehen automatisch. Die erste Wiederholung kommt morgen.' : 'Upload your material — the blueprint, quiz and tutor draft themselves. The first review lands tomorrow.'}</p>
                 </header>
 
                 {isGenerating ? (
-                  <div className="card-surface-elevated p-8 md:p-14 flex flex-col items-center justify-center text-center">
-                    <div className="w-16 h-16 rounded-2xl bg-amber-400/10 border border-amber-400/25 flex items-center justify-center mb-6">
-                      <ArrowPathIcon className="w-8 h-8 text-amber-300 animate-spin" />
+                  <div className="card-surface-elevated px-8 py-12 md:py-14 flex flex-col items-center justify-center text-center">
+                    <div className="w-14 h-14 rounded-2xl bg-[rgba(239,159,31,0.10)] border border-[rgba(239,159,31,0.22)] flex items-center justify-center mb-6">
+                      <ArrowPathIcon className="w-7 h-7 text-amber-600 animate-spin" strokeWidth={1.6} />
                     </div>
-                    <h3 className="font-display text-2xl font-medium text-white mb-2">{language === 'german' ? 'Modul wird verarbeitet...' : 'Processing Module...'}</h3>
-                    <p className="text-white/50 mb-10 text-base">{progressMsg}</p>
+                    <h3 className="font-display text-[27px] text-ink-900 mb-2" style={{ fontWeight: 470 }}>{language === 'german' ? 'Dein Modul entsteht' : 'Building your module'}</h3>
+                    <p className="text-ink-600 mb-9 text-sm">{progressMsg}</p>
 
-                    <div className="progress-track w-full max-w-md h-2.5">
+                    <div className="progress-track w-full max-w-[460px] h-1 overflow-hidden">
                       <motion.div
-                        className="progress-fill h-full"
-                        initial={{ width: 0 }}
-                        animate={{ width: `${(progressStep / 8) * 100}%` }}
-                        transition={{ duration: 0.8, ease: EASE_OUT }}
+                        className="progress-fill w-full"
+                        style={{ transformOrigin: "left" }}
+                        initial={{ scaleX: 0 }}
+                        animate={{ scaleX: Math.min(1, progressStep / 8) }}
+                        transition={springSoft}
                       />
                     </div>
-                    <div className="w-full max-w-md mt-8 text-left space-y-3.5">
+                    <div className="w-full max-w-[460px] mt-8 text-left space-y-3.5">
                       {[
                         // The REAL pipeline steps the backend emits (quiz-generator.ts),
                         // not the old fictional "Quiz Agent Level 1–5" labels. The app
@@ -1906,21 +1920,21 @@ export default function DashboardClient({
                           key={step}
                           initial={{ opacity: 0, x: -10 }}
                           animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: i * 0.05, duration: 0.5, ease: EASE_OUT }}
-                          className={`flex items-center gap-3.5 text-sm transition-colors duration-500 ${progressStep > step ? 'text-emerald-300' : progressStep === step ? 'text-amber-200 font-medium' : 'text-white/20'}`}
+                          transition={{ delay: i * 0.03, duration: 0.24, ease: EASE_OUT }}
+                          className={`flex items-center gap-3.5 text-sm transition-colors duration-500 ${progressStep > step ? 'text-[#4A6845]' : progressStep === step ? 'text-[#A15E03] font-semibold' : 'text-ink-400'}`}
                         >
                           <AnimatePresence mode="wait">
                             {progressStep > step ? (
-                              <motion.span key="done" initial={{ scale: 0.4, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: "spring", stiffness: 500, damping: 22 }} className="shrink-0">
-                                <CheckCircleIcon className="w-5 h-5" />
+                              <motion.span key="done" initial={{ scale: 0.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={springTactile} className="w-[22px] h-[22px] rounded-full bg-[rgba(94,125,88,0.14)] shrink-0 flex items-center justify-center">
+                                <CheckIcon className="w-3 h-3 text-[#5E7D58]" strokeWidth={2.5} />
                               </motion.span>
                             ) : progressStep === step ? (
-                              <span key="active" className="ember-dot w-5 h-5 rounded-full border-2 border-amber-300 shrink-0 flex items-center justify-center"><span className="w-1.5 h-1.5 rounded-full bg-amber-300"></span></span>
+                              <span key="active" className="ember-dot w-[22px] h-[22px] rounded-full border-2 border-amber-500 shrink-0 flex items-center justify-center"><span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span></span>
                             ) : (
-                              <div key="idle" className="w-5 h-5 rounded-full border-2 border-current shrink-0" />
+                              <div key="idle" className="w-[22px] h-[22px] rounded-full border border-[rgba(33,27,18,0.13)] shrink-0" />
                             )}
                           </AnimatePresence>
-                          <span className="tracking-wide">{label}</span>
+                          <span>{label}</span>
                         </motion.div>
                       ))}
                     </div>
@@ -1930,8 +1944,8 @@ export default function DashboardClient({
                     <div className="flex flex-col sm:flex-row gap-5">
                       <div className="flex-1 flex flex-col justify-end">
                         <div className="flex items-start justify-between mb-2 gap-2">
-                          <label className="text-xs font-semibold uppercase tracking-[0.12em] text-white/45 leading-tight">{language === "german" ? `Modul (Semester ${currentSemester})` : `Module (Semester ${currentSemester})`}</label>
-                          <button onClick={() => { setShowSettingsModal(true); }} className="text-xs text-amber-300/80 hover:text-amber-200 transition-colors shrink-0 cursor-pointer">{language === "german" ? "Verwalten" : "Manage Presets"}</button>
+                          <label className="text-xs font-semibold uppercase tracking-[0.12em] text-ink-600 leading-tight">{language === "german" ? `Modul (Semester ${currentSemester})` : `Module (Semester ${currentSemester})`}</label>
+                          <button onClick={() => { setShowSettingsModal(true); }} className="text-xs text-amber-600 hover:text-[#A15E03] transition-colors shrink-0 cursor-pointer">{language === "german" ? "Verwalten" : "Manage Presets"}</button>
                         </div>
                         {modulePresets.length > 0 ? (
                           <select
@@ -1940,18 +1954,18 @@ export default function DashboardClient({
                             className="input-dark w-full px-4 py-3.5 appearance-none cursor-pointer"
                           >
                             {modulePresets.map(preset => (
-                              <option key={preset} value={preset} className="bg-[#16120e]">{preset}</option>
+                              <option key={preset} value={preset}>{preset}</option>
                             ))}
                           </select>
                         ) : (
-                          <div className="input-dark w-full px-4 py-3.5 text-white/45 text-sm flex items-center justify-between gap-2">
+                          <div className="input-dark w-full px-4 py-3.5 text-ink-600 text-sm flex items-center justify-between gap-2">
                             {language === "german" ? `Keine Module für Semester ${currentSemester} definiert` : `No modules defined for Semester ${currentSemester}`}
-                            <button onClick={() => { setShowSettingsModal(true); }} className="text-amber-300 hover:text-amber-200 font-medium cursor-pointer shrink-0">{language === "german" ? "Hinzufügen" : "Add Presets"}</button>
+                            <button onClick={() => { setShowSettingsModal(true); }} className="text-amber-600 hover:text-[#A15E03] font-medium cursor-pointer shrink-0">{language === "german" ? "Hinzufügen" : "Add Presets"}</button>
                           </div>
                         )}
                       </div>
                       <div className="flex-1 flex flex-col justify-end">
-                        <label className="block text-xs font-semibold uppercase tracking-[0.12em] text-white/45 mb-2">{language === "german" ? "Thema" : "Topic"}</label>
+                        <label className="block text-xs font-semibold uppercase tracking-[0.12em] text-ink-600 mb-2">{language === "german" ? "Thema" : "Topic"}</label>
                         <input
                           type="text"
                           value={topicInput}
@@ -1962,9 +1976,9 @@ export default function DashboardClient({
                       </div>
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold uppercase tracking-[0.12em] text-white/45 mb-2.5">{language === "german" ? "Vorlesungsmaterial (Dateien oder Text)" : "Lecture Material (Files or Text)"}</label>
+                      <label className="block text-xs font-semibold uppercase tracking-[0.12em] text-ink-600 mb-2.5">{language === "german" ? "Vorlesungsmaterial (Dateien oder Text)" : "Lecture Material (Files or Text)"}</label>
                       <div
-                        className={`w-full border-2 border-dashed rounded-2xl p-6 md:p-10 mb-4 flex flex-col items-center justify-center transition-colors ${isDragging ? 'border-amber-400/60 bg-amber-400/[0.05]' : 'border-white/[0.1] bg-white/[0.015]'}`}
+                        className={`w-full border-[1.5px] border-dashed rounded-[18px] p-6 md:p-10 mb-4 flex flex-col items-center justify-center transition-colors ${isDragging ? 'border-[rgba(239,159,31,0.55)] bg-[rgba(239,159,31,0.08)]' : 'border-[rgba(33,27,18,0.10)] bg-[#FBF9F4]'}`}
                         onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
                         onDragLeave={() => setIsDragging(false)}
                         onDrop={(e) => {
@@ -1979,10 +1993,10 @@ export default function DashboardClient({
                           }
                         }}
                       >
-                        <div className="w-12 h-12 rounded-xl bg-amber-400/[0.08] border border-amber-400/20 flex items-center justify-center mb-4">
-                          <CloudArrowUpIcon className="w-6 h-6 text-amber-300" />
+                        <div className="w-12 h-12 rounded-xl bg-[rgba(239,159,31,0.08)] border border-[rgba(239,159,31,0.22)] flex items-center justify-center mb-4">
+                          <CloudArrowUpIcon className="w-6 h-6 text-amber-600" />
                         </div>
-                        <p className="text-white/40 text-sm text-center mb-4 leading-relaxed">
+                        <p className="text-ink-600 text-sm text-center mb-4 leading-relaxed">
                           {language === "german" ? "Ziehe deine PDFs, Excel- oder Word-Dateien hierher" : "Drag and drop your PDFs, Excel, or Word files here"}
                         </p>
                         <input
@@ -2010,10 +2024,10 @@ export default function DashboardClient({
                       {uploadedFiles.length > 0 && (
                         <div className="flex flex-wrap gap-2 mb-4">
                           {uploadedFiles.map((file, idx) => (
-                            <div key={idx} className="flex items-center gap-2 bg-amber-400/[0.07] text-amber-100/90 px-3.5 py-2 rounded-lg text-xs font-medium border border-amber-400/20">
-                              <DocumentTextIcon className="w-4 h-4 text-amber-300" />
+                            <div key={idx} className="flex items-center gap-2 bg-[rgba(239,159,31,0.08)] text-[#A15E03]/90 px-3.5 py-2 rounded-lg text-xs font-medium border border-[rgba(239,159,31,0.22)]">
+                              <DocumentTextIcon className="w-4 h-4 text-amber-600" />
                               {file.name}
-                              <button onClick={() => setUploadedFiles(prev => prev.filter((_, i) => i !== idx))} className="ml-1.5 text-amber-200/60 hover:text-white cursor-pointer">
+                              <button onClick={() => setUploadedFiles(prev => prev.filter((_, i) => i !== idx))} className="ml-1.5 text-[#A15E03]/60 hover:text-ink-900 cursor-pointer">
                                 <XMarkIcon className="w-4 h-4" />
                               </button>
                             </div>
@@ -2063,11 +2077,11 @@ export default function DashboardClient({
               >
                 {/* ── Library header ─────────────────────────────────────── */}
                 <header className="mb-8 md:mb-10">
-                  <p className="eyebrow mb-3">{language === "german" ? "Archiv" : "Archive"}</p>
-                  <h1 className="font-display text-3xl sm:text-4xl font-medium tracking-tight text-white mb-3">
-                    {language === "german" ? "Meine Bibliothek" : "My Library"}
+                  <p className="caps-label tracking-[0.14em] mb-3">{language === "german" ? "Archiv" : "Archive"}</p>
+                  <h1 className="font-display text-[34px] sm:text-[40px] tracking-[-0.02em] leading-[1.05] text-ink-900 mb-3" style={{ fontWeight: 470 }}>
+                    {language === "german" ? "Deine Bibliothek" : "Your library"}
                   </h1>
-                  <p className="text-white/45 text-sm sm:text-base">
+                  <p className="text-ink-600 text-sm sm:text-[15px]">
                     {language === "german"
                       ? "Alle Vorlesungen, Quizze und Lernmaterialien — nach Semester und Modul sortiert."
                       : "All lectures, quizzes, and study materials — sorted by semester and module."}
@@ -2077,7 +2091,7 @@ export default function DashboardClient({
                 {/* ── Search ──────────────────────────────────────────────── */}
                 {rawItems.length > 0 && (
                   <div className="relative mb-6">
-                    <MagnifyingGlassIcon className="w-4 h-4 text-white/30 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <MagnifyingGlassIcon className="w-4 h-4 text-ink-400 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
                     <input
                       type="text"
                       value={librarySearch}
@@ -2088,7 +2102,7 @@ export default function DashboardClient({
                     {librarySearching && (
                       <button
                         onClick={() => setLibrarySearch("")}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center rounded-full text-white/35 hover:text-white hover:bg-white/[0.08] transition-colors cursor-pointer"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center rounded-full text-ink-400 hover:text-ink-900 hover:bg-paper-2 transition-colors cursor-pointer"
                         title={language === "german" ? "Suche löschen" : "Clear search"}
                       >
                         <XMarkIcon className="w-4 h-4" />
@@ -2100,8 +2114,8 @@ export default function DashboardClient({
                 {/* ── No search results ───────────────────────────────────── */}
                 {librarySearching && libraryBySemester.size === 0 && rawItems.length > 0 && (
                   <div className="card-surface p-10 flex flex-col items-center text-center">
-                    <MagnifyingGlassIcon className="w-6 h-6 text-white/20 mb-3" />
-                    <p className="text-white/35 text-sm">
+                    <MagnifyingGlassIcon className="w-6 h-6 text-ink-300 mb-3" />
+                    <p className="text-ink-400 text-sm">
                       {language === "german" ? <>Keine Treffer für „{librarySearch.trim()}“.</> : <>No results for “{librarySearch.trim()}”.</>}
                     </p>
                   </div>
@@ -2110,14 +2124,14 @@ export default function DashboardClient({
                 {/* ── Empty state ─────────────────────────────────────────── */}
                 {rawItems.length === 0 && !isLoadingReviews && (
                   <div className="card-surface p-12 md:p-16 flex flex-col items-center text-center">
-                    <div className="w-16 h-16 rounded-2xl bg-white/[0.04] border border-white/[0.08] flex items-center justify-center mb-6">
-                      <BookOpenIcon className="w-8 h-8 text-white/25" />
+                    <div className="w-16 h-16 rounded-2xl bg-paper-2 border border-[rgba(33,27,18,0.08)] flex items-center justify-center mb-6">
+                      <BookOpenIcon className="w-8 h-8 text-ink-300" />
                     </div>
                     <p className="eyebrow mb-3">{language === "german" ? "Noch leer" : "Still empty"}</p>
-                    <h3 className="font-display text-xl font-medium text-white mb-2">
+                    <h3 className="font-display text-xl font-medium text-ink-900 mb-2">
                       {language === "german" ? "Keine Vorlesungen vorhanden" : "No lectures yet"}
                     </h3>
-                    <p className="text-white/35 text-sm leading-relaxed max-w-sm">
+                    <p className="text-ink-400 text-sm leading-relaxed max-w-sm">
                       {language === "german"
                         ? "Lade dein erstes Vorlesungsmaterial hoch, um deine Bibliothek aufzubauen."
                         : "Upload your first lecture material to start building your library."}
@@ -2144,21 +2158,21 @@ export default function DashboardClient({
                         className="w-full flex items-center gap-3 py-2 group cursor-pointer"
                       >
                         <motion.div animate={{ rotate: semOpen ? 90 : 0 }} transition={springTactile}>
-                          <ChevronRightIcon className="w-4 h-4 text-amber-300/60 group-hover:text-amber-300 transition-colors shrink-0" />
+                          <ChevronRightIcon className="w-4 h-4 text-amber-600/60 group-hover:text-amber-600 transition-colors shrink-0" />
                         </motion.div>
-                        <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/35 group-hover:text-white/55 transition-colors whitespace-nowrap">
+                        <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-ink-400 group-hover:text-ink-600 transition-colors whitespace-nowrap">
                           {language === "german" ? "Semester" : "Semester"}
                         </span>
-                        <span className="font-display text-2xl font-medium leading-none text-white group-hover:text-gradient transition-all">
+                        <span className="font-display text-2xl font-medium leading-none text-ink-900 group-hover:text-[#A15E03] transition-all">
                           {sem}
                         </span>
                         {isCurrentSemester && (
-                          <span className="text-[9px] font-bold uppercase tracking-[0.12em] px-2 py-0.5 rounded-full bg-amber-400/[0.12] border border-amber-400/25 text-amber-300">
+                          <span className="text-[9px] font-bold uppercase tracking-[0.12em] px-2 py-0.5 rounded-full bg-[rgba(239,159,31,0.10)] border border-[rgba(239,159,31,0.22)] text-amber-600">
                             {language === "german" ? "Aktiv" : "Active"}
                           </span>
                         )}
-                        <div className="flex-1 h-px bg-white/[0.06] mx-1" />
-                        <span className="text-[10px] text-white/20 font-medium whitespace-nowrap">
+                        <div className="flex-1 h-px bg-paper-2 mx-1" />
+                        <span className="text-[10px] text-ink-300 font-medium whitespace-nowrap">
                           {modules.size} {language === "german" ? "Module" : "modules"} · {totalLectures} {language === "german" ? "Vorlesungen" : "lectures"}
                         </span>
                       </button>
@@ -2191,13 +2205,13 @@ export default function DashboardClient({
                                       className="w-full flex items-center gap-3 px-5 py-4 group cursor-pointer"
                                     >
                                       <motion.div animate={{ rotate: modOpen ? 90 : 0 }} transition={springTactile}>
-                                        <ChevronRightIcon className="w-3.5 h-3.5 text-white/25 group-hover:text-white/55 transition-colors shrink-0" />
+                                        <ChevronRightIcon className="w-3.5 h-3.5 text-ink-300 group-hover:text-ink-600 transition-colors shrink-0" />
                                       </motion.div>
-                                      <FolderOpenIcon className="w-4 h-4 text-amber-300/50 shrink-0" />
-                                      <span className="font-display text-base font-medium text-white/85 group-hover:text-white transition-colors flex-1 text-left truncate">
+                                      <FolderOpenIcon className="w-4 h-4 text-ink-300 shrink-0" />
+                                      <span className="font-display text-base font-medium text-ink-900 group-hover:text-ink-900 transition-colors flex-1 text-left truncate">
                                         {moduleName}
                                       </span>
-                                      <span className="text-[10px] text-white/25 font-medium shrink-0">
+                                      <span className="text-[10px] text-ink-300 font-medium shrink-0">
                                         {lectures.length} {language === "german" ? (lectures.length === 1 ? "Vorlesung" : "Vorlesungen") : (lectures.length === 1 ? "lecture" : "lectures")}
                                       </span>
                                     </button>
@@ -2213,14 +2227,14 @@ export default function DashboardClient({
                                           exit="exit"
                                           style={{ overflow: "hidden" }}
                                         >
-                                          <div className="border-t border-white/[0.05]">
+                                          <div className="border-t border-[rgba(33,27,18,0.08)]">
                                             {lectures.map((item, idx) => {
                                               const itemOpen = expandedLibraryItems.has(item.id);
                                               const isDue = isDueLocal(new Date(item.nextReviewDate), new Date());
                                               const hasStudyMaterials = !!(item.tutorPromptDocId || item.prePodcastPrompt || item.postPodcastPrompt || item.lastVideoPrompt1 || item.lastVideoPrompt2 || item.prePodcastUrl || item.postPodcastUrl);
 
                                               return (
-                                                <div key={item.id} className={`${idx > 0 ? "border-t border-white/[0.04]" : ""}`}>
+                                                <div key={item.id} className={`${idx > 0 ? "border-t border-[rgba(33,27,18,0.08)]" : ""}`}>
                                                   {/* Collapsed lecture row */}
                                                   <button
                                                     onClick={() => setExpandedLibraryItems(prev => {
@@ -2228,10 +2242,10 @@ export default function DashboardClient({
                                                       if (next.has(item.id)) next.delete(item.id); else next.add(item.id);
                                                       return next;
                                                     })}
-                                                    className="w-full flex items-center gap-3 px-5 py-3.5 group cursor-pointer hover:bg-white/[0.02] transition-colors"
+                                                    className="w-full flex items-center gap-3 px-5 py-3.5 group cursor-pointer hover:bg-paper-0 transition-colors"
                                                   >
-                                                    <DocumentTextIcon className="w-3.5 h-3.5 text-white/20 shrink-0 group-hover:text-white/40 transition-colors" />
-                                                    <span className="text-sm text-white/70 group-hover:text-white/90 transition-colors flex-1 text-left leading-snug">
+                                                    <DocumentTextIcon className="w-3.5 h-3.5 text-ink-300 shrink-0 group-hover:text-ink-600 transition-colors" />
+                                                    <span className="text-sm text-ink-900/80 group-hover:text-ink-900 transition-colors flex-1 text-left leading-snug">
                                                       {item.subjectSub}
                                                     </span>
                                                     {isDue && (
@@ -2251,17 +2265,17 @@ export default function DashboardClient({
                                                               : l === item.currentLevel
                                                                 ? "bg-amber-300/50 ring-1 ring-amber-300/60"
                                                                 : generated
-                                                                  ? "bg-white/[0.15]"
-                                                                  : "bg-white/[0.06]"
+                                                                  ? "bg-paper-2"
+                                                                  : "bg-paper-2"
                                                           }`}
                                                         />
                                                       ))}
                                                     </div>
-                                                    <span className="text-[10px] text-white/25 font-medium shrink-0 w-8 text-right">
+                                                    <span className="text-[10px] text-ink-300 font-medium shrink-0 w-8 text-right">
                                                       L{item.currentLevel + 1}
                                                     </span>
                                                     <motion.div animate={{ rotate: itemOpen ? 180 : 0 }} transition={springTactile}>
-                                                      <ChevronDownIcon className="w-3.5 h-3.5 text-white/20 group-hover:text-white/45 transition-colors shrink-0" />
+                                                      <ChevronDownIcon className="w-3.5 h-3.5 text-ink-300 group-hover:text-ink-600 transition-colors shrink-0" />
                                                     </motion.div>
                                                   </button>
 
@@ -2276,11 +2290,11 @@ export default function DashboardClient({
                                                         exit="exit"
                                                         style={{ overflow: "hidden" }}
                                                       >
-                                                        <div className="px-5 pb-5 pt-1 bg-black/20 space-y-5">
+                                                        <div className="px-5 pb-5 pt-1 bg-paper-0 space-y-5">
 
                                                           {/* Level progress detail */}
                                                           <div>
-                                                            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/25 mb-3">
+                                                            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-ink-300 mb-3">
                                                               {language === "german" ? "Level-Fortschritt" : "Level Progress"}
                                                             </p>
                                                             <div className="flex items-start gap-2 sm:gap-3">
@@ -2292,8 +2306,8 @@ export default function DashboardClient({
                                                                       : l === item.currentLevel
                                                                         ? "bg-transparent border-amber-300 shadow-[0_0_10px_rgba(245,158,11,0.35)]"
                                                                         : generated
-                                                                          ? "bg-white/[0.06] border-white/[0.18]"
-                                                                          : "bg-transparent border-white/[0.08]"
+                                                                          ? "bg-paper-2 border-[rgba(33,27,18,0.13)]"
+                                                                          : "bg-transparent border-[rgba(33,27,18,0.08)]"
                                                                   }`}>
                                                                     {l < item.currentLevel && (
                                                                       <CheckIcon className="w-3 h-3 text-stone-900" strokeWidth={3} />
@@ -2302,7 +2316,7 @@ export default function DashboardClient({
                                                                       <div className="w-1.5 h-1.5 rounded-full bg-amber-300" />
                                                                     )}
                                                                   </div>
-                                                                  <span className="text-[8px] font-medium text-white/20 leading-none text-center">
+                                                                  <span className="text-[8px] font-medium text-ink-300 leading-none text-center">
                                                                     {LIB_LEVEL_SHORT[l]}
                                                                   </span>
                                                                 </div>
@@ -2312,7 +2326,7 @@ export default function DashboardClient({
 
                                                           {/* Quiz generation status */}
                                                           <div>
-                                                            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/25 mb-2">
+                                                            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-ink-300 mb-2">
                                                               {language === "german" ? "Quiz-Generierung" : "Quiz Generation"}
                                                             </p>
                                                             <div className="flex flex-wrap gap-1.5">
@@ -2321,17 +2335,17 @@ export default function DashboardClient({
                                                                   key={l}
                                                                   className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border transition-all ${
                                                                     l < item.currentLevel
-                                                                      ? "bg-amber-400/[0.1] border-amber-400/25 text-amber-300"
+                                                                      ? "bg-amber-400/[0.1] border-[rgba(239,159,31,0.22)] text-amber-600"
                                                                       : generated
-                                                                        ? "bg-white/[0.05] border-white/[0.12] text-white/45"
-                                                                        : "bg-transparent border-white/[0.05] text-white/15"
+                                                                        ? "bg-paper-2 border-[rgba(33,27,18,0.13)] text-ink-600"
+                                                                        : "bg-transparent border-[rgba(33,27,18,0.08)] text-ink-300"
                                                                   }`}
                                                                 >
                                                                   L{l+1} {l < item.currentLevel ? "✓" : generated ? "·" : "○"}
                                                                 </span>
                                                               ))}
                                                             </div>
-                                                            <p className="text-[10px] text-white/20 mt-2">
+                                                            <p className="text-[10px] text-ink-300 mt-2">
                                                               {language === "german"
                                                                 ? `${item.generatedLevels.filter(Boolean).length} von 7 Quizzen generiert`
                                                                 : `${item.generatedLevels.filter(Boolean).length} of 7 quizzes generated`}
@@ -2341,7 +2355,7 @@ export default function DashboardClient({
                                                           {/* Study materials */}
                                                           {hasStudyMaterials && (
                                                             <div>
-                                                              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/25 mb-2">
+                                                              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-ink-300 mb-2">
                                                                 {language === "german" ? "Lernmaterialien" : "Study Materials"}
                                                               </p>
                                                               <div className="flex flex-wrap gap-2">
@@ -2350,13 +2364,13 @@ export default function DashboardClient({
                                                                     href={`/api/source/${item.id}`}
                                                                     target="_blank"
                                                                     rel="noopener noreferrer"
-                                                                    className="flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg bg-amber-400/[0.07] border border-amber-400/[0.18] text-amber-300/80 hover:text-amber-200 hover:bg-amber-400/[0.12] transition-all"
+                                                                    className="flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg bg-[rgba(239,159,31,0.08)] border border-[rgba(239,159,31,0.22)] text-amber-600 hover:text-[#A15E03] hover:bg-[rgba(239,159,31,0.10)] transition-all"
                                                                   >
                                                                     <DocumentTextIcon className="w-3 h-3" />
                                                                     {language === "german" ? "Original-PDF" : "Original PDF"}
                                                                   </a>
                                                                 ) : (
-                                                                  <div className="flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg bg-white/[0.01] border border-white/[0.05] text-white/[0.18]">
+                                                                  <div className="flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg bg-paper-0 border border-[rgba(33,27,18,0.08)] text-ink-300">
                                                                     <DocumentTextIcon className="w-3 h-3" />
                                                                     {language === "german" ? "Keine PDF" : "No PDF"}
                                                                   </div>
@@ -2368,13 +2382,13 @@ export default function DashboardClient({
                                                                       href={vurl}
                                                                       target="_blank"
                                                                       rel="noopener noreferrer"
-                                                                      className="flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg bg-emerald-400/[0.07] border border-emerald-400/[0.18] text-emerald-300/80 hover:text-emerald-200 hover:bg-emerald-400/[0.12] transition-all"
+                                                                      className="flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg bg-[rgba(94,125,88,0.14)] border border-[rgba(94,125,88,0.30)] text-[#4A6845] hover:text-[#4A6845] hover:bg-[rgba(94,125,88,0.14)] transition-all"
                                                                     >
                                                                       <VideoCameraIcon className="w-3 h-3" />
                                                                       Video
                                                                     </a>
                                                                   ) : (
-                                                                    <div className="flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg bg-white/[0.01] border border-white/[0.05] text-white/[0.18]">
+                                                                    <div className="flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg bg-paper-0 border border-[rgba(33,27,18,0.08)] text-ink-300">
                                                                       <VideoCameraIcon className="w-3 h-3" />
                                                                       {language === "german" ? "Kein Video" : "No Video"}
                                                                     </div>
@@ -2385,7 +2399,7 @@ export default function DashboardClient({
                                                                     href={`/tutor/${item.tutorPromptDocId}`}
                                                                     target="_blank"
                                                                     rel="noopener noreferrer"
-                                                                    className="flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg bg-amber-400/[0.07] border border-amber-400/[0.18] text-amber-300/80 hover:text-amber-200 hover:bg-amber-400/[0.12] transition-all"
+                                                                    className="flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg bg-[rgba(239,159,31,0.08)] border border-[rgba(239,159,31,0.22)] text-amber-600 hover:text-[#A15E03] hover:bg-[rgba(239,159,31,0.10)] transition-all"
                                                                   >
                                                                     <AcademicCapIcon className="w-3 h-3" />
                                                                     {language === "german" ? "Tutor-Prompt" : "Tutor Prompt"}
@@ -2397,7 +2411,7 @@ export default function DashboardClient({
                                                                     href={item.prePodcastUrl}
                                                                     target="_blank"
                                                                     rel="noopener noreferrer"
-                                                                    className="flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg bg-white/[0.04] border border-white/[0.1] text-white/55 hover:text-white/90 hover:bg-white/[0.07] transition-all"
+                                                                    className="flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg bg-paper-2 border border-[rgba(33,27,18,0.10)] text-ink-600 hover:text-ink-900 hover:bg-paper-2 transition-all"
                                                                   >
                                                                     <SpeakerWaveIcon className="w-3 h-3" />
                                                                     {language === "german" ? "Audio 1" : "Audio 1"}
@@ -2406,7 +2420,7 @@ export default function DashboardClient({
                                                                   <button
                                                                     onClick={(e) => { e.stopPropagation(); handleGeneratePodcast(e, item.id, "pre"); }}
                                                                     disabled={!!generatingPodcasts[`${item.id}-pre`]}
-                                                                    className="flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg bg-white/[0.04] border border-white/[0.1] text-white/35 hover:text-amber-200/80 hover:bg-white/[0.06] transition-all cursor-pointer disabled:cursor-wait"
+                                                                    className="flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg bg-paper-2 border border-[rgba(33,27,18,0.10)] text-ink-400 hover:text-[#A15E03] hover:bg-paper-2 transition-all cursor-pointer disabled:cursor-wait"
                                                                   >
                                                                     <SpeakerWaveIcon className="w-3 h-3" />
                                                                     {generatingPodcasts[`${item.id}-pre`]
@@ -2419,7 +2433,7 @@ export default function DashboardClient({
                                                                     href={item.postPodcastUrl}
                                                                     target="_blank"
                                                                     rel="noopener noreferrer"
-                                                                    className="flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg bg-white/[0.04] border border-white/[0.1] text-white/55 hover:text-white/90 hover:bg-white/[0.07] transition-all"
+                                                                    className="flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg bg-paper-2 border border-[rgba(33,27,18,0.10)] text-ink-600 hover:text-ink-900 hover:bg-paper-2 transition-all"
                                                                   >
                                                                     <SpeakerWaveIcon className="w-3 h-3" />
                                                                     {language === "german" ? "Audio 2" : "Audio 2"}
@@ -2428,7 +2442,7 @@ export default function DashboardClient({
                                                                   <button
                                                                     onClick={(e) => { e.stopPropagation(); handleGeneratePodcast(e, item.id, "post"); }}
                                                                     disabled={!!generatingPodcasts[`${item.id}-post`]}
-                                                                    className="flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg bg-white/[0.04] border border-white/[0.1] text-white/35 hover:text-amber-200/80 hover:bg-white/[0.06] transition-all cursor-pointer disabled:cursor-wait"
+                                                                    className="flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg bg-paper-2 border border-[rgba(33,27,18,0.10)] text-ink-400 hover:text-[#A15E03] hover:bg-paper-2 transition-all cursor-pointer disabled:cursor-wait"
                                                                   >
                                                                     <SpeakerWaveIcon className="w-3 h-3" />
                                                                     {generatingPodcasts[`${item.id}-post`]
@@ -2442,7 +2456,7 @@ export default function DashboardClient({
                                                                       title: language === "german" ? `Podcast Pre-Prompt — ${item.subjectSub}` : `Pre-Podcast Prompt — ${item.subjectSub}`,
                                                                       content: item.prePodcastPrompt!,
                                                                     })}
-                                                                    className="flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg bg-white/[0.04] border border-white/[0.1] text-white/55 hover:text-white/90 hover:bg-white/[0.07] transition-all cursor-pointer"
+                                                                    className="flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg bg-paper-2 border border-[rgba(33,27,18,0.10)] text-ink-600 hover:text-ink-900 hover:bg-paper-2 transition-all cursor-pointer"
                                                                   >
                                                                     <DocumentTextIcon className="w-3 h-3" />
                                                                     {language === "german" ? "Podcast Pre-Prompt" : "Pre-Podcast Prompt"}
@@ -2454,7 +2468,7 @@ export default function DashboardClient({
                                                                       title: language === "german" ? `Podcast Post-Prompt — ${item.subjectSub}` : `Post-Podcast Prompt — ${item.subjectSub}`,
                                                                       content: item.postPodcastPrompt!,
                                                                     })}
-                                                                    className="flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg bg-white/[0.04] border border-white/[0.1] text-white/55 hover:text-white/90 hover:bg-white/[0.07] transition-all cursor-pointer"
+                                                                    className="flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg bg-paper-2 border border-[rgba(33,27,18,0.10)] text-ink-600 hover:text-ink-900 hover:bg-paper-2 transition-all cursor-pointer"
                                                                   >
                                                                     <DocumentTextIcon className="w-3 h-3" />
                                                                     {language === "german" ? "Podcast Post-Prompt" : "Post-Podcast Prompt"}
@@ -2466,7 +2480,7 @@ export default function DashboardClient({
                                                                       title: language === "german" ? `Video-Skript 1 — ${item.subjectSub}` : `Video Script 1 — ${item.subjectSub}`,
                                                                       content: item.lastVideoPrompt1!,
                                                                     })}
-                                                                    className="flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg bg-white/[0.04] border border-white/[0.1] text-white/55 hover:text-white/90 hover:bg-white/[0.07] transition-all cursor-pointer"
+                                                                    className="flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg bg-paper-2 border border-[rgba(33,27,18,0.10)] text-ink-600 hover:text-ink-900 hover:bg-paper-2 transition-all cursor-pointer"
                                                                   >
                                                                     <VideoCameraIcon className="w-3 h-3" />
                                                                     {language === "german" ? "Video-Skript 1" : "Video Script 1"}
@@ -2478,7 +2492,7 @@ export default function DashboardClient({
                                                                       title: language === "german" ? `Video-Skript 2 — ${item.subjectSub}` : `Video Script 2 — ${item.subjectSub}`,
                                                                       content: item.lastVideoPrompt2!,
                                                                     })}
-                                                                    className="flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg bg-white/[0.04] border border-white/[0.1] text-white/55 hover:text-white/90 hover:bg-white/[0.07] transition-all cursor-pointer"
+                                                                    className="flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg bg-paper-2 border border-[rgba(33,27,18,0.10)] text-ink-600 hover:text-ink-900 hover:bg-paper-2 transition-all cursor-pointer"
                                                                   >
                                                                     <VideoCameraIcon className="w-3 h-3" />
                                                                     {language === "german" ? "Video-Skript 2" : "Video Script 2"}
@@ -2491,26 +2505,26 @@ export default function DashboardClient({
                                                           {/* Last feedback snippet */}
                                                           {item.lastFeedback && (
                                                             <div>
-                                                              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/25 mb-2">
+                                                              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-ink-300 mb-2">
                                                                 {language === "german" ? "Letztes Feedback" : "Last Assessment"}
                                                               </p>
-                                                              <div className="bg-black/30 rounded-xl border border-white/[0.05] p-3.5 max-h-28 overflow-y-auto custom-scrollbar">
-                                                                <p className="text-xs text-white/45 leading-relaxed whitespace-pre-wrap">{item.lastFeedback}</p>
+                                                              <div className="bg-paper-0 rounded-xl border border-[rgba(33,27,18,0.08)] p-3.5 max-h-28 overflow-y-auto custom-scrollbar">
+                                                                <p className="text-xs text-ink-600 leading-relaxed whitespace-pre-wrap">{item.lastFeedback}</p>
                                                               </div>
                                                             </div>
                                                           )}
 
                                                           {/* Meta row */}
-                                                          <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[11px] text-white/25 pt-1 border-t border-white/[0.04]">
+                                                          <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[11px] text-ink-300 pt-1 border-t border-[rgba(33,27,18,0.08)]">
                                                             <span className="flex items-center gap-1.5">
                                                               <CalendarDaysIcon className="w-3.5 h-3.5" />
                                                               {language === "german" ? "Erstellt: " : "Created: "}
-                                                              <span className="text-white/40">{new Date(item.createdAt).toLocaleDateString()}</span>
+                                                              <span className="text-ink-600">{new Date(item.createdAt).toLocaleDateString()}</span>
                                                             </span>
                                                             <span className="flex items-center gap-1.5">
                                                               <ClockIcon className="w-3.5 h-3.5" />
                                                               {language === "german" ? "Nächste Wdh.: " : "Next review: "}
-                                                              <span className={isDue ? "text-amber-300/80" : "text-white/40"}>
+                                                              <span className={isDue ? "text-amber-600" : "text-ink-600"}>
                                                                 {new Date(item.nextReviewDate).toLocaleDateString()}
                                                               </span>
                                                             </span>
@@ -2550,11 +2564,11 @@ export default function DashboardClient({
                 className="max-w-5xl mx-auto"
               >
                 <header className="mb-8 md:mb-10">
-                  <p className="eyebrow mb-3">{language === "german" ? "Fortschritt" : "Progress"}</p>
-                  <h1 className="font-display text-3xl sm:text-4xl font-medium tracking-tight text-white mb-3">
-                    {language === "german" ? <>Deine <em className="text-gradient italic">Statistik</em></> : <>Your <em className="text-gradient italic">Statistics</em></>}
+                  <p className="caps-label tracking-[0.14em] mb-3">{language === "german" ? "Fortschritt" : "Progress"}</p>
+                  <h1 className="font-display text-[34px] sm:text-[40px] tracking-[-0.02em] leading-[1.05] text-ink-900 mb-3" style={{ fontWeight: 470 }}>
+                    {language === "german" ? "Dein Fortschritt" : "Your progress"}
                   </h1>
-                  <p className="text-white/45 text-sm sm:text-base">
+                  <p className="text-ink-600 text-sm sm:text-[15px]">
                     {language === "german"
                       ? "Streak, Aktivität, Bestehensquoten und die Review-Last der nächsten zwei Wochen."
                       : "Streak, activity, pass rates and your review load for the next two weeks."}
@@ -2571,7 +2585,7 @@ export default function DashboardClient({
                 initial="initial"
                 animate="animate"
                 exit="exit"
-                className="max-w-4xl mx-auto"
+                className={`max-w-4xl mx-auto transition-[padding] ${showTutorPanel ? "xl:pr-[392px]" : ""}`}
               >
                 <button
                   onClick={() => {
@@ -2579,40 +2593,52 @@ export default function DashboardClient({
                     setSelectedReview(null);
                     setGradingResult(null);
                   }}
-                  className="flex items-center gap-2 text-sm text-white/40 hover:text-white/80 mb-8 transition-all cursor-pointer group"
+                  className="flex items-center gap-2 text-[13px] text-ink-600 hover:text-ink-900 mb-8 transition-colors cursor-pointer group"
+                  style={{ fontWeight: 550 }}
                 >
-                  <ArrowLeftIcon className="w-4 h-4 transition-transform duration-200 group-hover:-translate-x-0.5" />
-                  {language === "german" ? "Zurück zum Dashboard" : "Back to Dashboard"}
+                  <ArrowLeftIcon className="w-4 h-4 transition-transform duration-200 group-hover:-translate-x-0.5" strokeWidth={1.8} />
+                  {language === "german" ? "Dashboard" : "Dashboard"}
                 </button>
 
-                <header className="mb-10">
-                  <div className="flex items-center gap-3 mb-4">
-                    <span className="text-[10px] font-bold uppercase tracking-[0.12em] px-2.5 py-1 rounded-md badge-due">Level {selectedReview.level + 1}</span>
-                    <span className="eyebrow !text-white/35">{language === "german" ? "Aktives Quiz" : "Active Quiz"}</span>
+                <header className="mb-9">
+                  <div className="flex items-center gap-2.5 mb-3.5">
+                    <span className="caps-label truncate">{selectedReview.subject}</span>
+                    <span className="text-ink-300">·</span>
+                    <span className="caps-label whitespace-nowrap">Level {selectedReview.level + 1}</span>
+                    {interactive.active && (
+                      <span className="inline-flex items-center gap-1.5 h-6 px-2.5 rounded-full bg-[rgba(239,159,31,0.10)] border border-[rgba(239,159,31,0.22)] text-[#A15E03] text-[11px] font-semibold">
+                        <MicrophoneIcon className="w-3 h-3" strokeWidth={2} />
+                        {language === "german" ? "Freihändig" : "Hands-free"}
+                      </span>
+                    )}
                   </div>
-                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 sm:gap-6">
-                    <div>
-                      <h1 className="font-display text-2xl sm:text-3xl font-medium tracking-tight text-white">{selectedReview.subject}</h1>
-                      <p className="text-sm text-white/40 mt-2">{selectedReview.topic}</p>
+                  <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 sm:gap-6">
+                    <div className="min-w-0">
+                      <h1 className="font-display text-[27px] sm:text-[31px] tracking-[-0.018em] leading-[1.1] text-ink-900" style={{ fontWeight: 470 }}>{selectedReview.topic}</h1>
+                      {parsedTasks.length > 0 && (
+                        <p className="text-[13px] text-ink-400 mt-2">
+                          {parsedTasks.length} {language === "german" ? (parsedTasks.length === 1 ? "Aufgabe" : "Aufgaben") : (parsedTasks.length === 1 ? "task" : "tasks")} · {language === "german" ? "ohne Zeitlimit" : "untimed"}
+                        </p>
+                      )}
                     </div>
                     <div className="flex flex-wrap items-center gap-2 shrink-0">
                       <motion.button
                         {...pressable}
                         onClick={() => setShowTutorPanel(prev => !prev)}
                         title={language === "german" ? "Live Tutor: kennt deine Vorlesung, das Quiz und deine Entwürfe" : "Live tutor: knows your lecture, the quiz, and your drafts"}
-                        className={`flex items-center gap-2 px-4 py-2.5 text-xs font-semibold cursor-pointer rounded-[0.875rem] transition-all ${showTutorPanel ? "bg-amber-400/15 text-amber-100 border border-amber-400/35" : "btn-secondary"}`}
+                        className={`flex items-center gap-2 h-9 px-4 text-[13px] font-semibold cursor-pointer rounded-xl transition-colors ${showTutorPanel ? "bg-[rgba(239,159,31,0.10)] text-[#A15E03] border border-[rgba(239,159,31,0.30)]" : "btn-secondary"}`}
                       >
-                        <AcademicCapIcon className="w-4 h-4 text-amber-300" />
-                        {language === "german" ? "Tutor" : "Tutor"}
+                        <AcademicCapIcon className="w-4 h-4" strokeWidth={1.6} />
+                        Tutor
                       </motion.button>
                       {parsedTasks.length > 0 && !interactive.active && (
                         <motion.button
                           {...pressable}
                           onClick={interactive.start}
                           title={language === "german" ? "Interaktiver Modus: Fragen werden vorgelesen, Antworten diktiert" : "Interactive mode: questions read aloud, answers dictated"}
-                          className="btn-secondary flex items-center gap-2 px-4 py-2.5 text-xs font-semibold cursor-pointer"
+                          className="btn-secondary flex items-center gap-2 h-9 px-4 text-[13px] font-semibold cursor-pointer"
                         >
-                          <MicrophoneIcon className="w-4 h-4 text-amber-300" />
+                          <MicrophoneIcon className="w-4 h-4" strokeWidth={1.6} />
                           {language === "german" ? "Interaktiv" : "Interactive"}
                         </motion.button>
                       )}
@@ -2620,10 +2646,10 @@ export default function DashboardClient({
                         <motion.button
                           {...pressable}
                           onClick={exportQuizForPrint}
-                          className="btn-secondary flex items-center gap-2 px-4 py-2.5 text-xs font-semibold cursor-pointer"
+                          title={language === "german" ? "Als Druckbogen exportieren" : "Export as print sheet"}
+                          className="btn-secondary flex items-center justify-center w-9 h-9 cursor-pointer"
                         >
-                          <PrinterIcon className="w-4 h-4 text-amber-300" />
-                          {language === "german" ? "Exportieren" : "Export"}
+                          <PrinterIcon className="w-4 h-4" strokeWidth={1.6} />
                         </motion.button>
                       )}
                     </div>
@@ -2649,12 +2675,14 @@ export default function DashboardClient({
                     viewport (otherwise it anchors to the scrolling page and sits at the bottom). */}
                 {interactive.active && createPortal(
                   <motion.div
-                    initial={{ opacity: 0, y: 24 }}
+                    initial={{ opacity: 0, y: 16 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="fixed bottom-5 left-1/2 -translate-x-1/2 z-[60] flex items-center gap-1.5 px-3 py-2.5 rounded-2xl bg-black/85 backdrop-blur-xl border border-amber-400/20 shadow-[0_8px_44px_-8px_rgba(0,0,0,0.85)]"
+                    transition={springSoft}
+                    className="fixed bottom-[max(1.25rem,env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 z-[60] flex items-center gap-1.5 px-3 py-2 rounded-[18px] bg-paper-1 border border-[rgba(33,27,18,0.08)]"
+                    style={{ boxShadow: "var(--shadow-e3)" }}
                   >
-                    <span className="text-[11px] font-bold text-amber-200/90 tabular-nums px-1.5">{interactive.currentIndex + 1}/{interactive.total}</span>
-                    <span className="text-[11px] text-white/45 pr-1.5 min-w-[74px]">
+                    <span className="text-[12px] font-bold text-[#A15E03] tnum px-1.5">{interactive.currentIndex + 1} / {interactive.total}</span>
+                    <span className="text-[11px] text-ink-400 pr-1.5 min-w-[74px]">
                       {interactive.paused
                         ? (language === "german" ? "Pausiert" : "Paused")
                         : interactive.phase === "loading" ? (language === "german" ? "Lädt…" : "Loading…")
@@ -2662,34 +2690,34 @@ export default function DashboardClient({
                         : interactive.phase === "listening" ? (language === "german" ? "Hört zu…" : "Listening…")
                         : ""}
                     </span>
-                    <div className="w-px h-6 bg-white/10" />
-                    <button onClick={interactive.previous} disabled={interactive.currentIndex <= 0} title={language === "german" ? "Vorherige Aufgabe" : "Previous task"} className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-colors">
-                      <BackwardIcon className="w-4 h-4 text-amber-300" />
+                    <div className="w-px h-6 bg-[rgba(33,27,18,0.08)]" />
+                    <button onClick={interactive.previous} disabled={interactive.currentIndex <= 0} title={language === "german" ? "Vorherige Aufgabe" : "Previous task"} className="btn-ghost-icon w-10 h-10 flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer">
+                      <BackwardIcon className="w-4 h-4" strokeWidth={1.6} />
                     </button>
-                    <button onClick={interactive.togglePause} title={interactive.paused ? (language === "german" ? "Fortsetzen" : "Resume") : "Pause"} className="w-12 h-12 flex items-center justify-center rounded-xl bg-amber-400/15 hover:bg-amber-400/25 cursor-pointer transition-colors">
-                      {interactive.paused ? <PlayIcon className="w-5 h-5 text-amber-200" /> : <PauseIcon className="w-5 h-5 text-amber-200" />}
+                    <button onClick={interactive.togglePause} title={interactive.paused ? (language === "german" ? "Fortsetzen" : "Resume") : "Pause"} className="btn-primary w-12 h-12 flex items-center justify-center cursor-pointer !rounded-[14px]">
+                      {interactive.paused ? <PlayIcon className="w-5 h-5" strokeWidth={1.8} /> : <PauseIcon className="w-5 h-5" strokeWidth={1.8} />}
                     </button>
-                    <button onClick={interactive.next} title={language === "german" ? "Nächste Aufgabe" : "Next task"} className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-white/10 cursor-pointer transition-colors">
-                      <ForwardIcon className="w-4 h-4 text-amber-300" />
+                    <button onClick={interactive.next} title={language === "german" ? "Nächste Aufgabe" : "Next task"} className="btn-ghost-icon w-10 h-10 flex items-center justify-center cursor-pointer">
+                      <ForwardIcon className="w-4 h-4" strokeWidth={1.6} />
                     </button>
-                    <div className="w-px h-6 bg-white/10" />
-                    <button onClick={interactive.stop} title={language === "german" ? "Beenden" : "Stop"} className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-red-500/15 cursor-pointer transition-colors">
-                      <StopIcon className="w-4 h-4 text-red-300" />
+                    <div className="w-px h-6 bg-[rgba(33,27,18,0.08)]" />
+                    <button onClick={interactive.stop} title={language === "german" ? "Beenden" : "Stop"} className="btn-ghost-icon w-10 h-10 flex items-center justify-center hover:!text-[#B06A4E] hover:!bg-[rgba(176,106,78,0.10)] cursor-pointer">
+                      <StopIcon className="w-4 h-4" strokeWidth={1.6} />
                     </button>
                   </motion.div>,
                   document.body
                 )}
 
                 {gradingError && !isGrading && (
-                  <div className="mb-6 p-6 rounded-2xl bg-rose-500/[0.07] border border-rose-400/20 text-rose-200 text-sm flex flex-col gap-3">
-                    <div className="flex items-center gap-2 text-rose-300 font-semibold">
-                      <ExclamationTriangleIcon className="w-5 h-5" />
-                      <span>{language === "german" ? "Bewertung fehlgeschlagen" : "Grading Failed"}</span>
+                  <div className="mb-6 p-6 rounded-[18px] bg-[rgba(176,106,78,0.07)] border border-[rgba(176,106,78,0.20)] text-sm flex flex-col gap-3">
+                    <div className="flex items-center gap-2 text-[#96543C] font-semibold">
+                      <ExclamationTriangleIcon className="w-5 h-5" strokeWidth={1.6} />
+                      <span>{language === "german" ? "Die Bewertung wurde nicht abgeschlossen." : "Grading didn't complete."}</span>
                     </div>
-                    <pre className="text-xs font-mono bg-black/30 p-4 rounded-xl border border-white/[0.06] whitespace-pre-wrap overflow-x-auto max-h-40 overflow-y-auto leading-relaxed text-left text-rose-200/70 custom-scrollbar">
+                    <pre className="text-xs font-mono bg-paper-0 p-4 rounded-xl border border-[rgba(33,27,18,0.07)] whitespace-pre-wrap overflow-x-auto max-h-40 overflow-y-auto leading-relaxed text-left text-[#96543C]/80 custom-scrollbar">
                       {gradingError}
                     </pre>
-                    <p className="text-xs text-white/35 text-left leading-relaxed">
+                    <p className="text-xs text-ink-400 text-left leading-relaxed">
                       {language === "german"
                         ? "Bitte überprüfe die Datenbank, den Gemini API-Schlüssel oder die Server-Logs und versuche es erneut."
                         : "Please check your database, Gemini API key, or server logs, and click below to try submitting again."}
@@ -2698,113 +2726,148 @@ export default function DashboardClient({
                 )}
 
                 {isGrading ? (
-                  <div className="card-surface-elevated p-8 md:p-14 flex flex-col items-center justify-center text-center">
-                    <div className="w-16 h-16 rounded-2xl bg-amber-400/10 border border-amber-400/25 flex items-center justify-center mb-6">
-                      <ArrowPathIcon className="w-8 h-8 text-amber-300 animate-spin" />
+                  <div className="card-surface-elevated px-8 py-12 md:py-14 flex flex-col items-center justify-center text-center">
+                    <div className="w-14 h-14 rounded-2xl bg-[rgba(239,159,31,0.10)] border border-[rgba(239,159,31,0.22)] flex items-center justify-center mb-6">
+                      <ArrowPathIcon className="w-7 h-7 text-amber-600 animate-spin" strokeWidth={1.6} />
                     </div>
-                    <h3 className="font-display text-2xl font-medium mb-2 text-white">{language === "german" ? "Einreichung wird bewertet..." : "Grading Submission..."}</h3>
-                    <p className="text-white/50 mb-10 text-base">{gradingMsg}</p>
+                    <h3 className="font-display text-[27px] text-ink-900 mb-2" style={{ fontWeight: 470 }}>{language === "german" ? "Deine Antworten werden bewertet" : "Grading your answers"}</h3>
+                    <p className="text-ink-600 mb-2 text-sm">{gradingMsg}</p>
+                    <p className="text-ink-400 mb-9 text-xs">
+                      {language === "german"
+                        ? "Zwei Gutachter lesen unabhängig, dann führt ein Chef-Gutachter zusammen."
+                        : "Two examiners read independently, then a head examiner reconciles them."}
+                    </p>
 
-                    <div className="progress-track w-full max-w-md h-2.5">
+                    <div className="progress-track w-full max-w-[460px] h-1 overflow-hidden">
                       <motion.div
-                        className="progress-fill h-full"
-                        initial={{ width: 0 }}
-                        animate={{ width: `${Math.min(100, (gradingStep / 4) * 100)}%` }}
-                        transition={{ duration: 0.8, ease: EASE_OUT }}
+                        className="progress-fill w-full"
+                        style={{ transformOrigin: "left" }}
+                        initial={{ scaleX: 0 }}
+                        animate={{ scaleX: Math.min(1, gradingStep / 4) }}
+                        transition={springSoft}
                       />
                     </div>
-                    <div className="w-full max-w-md mt-8 text-left space-y-3.5">
+                    <div className="w-full max-w-[460px] mt-8 text-left space-y-3.5">
                       {[1,2,3,4].map((step, i) => (
                         <motion.div
                           key={step}
                           initial={{ opacity: 0, x: -10 }}
                           animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: i * 0.05, duration: 0.5, ease: EASE_OUT }}
-                          className={`flex items-center gap-3.5 text-sm transition-colors duration-500 ${gradingStep > step ? 'text-emerald-300' : gradingStep === step ? 'text-amber-200 font-medium' : 'text-white/20'}`}
+                          transition={{ delay: i * 0.03, duration: 0.24, ease: EASE_OUT }}
+                          className={`flex items-center gap-3.5 text-sm transition-colors duration-500 ${gradingStep > step ? 'text-[#4A6845]' : gradingStep === step ? 'text-[#A15E03] font-semibold' : 'text-ink-400'}`}
                         >
                           <AnimatePresence mode="wait">
                             {gradingStep > step ? (
-                              <motion.span key="done" initial={{ scale: 0.4, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: "spring", stiffness: 500, damping: 22 }} className="shrink-0">
-                                <CheckCircleIcon className="w-5 h-5" />
+                              <motion.span key="done" initial={{ scale: 0.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={springTactile} className="w-[22px] h-[22px] rounded-full bg-[rgba(94,125,88,0.14)] shrink-0 flex items-center justify-center">
+                                <CheckIcon className="w-3 h-3 text-[#5E7D58]" strokeWidth={2.5} />
                               </motion.span>
                             ) : gradingStep === step ? (
-                              <span key="active" className="ember-dot w-5 h-5 rounded-full border-2 border-amber-300 shrink-0 flex items-center justify-center"><span className="w-1.5 h-1.5 rounded-full bg-amber-300"></span></span>
+                              <span key="active" className="ember-dot w-[22px] h-[22px] rounded-full border-2 border-amber-500 shrink-0 flex items-center justify-center"><span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span></span>
                             ) : (
-                              <div key="idle" className="w-5 h-5 rounded-full border-2 border-current shrink-0" />
+                              <div key="idle" className="w-[22px] h-[22px] rounded-full border border-[rgba(33,27,18,0.13)] shrink-0" />
                             )}
                           </AnimatePresence>
                           {language === "german" ? (
-                            step === 1 ? "KI-Gutachter 1 & 2 (Parallel)" :
-                            step === 2 ? "Chef-Gutachter (Konsolidierung)" :
-                            step === 3 ? "Quiz & Video generieren" : "Datenbank speichern"
+                            step === 1 ? "Gutachter 1 & 2 · lesen parallel" :
+                            step === 2 ? "Chef-Gutachter · konsolidiert das Urteil" :
+                            step === 3 ? "Nächstes Level & Video vorbereiten" : "Deine Bewertung speichern"
                           ) : (
-                            step === 1 ? "AI Examiner 1 & 2 (Parallel)" :
-                            step === 2 ? "Head Examiner (Consolidation)" :
-                            step === 3 ? "Generate Quiz & Video Prompts" : "Save Database Records"
+                            step === 1 ? "Examiner 1 & 2 · read in parallel" :
+                            step === 2 ? "Head examiner · consolidating the verdict" :
+                            step === 3 ? "Prepare the next level & video" : "Save your record"
                           )}
                         </motion.div>
                       ))}
                     </div>
+                    <p className="text-xs text-ink-400 mt-9">
+                      {language === "german"
+                        ? "Du kannst diese Seite verlassen — das Ergebnis wartet auf dich."
+                        : "You can leave this page — we'll have it ready when you're back."}
+                    </p>
                   </div>
                 ) : gradingResult ? (
-                  <div className="space-y-6">
-                    <div className={`card-surface-elevated p-6 md:p-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 ${gradingResult.isPass ? 'border-emerald-400/25 glow-success' : 'border-rose-400/25 glow-danger'}`}>
-                      <div>
-                        <span className={`text-[10px] font-bold uppercase tracking-[0.16em] px-3.5 py-1.5 rounded-full ${gradingResult.isPass ? 'bg-emerald-400/12 text-emerald-300 border border-emerald-400/25' : 'bg-rose-400/12 text-rose-300 border border-rose-400/25'}`}>
-                          {gradingResult.isPass
-                            ? (language === "german" ? "BESTANDEN" : "PASSED")
-                            : (language === "german" ? "WIEDERHOLEN" : "REPEAT")}
-                        </span>
-                        <h2 className="font-display text-3xl sm:text-4xl font-medium text-white mt-5 tracking-tight">
-                          {gradingResult.isPass
-                            ? (language === "german" ? <>Level <em className="text-gradient italic">Aufgestiegen!</em></> : <>Level <em className="text-gradient italic">Promoted!</em></>)
-                            : (language === "german" ? <>Wiederholung <em className="italic text-rose-200">Eingeplant</em></> : <>Remediation <em className="italic text-rose-200">Scheduled</em></>)}
-                        </h2>
-                        {gradingResult.nextReviewDate && (
-                          <p className="text-white/50 mt-3 text-sm">
-                            {language === "german" ? "Nächste Wiederholung: " : "Next review set to: "}
-                            <strong className="text-amber-200 font-semibold">{new Date(gradingResult.nextReviewDate).toLocaleDateString()}</strong>
-                            {gradingResult.currentLevel !== null && <> (Level {gradingResult.currentLevel + 1})</>}
-                          </p>
-                        )}
+                  <div className="space-y-5">
+                    <div className="card-surface-elevated p-7 md:p-8 relative overflow-hidden">
+                      <div className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-6">
+                        <div>
+                          <span className={`inline-flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-full ${gradingResult.isPass ? 'bg-[rgba(94,125,88,0.14)] text-[#4A6845]' : 'bg-[rgba(176,106,78,0.12)] text-[#96543C]'}`}>
+                            {gradingResult.isPass
+                              ? (language === "german" ? "Bestanden" : "Passed")
+                              : (language === "german" ? "Wiederholen" : "Repeat")}
+                          </span>
+                          <h2 className="font-display text-[34px] sm:text-[40px] text-ink-900 mt-4 tracking-[-0.02em] leading-[1.05]" style={{ fontWeight: 470 }}>
+                            {gradingResult.isPass
+                              ? (language === "german"
+                                  ? <>Level {gradingResult.currentLevel !== null ? gradingResult.currentLevel + 1 : "—"}, <em className="italic">freigeschaltet.</em></>
+                                  : <>Level {gradingResult.currentLevel !== null ? gradingResult.currentLevel + 1 : "—"}, <em className="italic">unlocked.</em></>)
+                              : (language === "german"
+                                  ? <>Schauen wir es uns <em className="italic">noch einmal</em> an.</>
+                                  : <>Let&apos;s see this one <em className="italic">again.</em></>)}
+                          </h2>
+                          {gradingResult.nextReviewDate && (
+                            <p className="text-ink-600 mt-3 text-sm">
+                              {gradingResult.isPass
+                                ? (language === "german" ? "Nächste Wiederholung am " : "Next review on ")
+                                : (language === "german" ? "Kommt zurück am " : "Comes back on ")}
+                              <strong className="text-ink-900 font-semibold tnum">{new Date(gradingResult.nextReviewDate).toLocaleDateString(language === "german" ? "de-DE" : "en-GB", { weekday: "long", day: "numeric", month: "long" })}</strong>
+                              {!gradingResult.isPass && (language === "german" ? ". Wiederholen ist kein Rückschritt — das Intervall tut seine Arbeit." : ". Repeating isn't a setback — it's the interval doing its job.")}
+                            </p>
+                          )}
+                        </div>
                       </div>
+                      {/* The earned moment: amber thread draws once under the pass header */}
+                      {gradingResult.isPass ? (
+                        <motion.div
+                          initial={{ scaleX: 0 }}
+                          animate={{ scaleX: 1 }}
+                          transition={{ duration: 1, ease: EASE_OUT, delay: 0.2 }}
+                          className="amber-thread-h h-0.5 mt-7 origin-left"
+                        />
+                      ) : (
+                        <div className="h-px mt-7 bg-[rgba(33,27,18,0.07)]" />
+                      )}
+                    </div>
+
+                    <div className="card-surface-elevated overflow-hidden">
+                      <div className="border-b border-[rgba(33,27,18,0.06)] bg-[#FBF9F4] px-6 py-4 flex items-center gap-2.5">
+                        <DocumentTextIcon className={`w-4 h-4 ${gradingResult.isPass ? "text-amber-600" : "text-[#B06A4E]"}`} strokeWidth={1.6} />
+                        <h3 className="caps-label !text-ink-600">
+                          {gradingResult.isPass
+                            ? (language === "german" ? "Gutachter-Brief" : "Examiner's brief")
+                            : (language === "german" ? "Worauf du achten solltest" : "What to focus on")}
+                        </h3>
+                      </div>
+                      <div className="p-6 md:p-8">
+                        <div className="whitespace-pre-wrap font-sans text-ink-900/80 text-[14.5px] leading-[1.7]">
+                          {gradingResult.feedback}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2.5">
                       <button
                         onClick={() => {
                           setActiveTab("dashboard");
                           setSelectedReview(null);
                           setGradingResult(null);
                         }}
-                        className="btn-secondary px-6 py-3.5 text-sm font-semibold cursor-pointer shrink-0"
+                        className={`${gradingResult.isPass ? "btn-primary" : "btn-secondary"} h-11 px-6 text-sm cursor-pointer`}
                       >
-                        {language === "german" ? "Zurück zum Dashboard" : "Back to Dashboard"}
+                        {language === "german" ? "Zurück zum Dashboard" : "Back to dashboard"}
                       </button>
-                    </div>
-
-                    <div className="card-surface-elevated overflow-hidden">
-                      <div className="border-b border-white/[0.06] bg-white/[0.02] px-6 py-4 flex items-center gap-2.5">
-                        <DocumentTextIcon className="w-4 h-4 text-amber-300" />
-                        <h3 className="text-xs font-bold uppercase tracking-[0.16em] text-white/60">{language === "german" ? "Korrektur-Feedback" : "Remediation Brief"}</h3>
-                      </div>
-
-                      <div className="p-6 md:p-8">
-                        <div className="whitespace-pre-wrap font-sans text-white/65 text-[15px] leading-relaxed">
-                          {gradingResult.feedback}
-                        </div>
-                      </div>
+                      {!gradingResult.isPass && selectedReview.raw.prePodcastUrl?.startsWith("http") && (
+                        <a href={selectedReview.raw.prePodcastUrl} target="_blank" rel="noopener noreferrer" className="btn-secondary h-11 px-5 text-sm inline-flex items-center gap-2">
+                          <SpeakerWaveIcon className="w-4 h-4 text-amber-600" strokeWidth={1.6} />
+                          {language === "german" ? "Audio · vorher abspielen" : "Play pre-lecture audio"}
+                        </a>
+                      )}
                     </div>
                   </div>
                 ) : (
                   /* Quiz taking UI */
-                  <div className="max-w-4xl mx-auto flex flex-col gap-6 pb-20">
-                    <div className="flex items-center justify-between mb-1">
-                      <h3 className="font-display text-xl font-medium text-white flex items-center gap-2.5">
-                        <AcademicCapIcon className="w-5 h-5 text-amber-300" />
-                        {language === "german" ? "Quiz-Aufgabe" : "Quiz Assignment"}
-                      </h3>
-                    </div>
-
+                  <div className="flex flex-col gap-6 pb-24">
                     {parsedTasks.length > 0 ? (
-                      <div className="space-y-6">
+                      <div className="space-y-4">
                         {parsedTasks.map((task, idx) => {
                           const isMC = /^[A-D]\)\s/m.test(task.questionText);
                           return (
@@ -2813,38 +2876,47 @@ export default function DashboardClient({
                               id={`iq-${idx}`}
                               initial={{ opacity: 0, y: 20 }}
                               animate={{ opacity: 1, y: 0 }}
-                              transition={{ delay: idx * 0.06, duration: DUR.base, ease: EASE_OUT }}
-                              className={`card-surface-elevated p-5 md:p-8 transition-all duration-300 ${
+                              transition={{ delay: Math.min(idx, 8) * 0.03, duration: DUR.base, ease: EASE_OUT }}
+                              className={`card-surface-elevated p-[22px] md:px-[26px] transition-all duration-300 ${
                                 interactive.active && interactive.currentIndex === idx
-                                  ? "ring-2 ring-amber-400 bg-amber-400/[0.03] shadow-[0_0_50px_-8px_rgba(251,191,36,0.45)] scale-[1.01]"
+                                  ? "!border-[rgba(239,159,31,0.45)] ring-[3px] ring-[rgba(239,159,31,0.14)] shadow-[0_10px_36px_-16px_rgba(217,125,6,0.35)]"
                                   : interactive.active
                                   ? "opacity-50"
                                   : ""
                               }`}
                             >
-                              <div className="flex items-center gap-3 mb-5">
-                                <span className="font-display text-2xl text-amber-300/50 italic leading-none">{String(idx + 1).padStart(2, "0")}</span>
-                                <h3 className="text-xs font-bold text-amber-200/90 uppercase tracking-[0.16em]">{task.label}</h3>
+                              <div className="flex items-center gap-3 mb-4">
+                                <span className={`font-display text-xl italic leading-none ${interactive.active && interactive.currentIndex === idx ? "text-ink-9000" : "text-ink-300"}`}>{String(idx + 1).padStart(2, "0")}</span>
+                                <h3 className="caps-label !text-ink-600">{task.label}</h3>
                               </div>
                               {interactive.active && interactive.currentIndex === idx && (
-                                <div className="flex items-center gap-2 mb-5 text-[11px] font-semibold">
+                                <div className="flex items-center gap-2 mb-4 text-[11px] font-semibold">
                                   {interactive.paused ? (
-                                    <span className="flex items-center gap-1.5 text-white/40"><PauseIcon className="w-4 h-4" />{language === "german" ? "Pausiert" : "Paused"}</span>
+                                    <span className="flex items-center gap-1.5 text-ink-400"><PauseIcon className="w-4 h-4" strokeWidth={1.6} />{language === "german" ? "Pausiert" : "Paused"}</span>
                                   ) : interactive.phase === "speaking" ? (
-                                    <span className="flex items-center gap-1.5 text-amber-300"><SpeakerWaveIcon className="w-4 h-4 animate-pulse" />{language === "german" ? "Wird vorgelesen…" : "Reading aloud…"}</span>
+                                    <span className="flex items-center gap-1.5 text-[#A15E03]"><SpeakerWaveIcon className="w-4 h-4" strokeWidth={1.6} />{language === "german" ? "Wird vorgelesen…" : "Reading aloud…"}</span>
                                   ) : interactive.phase === "listening" ? (
-                                    <span className="flex items-center gap-1.5 text-emerald-300"><MicrophoneIcon className="w-4 h-4 animate-pulse" />{language === "german" ? "Höre zu… sag „nächste Aufgabe“" : "Listening… say „nächste Aufgabe“"}</span>
+                                    <span className="flex items-center gap-2 text-[#4A6845]">
+                                      <span className="flex items-end gap-[2px] h-3.5" aria-hidden="true">
+                                        <span className="eq-bar h-full" style={{ animationDelay: "0ms" }} />
+                                        <span className="eq-bar h-full" style={{ animationDelay: "150ms" }} />
+                                        <span className="eq-bar h-full" style={{ animationDelay: "300ms" }} />
+                                        <span className="eq-bar h-full" style={{ animationDelay: "450ms" }} />
+                                      </span>
+                                      {language === "german" ? "Höre zu" : "Listening"}
+                                      <span className="text-ink-400 font-medium">{language === "german" ? "· sag „nächste Aufgabe“ zum Weitergehen" : '· say "nächste Aufgabe" to move on'}</span>
+                                    </span>
                                   ) : interactive.phase === "loading" ? (
-                                    <span className="flex items-center gap-1.5 text-white/50"><span className="w-3.5 h-3.5 border-2 border-amber-300/40 border-t-amber-300 rounded-full animate-spin" />{language === "german" ? "Audio lädt…" : "Loading audio…"}</span>
+                                    <span className="flex items-center gap-1.5 text-ink-600"><span className="w-3.5 h-3.5 border-2 border-[rgba(239,159,31,0.35)] border-t-amber-500 rounded-full animate-spin" />{language === "german" ? "Audio lädt…" : "Loading audio…"}</span>
                                   ) : null}
                                 </div>
                               )}
-                              <div className="text-[15px] text-white/75 whitespace-pre-wrap leading-relaxed mb-6">
+                              <div className="text-[15px] text-ink-900 whitespace-pre-wrap leading-[1.65] mb-5">
                                 {task.questionText}
                               </div>
 
-                              <div className="border-t border-white/[0.06] pt-6">
-                                <span className="block text-[10px] font-bold text-white/30 uppercase tracking-[0.2em] mb-3">{language === "german" ? "Deine Antwort:" : "Your Answer:"}</span>
+                              <div className="border-t border-[rgba(33,27,18,0.07)] pt-5">
+                                <span className="caps-label block mb-2.5">{language === "german" ? "Deine Antwort" : "Your answer"}</span>
                                 <AutoGrowTextarea
                                   value={individualAnswers[task.id] || ""}
                                   onChange={e => {
@@ -2853,20 +2925,22 @@ export default function DashboardClient({
                                       [task.id]: e.target.value
                                     }));
                                   }}
-                                  placeholder={language === "german" ? (isMC ? "Tippe A, B, C oder D..." : "Tippe deine Antwort hier ein...") : (isMC ? "Type A, B, C, or D..." : "Type your answer here...")}
-                                  className={`input-dark w-full px-5 py-4 text-sm leading-relaxed resize-none overflow-hidden ${isMC ? "min-h-[3rem]" : "min-h-[5.5rem]"}`}
+                                  placeholder={language === "german"
+                                    ? (isMC ? "Tippe A, B, C oder D …" : "Antworte in eigenen Worten — oder diktiere im interaktiven Modus.")
+                                    : (isMC ? "Type A, B, C, or D …" : "Answer in your own words — or dictate it in interactive mode.")}
+                                  className={`input-inset w-full px-4 py-3.5 text-sm leading-relaxed resize-none overflow-hidden ${isMC ? "min-h-[3rem]" : "min-h-[88px]"}`}
                                 />
                               </div>
                             </motion.div>
                           );
                         })}
 
-                        <div className="pt-4">
-                          <div className="flex gap-3">
+                        <div className="pt-3">
+                          <div className="flex flex-col sm:flex-row gap-2.5">
                             <select
                               value={gradingModel}
                               onChange={e => setGradingModel(e.target.value)}
-                              className="input-dark w-1/3 px-4 py-4 text-xs cursor-pointer appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M5%208l5%205%205-5%22%20stroke%3D%22%239ca3af%22%20stroke-width%3D%222%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-no-repeat bg-[position:right_1rem_center]"
+                              className="btn-secondary sm:w-[200px] h-12 px-4 text-[13px] cursor-pointer appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M5%208l5%205%205-5%22%20stroke%3D%22%23A89D8B%22%20stroke-width%3D%222%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-no-repeat bg-[position:right_0.9rem_center]"
                             >
                               <option value="gemini-3.5-flash">3.5 Flash (Standard)</option>
                               <option value="gemini-3.1-pro-preview">3.1 Pro (Preview)</option>
@@ -2876,33 +2950,38 @@ export default function DashboardClient({
                               {...pressable}
                               onClick={handleGrade}
                               disabled={isGrading || !parsedTasks.some(task => (individualAnswers[task.id] || "").trim().length > 0)}
-                              className="btn-primary flex-1 py-5 text-xs font-bold uppercase tracking-[0.14em] flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-40"
+                              className="btn-primary flex-1 h-12 text-sm flex items-center justify-center gap-2.5 cursor-pointer"
                             >
-                              <SparklesIcon className="w-5 h-5" />
-                              {language === "german" ? "ALLE ANTWORTEN ZUR KI-BEWERTUNG EINREICHEN" : "Submit All Answers for AI Grading"}
+                              <SparklesIcon className="w-[18px] h-[18px]" strokeWidth={1.6} />
+                              {language === "german" ? "Zur Bewertung einreichen" : "Submit for grading"}
                             </motion.button>
                           </div>
+                          <p className="text-center text-xs text-ink-400 mt-3">
+                            {language === "german"
+                              ? "Die Bewertung dauert etwa eine Minute. Dein Entwurf ist auf diesem Gerät gespeichert."
+                              : "Grading takes about a minute. Your draft is saved on this device."}
+                          </p>
                         </div>
                       </div>
                     ) : (
-                      <div className="card-surface-elevated p-5 md:p-8 flex flex-col">
-                        <div className="bg-black/25 border border-white/[0.06] rounded-2xl p-6 font-sans whitespace-pre-wrap text-white/60 text-sm leading-relaxed mb-6">
+                      <div className="card-surface-elevated p-5 md:p-7 flex flex-col">
+                        <div className="bg-paper-0 border border-[rgba(33,27,18,0.07)] rounded-[14px] p-6 font-sans whitespace-pre-wrap text-ink-900/80 text-sm leading-relaxed mb-6">
                           {/* Server-computed, level-correct quiz text (slim payload) */}
                           {extractStudentQuiz(selectedReview.raw.currentQuizText || "")}
                         </div>
 
-                        <span className="block text-[10px] font-bold text-white/30 uppercase tracking-[0.2em] mb-3">{language === "german" ? "Deine Antwort:" : "Your Answer:"}</span>
+                        <span className="caps-label block mb-2.5">{language === "german" ? "Deine Antwort" : "Your answer"}</span>
                         <textarea
                           value={studentAnswers}
                           onChange={e => setStudentAnswers(e.target.value)}
-                          placeholder={language === "german" ? "Schreibe deine Antworten hier..." : "Write your answers here..."}
-                          className="input-dark flex-1 w-full p-5 text-sm leading-relaxed resize-none min-h-[300px] mb-6"
+                          placeholder={language === "german" ? "Schreibe deine Antworten hier …" : "Write your answers here …"}
+                          className="input-inset flex-1 w-full p-5 text-sm leading-relaxed resize-none min-h-[300px] mb-5"
                         />
-                        <div className="flex gap-3">
+                        <div className="flex flex-col sm:flex-row gap-2.5">
                           <select
                             value={gradingModel}
                             onChange={e => setGradingModel(e.target.value)}
-                            className="input-dark w-1/3 px-4 py-4 text-xs cursor-pointer appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M5%208l5%205%205-5%22%20stroke%3D%22%239ca3af%22%20stroke-width%3D%222%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-no-repeat bg-[position:right_1rem_center]"
+                            className="btn-secondary sm:w-[200px] h-12 px-4 text-[13px] cursor-pointer appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M5%208l5%205%205-5%22%20stroke%3D%22%23A89D8B%22%20stroke-width%3D%222%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-no-repeat bg-[position:right_0.9rem_center]"
                           >
                             <option value="gemini-3.5-flash">3.5 Flash (Standard)</option>
                             <option value="gemini-3.1-pro-preview">3.1 Pro (Preview)</option>
@@ -2912,12 +2991,17 @@ export default function DashboardClient({
                             {...pressable}
                             onClick={handleGrade}
                             disabled={isGrading || !studentAnswers.trim()}
-                            className="btn-primary flex-1 py-5 text-xs font-bold uppercase tracking-[0.14em] flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-40"
+                            className="btn-primary flex-1 h-12 text-sm flex items-center justify-center gap-2.5 cursor-pointer"
                           >
-                            <SparklesIcon className="w-5 h-5" />
-                            {language === "german" ? "ANTWORT ZUR KI-BEWERTUNG EINREICHEN" : "Submit Answer for AI Grading"}
+                            <SparklesIcon className="w-[18px] h-[18px]" strokeWidth={1.6} />
+                            {language === "german" ? "Zur Bewertung einreichen" : "Submit for grading"}
                           </motion.button>
                         </div>
+                        <p className="text-center text-xs text-ink-400 mt-3">
+                          {language === "german"
+                            ? "Die Bewertung dauert etwa eine Minute. Dein Entwurf ist auf diesem Gerät gespeichert."
+                            : "Grading takes about a minute. Your draft is saved on this device."}
+                        </p>
                       </div>
                     )}
                   </div>
@@ -2932,17 +3016,17 @@ export default function DashboardClient({
               <motion.div
                 {...overlayMotion}
                 key="archive-overlay"
-                className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md"
+                className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[rgba(33,27,18,0.32)] backdrop-blur-[3px]"
               >
                 <motion.div
                   {...modalPanel}
-                  className="card-glass w-full max-w-lg overflow-hidden flex flex-col max-h-[85dvh] border border-white/[0.1]"
+                  className="card-glass w-full max-w-lg overflow-hidden flex flex-col max-h-[85dvh] border border-[rgba(33,27,18,0.10)]"
                 >
-                  <div className="p-6 border-b border-white/[0.06] flex justify-between items-center">
-                    <h3 className="font-display text-xl font-medium text-white">{language === "german" ? "Video-Archiv" : "Video Archive"}</h3>
+                  <div className="p-6 border-b border-[rgba(33,27,18,0.08)] flex justify-between items-center">
+                    <h3 className="font-display text-xl font-medium text-ink-900">{language === "german" ? "Video-Archiv" : "Video Archive"}</h3>
                     <button
                       onClick={() => setArchiveModalData(null)}
-                      className="w-8 h-8 rounded-full bg-white/[0.06] hover:bg-white/[0.1] flex items-center justify-center text-white/40 hover:text-white transition-colors cursor-pointer"
+                      className="w-8 h-8 rounded-full bg-paper-2 hover:bg-paper-2 flex items-center justify-center text-ink-600 hover:text-ink-900 transition-colors cursor-pointer"
                     >
                       <XMarkIcon className="w-4 h-4" />
                     </button>
@@ -2951,8 +3035,8 @@ export default function DashboardClient({
                     {archiveModalData.map((item, idx) => (
                       <div key={idx} className="card-surface p-4 flex items-center justify-between">
                         <div>
-                          <h4 className="text-white text-sm font-semibold">Level {item.level + 1} Video</h4>
-                          {item.date && <p className="text-xs text-white/40 mt-0.5">{new Date(item.date).toLocaleDateString()}</p>}
+                          <h4 className="text-ink-900 text-sm font-semibold">Level {item.level + 1} Video</h4>
+                          {item.date && <p className="text-xs text-ink-600 mt-0.5">{new Date(item.date).toLocaleDateString()}</p>}
                         </div>
                         <a
                           href={item.url}
@@ -2960,7 +3044,7 @@ export default function DashboardClient({
                           rel="noopener noreferrer"
                           className="btn-secondary px-4 py-2 text-xs flex items-center gap-2"
                         >
-                          <VideoCameraIcon className="w-4 h-4 text-amber-300" />
+                          <VideoCameraIcon className="w-4 h-4 text-amber-600" />
                           {language === "german" ? "Ansehen" : "Watch"}
                         </a>
                       </div>
@@ -2979,52 +3063,52 @@ export default function DashboardClient({
             <motion.div
               {...overlayMotion}
               key="feedback-overlay"
-              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md"
+              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[rgba(33,27,18,0.32)] backdrop-blur-[3px]"
             >
               <motion.div
                 {...modalPanel}
-                className="card-glass w-full max-w-4xl overflow-hidden flex flex-col max-h-[85dvh] border border-white/[0.1]"
+                className="card-glass w-full max-w-4xl overflow-hidden flex flex-col max-h-[85dvh] border border-[rgba(33,27,18,0.10)]"
               >
                 {/* Header */}
-                <div className="p-6 border-b border-white/[0.06] flex justify-between items-center">
+                <div className="p-6 border-b border-[rgba(33,27,18,0.08)] flex justify-between items-center">
                   <div>
-                    <h3 className="font-display text-xl font-medium text-white">{activeFeedbackItem.subjectSub}</h3>
-                    <p className="text-xs text-white/40 mt-1">{activeFeedbackItem.subjectMain} — Level {activeFeedbackItem.currentLevel + 1}</p>
+                    <h3 className="font-display text-xl font-medium text-ink-900">{activeFeedbackItem.subjectSub}</h3>
+                    <p className="text-xs text-ink-600 mt-1">{activeFeedbackItem.subjectMain} — Level {activeFeedbackItem.currentLevel + 1}</p>
                   </div>
                   <button
                     onClick={() => setActiveFeedbackItem(null)}
-                    className="w-8 h-8 rounded-full bg-white/[0.06] hover:bg-white/[0.1] flex items-center justify-center text-white/40 hover:text-white transition-colors cursor-pointer"
+                    className="w-8 h-8 rounded-full bg-paper-2 hover:bg-paper-2 flex items-center justify-center text-ink-600 hover:text-ink-900 transition-colors cursor-pointer"
                   >
                     <XMarkIcon className="w-4 h-4" />
                   </button>
                 </div>
 
                 {/* Header/Title */}
-                <div className="border-b border-white/[0.06] bg-white/[0.02] px-6 py-3.5 flex items-center gap-2.5">
-                  <DocumentTextIcon className="w-4 h-4 text-amber-300" />
-                  <h3 className="text-xs font-bold uppercase tracking-[0.16em] text-white/60">{language === "german" ? "Feedback & Auswertung" : "Remediation Brief & Feedback"}</h3>
+                <div className="border-b border-[rgba(33,27,18,0.08)] bg-paper-0 px-6 py-3.5 flex items-center gap-2.5">
+                  <DocumentTextIcon className="w-4 h-4 text-amber-600" />
+                  <h3 className="text-xs font-bold uppercase tracking-[0.16em] text-ink-600">{language === "german" ? "Feedback & Auswertung" : "Remediation Brief & Feedback"}</h3>
                 </div>
 
                 {/* Body */}
                 <div className="flex-1 overflow-y-auto p-6 md:p-8 custom-scrollbar">
-                  <div className="whitespace-pre-wrap font-sans text-white/60 text-sm leading-relaxed">
+                  <div className="whitespace-pre-wrap font-sans text-ink-600 text-sm leading-relaxed">
                     {activeFeedbackItem.lastFeedback}
                   </div>
 
                   {/* Review history: every graded attempt of this module (ReviewLog) */}
-                  <div className="mt-8 pt-6 border-t border-white/[0.07]">
-                    <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/35 mb-4 flex items-center gap-2">
-                      <ClockIcon className="w-3.5 h-3.5 text-amber-300/70" />
+                  <div className="mt-8 pt-6 border-t border-[rgba(33,27,18,0.08)]">
+                    <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-ink-400 mb-4 flex items-center gap-2">
+                      <ClockIcon className="w-3.5 h-3.5 text-amber-600/70" />
                       {language === "german" ? "Bewertungs-Verlauf" : "Review History"}
                     </h4>
 
                     {historyLoading ? (
-                      <div className="flex items-center gap-2 text-white/30 text-xs py-2">
+                      <div className="flex items-center gap-2 text-ink-400 text-xs py-2">
                         <ArrowPathIcon className="w-3.5 h-3.5 animate-spin" />
                         {language === "german" ? "Verlauf wird geladen…" : "Loading history…"}
                       </div>
                     ) : !feedbackHistory || feedbackHistory.length === 0 ? (
-                      <p className="text-white/25 text-xs">
+                      <p className="text-ink-300 text-xs">
                         {language === "german" ? "Noch keine abgeschlossenen Bewertungen." : "No completed reviews yet."}
                       </p>
                     ) : (
@@ -3040,26 +3124,26 @@ export default function DashboardClient({
                                   return next;
                                 })}
                                 disabled={!entry.feedback}
-                                className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${entry.feedback ? "cursor-pointer hover:bg-white/[0.02]" : "cursor-default"}`}
+                                className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${entry.feedback ? "cursor-pointer hover:bg-paper-0" : "cursor-default"}`}
                               >
-                                <span className={`text-[9px] font-bold uppercase tracking-[0.12em] px-2 py-0.5 rounded-full border shrink-0 ${entry.passed ? "bg-emerald-400/10 text-emerald-300 border-emerald-400/25" : "bg-rose-400/10 text-rose-300 border-rose-400/25"}`}>
+                                <span className={`text-[9px] font-bold uppercase tracking-[0.12em] px-2 py-0.5 rounded-full border shrink-0 ${entry.passed ? "bg-[rgba(94,125,88,0.14)] text-[#4A6845] border-[rgba(94,125,88,0.30)]" : "bg-[rgba(176,106,78,0.12)] text-[#96543C] border-[rgba(176,106,78,0.25)]"}`}>
                                   {entry.passed ? "PASS" : "REPEAT"}
                                 </span>
-                                <span className="text-[10px] font-semibold text-white/45 bg-white/[0.04] px-2 py-0.5 rounded-full border border-white/[0.08] shrink-0">
+                                <span className="text-[10px] font-semibold text-ink-600 bg-paper-2 px-2 py-0.5 rounded-full border border-[rgba(33,27,18,0.08)] shrink-0">
                                   Level {entry.level + 1}
                                 </span>
-                                <span className="text-xs text-white/40 flex-1 truncate">
+                                <span className="text-xs text-ink-600 flex-1 truncate">
                                   {new Date(entry.completedAt).toLocaleDateString()}{" "}
-                                  <span className="text-white/20">
+                                  <span className="text-ink-300">
                                     {new Date(entry.completedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                                   </span>
                                 </span>
                                 {entry.feedback ? (
-                                  <motion.span animate={{ rotate: isOpen ? 180 : 0 }} transition={springTactile} className="shrink-0 text-white/25">
+                                  <motion.span animate={{ rotate: isOpen ? 180 : 0 }} transition={springTactile} className="shrink-0 text-ink-300">
                                     <ChevronDownIcon className="w-3.5 h-3.5" />
                                   </motion.span>
                                 ) : (
-                                  <span className="text-[9px] text-white/15 shrink-0">{language === "german" ? "kein Brief" : "no brief"}</span>
+                                  <span className="text-[9px] text-ink-300 shrink-0">{language === "german" ? "kein Brief" : "no brief"}</span>
                                 )}
                               </button>
                               <AnimatePresence initial={false}>
@@ -3072,8 +3156,8 @@ export default function DashboardClient({
                                     exit="exit"
                                     style={{ overflow: "hidden" }}
                                   >
-                                    <div className="px-4 pb-4 pt-1 border-t border-white/[0.05]">
-                                      <div className="whitespace-pre-wrap font-sans text-white/45 text-xs leading-relaxed max-h-64 overflow-y-auto custom-scrollbar">
+                                    <div className="px-4 pb-4 pt-1 border-t border-[rgba(33,27,18,0.08)]">
+                                      <div className="whitespace-pre-wrap font-sans text-ink-600 text-xs leading-relaxed max-h-64 overflow-y-auto custom-scrollbar">
                                         {entry.feedback}
                                       </div>
                                     </div>
@@ -3083,7 +3167,7 @@ export default function DashboardClient({
                             </div>
                           );
                         })}
-                        <p className="text-[10px] text-white/20 pt-1">
+                        <p className="text-[10px] text-ink-300 pt-1">
                           {language === "german"
                             ? "Briefe werden ab jetzt bei jeder Bewertung gespeichert — ältere Einträge haben noch keinen."
                             : "Briefs are stored per review from now on — older entries don't have one yet."}
@@ -3102,25 +3186,25 @@ export default function DashboardClient({
           {showCalendarModal && (
             <motion.div
               {...overlayMotion}
-              className="fixed inset-0 bg-black/75 backdrop-blur-md z-50 flex items-center justify-center p-4"
+              className="fixed inset-0 bg-[rgba(33,27,18,0.32)] backdrop-blur-[3px] z-50 flex items-center justify-center p-4"
               onClick={() => setShowCalendarModal(false)}
             >
               <motion.div
                 {...modalPanel}
-                className="card-glass p-5 sm:p-6 md:p-7 max-w-lg w-full border border-white/[0.1] max-h-[90dvh] overflow-y-auto custom-scrollbar"
+                className="card-glass p-5 sm:p-6 md:p-7 max-w-lg w-full border border-[rgba(33,27,18,0.10)] max-h-[90dvh] overflow-y-auto custom-scrollbar"
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="flex items-center justify-between mb-2">
-                  <h2 className="font-display text-xl font-medium flex items-center gap-2.5 text-white">
-                    <CalendarDaysIcon className="w-5 h-5 text-amber-300" />
+                  <h2 className="font-display text-xl font-medium flex items-center gap-2.5 text-ink-900">
+                    <CalendarDaysIcon className="w-5 h-5 text-amber-600" />
                     {language === "german" ? "Kalender-Sync" : "Calendar Sync"}
                   </h2>
-                  <button onClick={() => setShowCalendarModal(false)} className="text-white/40 hover:text-white p-2 transition-colors cursor-pointer">
+                  <button onClick={() => setShowCalendarModal(false)} className="text-ink-600 hover:text-ink-900 p-2 transition-colors cursor-pointer">
                     <XMarkIcon className="w-5 h-5" />
                   </button>
                 </div>
 
-                <p className="text-sm text-white/45 mb-7 leading-relaxed">
+                <p className="text-sm text-ink-600 mb-7 leading-relaxed">
                   {language === "german"
                     ? "Einmal abonnieren — alle zukünftigen Wiederholungen erscheinen automatisch in deinem Kalender."
                     : "Subscribe once — all future reviews will automatically appear in your calendar."}
@@ -3128,12 +3212,12 @@ export default function DashboardClient({
 
                 {/* Apple Calendar */}
                 <div className="mb-5">
-                  <h3 className="text-xs font-bold uppercase tracking-[0.14em] mb-2.5 flex items-center gap-2 text-white/70">🍎 Apple Calendar (Mac/iPhone)</h3>
+                  <h3 className="text-xs font-bold uppercase tracking-[0.14em] mb-2.5 flex items-center gap-2 text-ink-900/80">🍎 Apple Calendar (Mac/iPhone)</h3>
                   <a
                     href={`webcal://${typeof window !== 'undefined' ? window.location.host : 'localhost:3000'}/api/calendar?lang=${language}${calTokenAnd}`}
                     className="btn-secondary flex items-center justify-center gap-2 w-full py-3.5 text-sm"
                   >
-                    <CalendarDaysIcon className="w-4 h-4 text-amber-300" />
+                    <CalendarDaysIcon className="w-4 h-4 text-amber-600" />
                     {language === "german" ? "In Apple Kalender abonnieren" : "Subscribe in Apple Calendar"}
                   </a>
 
@@ -3141,7 +3225,7 @@ export default function DashboardClient({
 
                 {/* Google Calendar */}
                 <div className="mb-5">
-                  <h3 className="text-xs font-bold uppercase tracking-[0.14em] mb-2.5 flex items-center gap-2 text-white/70">📅 Google Calendar</h3>
+                  <h3 className="text-xs font-bold uppercase tracking-[0.14em] mb-2.5 flex items-center gap-2 text-ink-900/80">📅 Google Calendar</h3>
                   <div className="flex gap-2">
                     <input
                       readOnly
@@ -3157,13 +3241,13 @@ export default function DashboardClient({
                       }}
                       className="btn-secondary px-4 py-2.5 text-xs font-medium flex items-center gap-2 cursor-pointer shrink-0"
                     >
-                      {calendarUrlCopied ? <CheckIcon className="w-4 h-4 text-emerald-300" /> : <DocumentDuplicateIcon className="w-4 h-4" />}
+                      {calendarUrlCopied ? <CheckIcon className="w-4 h-4 text-[#4A6845]" /> : <DocumentDuplicateIcon className="w-4 h-4" />}
                       {calendarUrlCopied
                         ? (language === "german" ? "Kopiert!" : "Copied!")
                         : (language === "german" ? "Kopieren" : "Copy")}
                     </button>
                   </div>
-                  <p className="text-xs text-white/30 mt-2.5 ml-1 leading-relaxed">
+                  <p className="text-xs text-ink-400 mt-2.5 ml-1 leading-relaxed">
                     {language === "german"
                       ? "Google Kalender → Weitere Kalender (+) → Per URL → URL oben einfügen."
                       : "Google Calendar → Other calendars (+) → From URL → Paste the URL above."}
@@ -3172,17 +3256,17 @@ export default function DashboardClient({
 
                 {/* Done Calendar */}
                 <div className="mb-5">
-                  <h3 className="text-xs font-bold uppercase tracking-[0.14em] mb-2.5 flex items-center gap-2 text-white/70">
+                  <h3 className="text-xs font-bold uppercase tracking-[0.14em] mb-2.5 flex items-center gap-2 text-ink-900/80">
                     🟢 {language === "german" ? "Erledigt-Kalender (Optional)" : "Done Calendar (Optional)"}
                   </h3>
                   <a
                     href={`webcal://${typeof window !== 'undefined' ? window.location.host : 'localhost:3000'}/api/calendar/done${calTokenOnly}`}
-                    className="flex items-center justify-center gap-2 w-full py-2.5 bg-emerald-400/[0.08] hover:bg-emerald-400/[0.16] rounded-xl text-xs font-medium text-emerald-300 transition-all border border-emerald-400/20"
+                    className="flex items-center justify-center gap-2 w-full py-2.5 bg-[rgba(94,125,88,0.14)] hover:bg-[rgba(94,125,88,0.14)] rounded-xl text-xs font-medium text-[#4A6845] transition-all border border-[rgba(94,125,88,0.30)]"
                   >
                     <CalendarDaysIcon className="w-4 h-4" />
                     {language === "german" ? "Verlaufshistorie abonnieren" : "Subscribe to Log History"}
                   </a>
-                  <p className="text-[10px] text-white/30 mt-2.5 ml-1 leading-relaxed">
+                  <p className="text-[10px] text-ink-400 mt-2.5 ml-1 leading-relaxed">
                     {language === "german"
                       ? "Verfolge deinen täglichen Fortschritt durch Abonnieren deiner erledigten Wiederholungen."
                       : "Track your daily progress by subscribing to your completed reviews."}
@@ -3190,11 +3274,11 @@ export default function DashboardClient({
                 </div>
 
                 {/* One-time download fallback */}
-                <div className="pt-5 border-t border-white/[0.06]">
+                <div className="pt-5 border-t border-[rgba(33,27,18,0.08)]">
                   <a
                     href={`/api/calendar${calTokenOnly}`}
                     download="srs-reviews.ics"
-                    className="flex items-center justify-center gap-2 w-full py-2.5 bg-white/[0.03] hover:bg-white/[0.06] rounded-xl text-xs font-medium text-white/40 hover:text-white/65 transition-all border border-white/[0.06]"
+                    className="flex items-center justify-center gap-2 w-full py-2.5 bg-paper-0 hover:bg-paper-2 rounded-xl text-xs font-medium text-ink-600 hover:text-ink-600 transition-all border border-[rgba(33,27,18,0.08)]"
                   >
                     <DocumentTextIcon className="w-4 h-4" />
                     {language === "german" ? ".ics-Datei herunterladen (Einmal-Import)" : "Download .ics file (one-time import)"}
@@ -3212,22 +3296,22 @@ export default function DashboardClient({
           <motion.div
             key="settings-overlay"
             {...overlayMotion}
-            className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-[60] backdrop-blur-md"
+            className="fixed inset-0 bg-[rgba(33,27,18,0.32)] flex items-center justify-center p-4 z-[60] backdrop-blur-[3px]"
             onClick={() => setShowSettingsModal(false)}
           >
             <motion.div
               {...modalPanel}
-              className="card-glass p-5 sm:p-6 md:p-7 w-full max-w-lg border border-white/[0.1] max-h-[90dvh] overflow-y-auto custom-scrollbar"
+              className="card-glass p-5 sm:p-6 md:p-7 w-full max-w-lg border border-[rgba(33,27,18,0.10)] max-h-[90dvh] overflow-y-auto custom-scrollbar"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex justify-between items-center mb-7">
-                <h3 className="font-display text-xl font-medium text-white flex items-center gap-2.5">
-                  <AcademicCapIcon className="w-5 h-5 text-amber-300" />
+                <h3 className="font-display text-xl font-medium text-ink-900 flex items-center gap-2.5">
+                  <AcademicCapIcon className="w-5 h-5 text-amber-600" />
                   {language === "german" ? "Semester-Einstellungen" : "Semester Settings"}
                 </h3>
                 <button
                   onClick={() => setShowSettingsModal(false)}
-                  className="p-2 hover:bg-white/[0.06] rounded-full transition-colors text-white/50 hover:text-white cursor-pointer"
+                  className="p-2 hover:bg-paper-2 rounded-full transition-colors text-ink-600 hover:text-ink-900 cursor-pointer"
                 >
                   <XMarkIcon className="w-5 h-5" />
                 </button>
@@ -3235,24 +3319,24 @@ export default function DashboardClient({
 
               <div className="space-y-7">
                 <div>
-                  <h4 className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em] mb-3">{language === "german" ? "Aktueller Status" : "Current Status"}</h4>
+                  <h4 className="text-[10px] font-bold text-ink-600 uppercase tracking-[0.2em] mb-3">{language === "german" ? "Aktueller Status" : "Current Status"}</h4>
                   <div className="card-surface p-4 flex items-center justify-between">
                     <div>
-                      <div className="font-display text-2xl font-medium text-white">Semester <span className="text-gradient italic">{currentSemester}</span></div>
-                      <div className="text-sm text-white/40 mt-0.5">{language === "german" ? "Aktiver Studienzeitraum" : "Active study period"}</div>
+                      <div className="font-display text-2xl font-medium text-ink-900">Semester <span className="font-display italic text-amber-600">{currentSemester}</span></div>
+                      <div className="text-sm text-ink-600 mt-0.5">{language === "german" ? "Aktiver Studienzeitraum" : "Active study period"}</div>
                     </div>
                   </div>
                 </div>
 
                 <div>
-                  <h4 className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em] mb-3">{language === "german" ? "Modul-Voreinstellungen" : "Module Presets"}</h4>
+                  <h4 className="text-[10px] font-bold text-ink-600 uppercase tracking-[0.2em] mb-3">{language === "german" ? "Modul-Voreinstellungen" : "Module Presets"}</h4>
                   <div className="space-y-2 mb-3">
                     {modulePresets.length === 0 ? (
-                      <div className="text-white/30 text-sm italic py-2">{language === "german" ? "Noch keine Module definiert." : "No modules defined yet."}</div>
+                      <div className="text-ink-400 text-sm italic py-2">{language === "german" ? "Noch keine Module definiert." : "No modules defined yet."}</div>
                     ) : (
                       modulePresets.map((preset, idx) => (
                         <div key={idx} className="flex items-center justify-between card-surface px-4 py-3">
-                          <span className="text-white text-sm">{preset}</span>
+                          <span className="text-ink-900 text-sm">{preset}</span>
                           <button
                             onClick={() => {
                               const newPresets = modulePresets.filter((_, i) => i !== idx);
@@ -3260,7 +3344,7 @@ export default function DashboardClient({
                                 if (subjectInput === preset) setSubjectInput(saved[0] || "");
                               });
                             }}
-                            className="text-white/30 hover:text-rose-300 transition-colors cursor-pointer"
+                            className="text-ink-400 hover:text-[#96543C] transition-colors cursor-pointer"
                           >
                             <XMarkIcon className="w-4 h-4" />
                           </button>
@@ -3302,9 +3386,9 @@ export default function DashboardClient({
                   </div>
                 </div>
 
-                <div className="pt-6 border-t border-white/[0.07]">
-                  <h4 className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em] mb-3">{language === "german" ? "Sprache" : "Language Setting"}</h4>
-                  <div className="flex gap-2 bg-white/[0.02] border border-white/[0.06] rounded-xl p-1">
+                <div className="pt-6 border-t border-[rgba(33,27,18,0.08)]">
+                  <h4 className="text-[10px] font-bold text-ink-600 uppercase tracking-[0.2em] mb-3">{language === "german" ? "Sprache" : "Language Setting"}</h4>
+                  <div className="flex gap-2 bg-paper-0 border border-[rgba(33,27,18,0.08)] rounded-xl p-1">
                     <button
                       onClick={() => {
                         fetch('/api/settings', {
@@ -3322,7 +3406,7 @@ export default function DashboardClient({
                           addToast("error", language === "german" ? "Einstellung konnte nicht gespeichert werden." : "Failed to save setting.");
                         });
                       }}
-                      className={`flex-1 py-2.5 rounded-lg text-sm transition-colors cursor-pointer ${language === 'german' ? 'bg-amber-400/15 text-amber-100 border border-amber-400/30 font-medium' : 'border border-transparent text-white/45 hover:bg-white/[0.04] hover:text-white/70'}`}
+                      className={`flex-1 py-2.5 rounded-lg text-sm transition-colors cursor-pointer ${language === 'german' ? 'bg-[rgba(239,159,31,0.12)] text-[#A15E03] border border-[rgba(239,159,31,0.30)] font-medium' : 'border border-transparent text-ink-600 hover:bg-paper-2 hover:text-ink-900/80'}`}
                     >
                       German
                     </button>
@@ -3343,56 +3427,56 @@ export default function DashboardClient({
                           addToast("error", language === "german" ? "Einstellung konnte nicht gespeichert werden." : "Failed to save setting.");
                         });
                       }}
-                      className={`flex-1 py-2.5 rounded-lg text-sm transition-colors cursor-pointer ${language === 'english' ? 'bg-amber-400/15 text-amber-100 border border-amber-400/30 font-medium' : 'border border-transparent text-white/45 hover:bg-white/[0.04] hover:text-white/70'}`}
+                      className={`flex-1 py-2.5 rounded-lg text-sm transition-colors cursor-pointer ${language === 'english' ? 'bg-[rgba(239,159,31,0.12)] text-[#A15E03] border border-[rgba(239,159,31,0.30)] font-medium' : 'border border-transparent text-ink-600 hover:bg-paper-2 hover:text-ink-900/80'}`}
                     >
                       English
                     </button>
                   </div>
                 </div>
 
-                <div className="pt-6 border-t border-white/[0.07]">
-                  <h4 className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em] mb-3">{language === "german" ? "Interaktiver Modus — Diktat" : "Interactive Mode — Dictation"}</h4>
-                  <p className="text-xs text-white/40 mb-4 leading-relaxed">
+                <div className="pt-6 border-t border-[rgba(33,27,18,0.08)]">
+                  <h4 className="text-[10px] font-bold text-ink-600 uppercase tracking-[0.2em] mb-3">{language === "german" ? "Interaktiver Modus — Diktat" : "Interactive Mode — Dictation"}</h4>
+                  <p className="text-xs text-ink-600 mb-4 leading-relaxed">
                     {language === "german"
                       ? "Hybrid: Die Browser-Diktierfunktion schreibt sofort mit — sagst du „nächste Aufgabe“, ersetzt die KI-Transkription deine Antwort automatisch in besserer Qualität. Gemini: nur KI (verzögert, aber zuverlässig auf dem iPhone). Standard: nur Browser (sofort, ohne KI-Korrektur)."
                       : "Hybrid: browser dictation types instantly — when you say “nächste Aufgabe”, the AI transcription automatically replaces your answer with a higher-quality version. Gemini: AI only (delayed, but reliable on iPhone). Standard: browser only (instant, no AI polish)."}
                   </p>
-                  <div className="flex gap-2 bg-white/[0.02] border border-white/[0.06] rounded-xl p-1">
+                  <div className="flex gap-2 bg-paper-0 border border-[rgba(33,27,18,0.08)] rounded-xl p-1">
                     <button
                       onClick={() => updateDictationMode("hybrid")}
-                      className={`flex-1 py-2.5 rounded-lg text-xs sm:text-sm transition-colors cursor-pointer ${dictationMode === 'hybrid' ? 'bg-amber-400/15 text-amber-100 border border-amber-400/30 font-medium' : 'border border-transparent text-white/45 hover:bg-white/[0.04] hover:text-white/70'}`}
+                      className={`flex-1 py-2.5 rounded-lg text-xs sm:text-sm transition-colors cursor-pointer ${dictationMode === 'hybrid' ? 'bg-[rgba(239,159,31,0.12)] text-[#A15E03] border border-[rgba(239,159,31,0.30)] font-medium' : 'border border-transparent text-ink-600 hover:bg-paper-2 hover:text-ink-900/80'}`}
                     >
                       {language === "german" ? "Hybrid (Empfohlen)" : "Hybrid (Recommended)"}
                     </button>
                     <button
                       onClick={() => updateDictationMode("gemini")}
-                      className={`flex-1 py-2.5 rounded-lg text-xs sm:text-sm transition-colors cursor-pointer ${dictationMode === 'gemini' ? 'bg-amber-400/15 text-amber-100 border border-amber-400/30 font-medium' : 'border border-transparent text-white/45 hover:bg-white/[0.04] hover:text-white/70'}`}
+                      className={`flex-1 py-2.5 rounded-lg text-xs sm:text-sm transition-colors cursor-pointer ${dictationMode === 'gemini' ? 'bg-[rgba(239,159,31,0.12)] text-[#A15E03] border border-[rgba(239,159,31,0.30)] font-medium' : 'border border-transparent text-ink-600 hover:bg-paper-2 hover:text-ink-900/80'}`}
                     >
                       {language === "german" ? "Gemini (KI)" : "Gemini (AI)"}
                     </button>
                     <button
                       onClick={() => updateDictationMode("browser")}
-                      className={`flex-1 py-2.5 rounded-lg text-xs sm:text-sm transition-colors cursor-pointer ${dictationMode === 'browser' ? 'bg-amber-400/15 text-amber-100 border border-amber-400/30 font-medium' : 'border border-transparent text-white/45 hover:bg-white/[0.04] hover:text-white/70'}`}
+                      className={`flex-1 py-2.5 rounded-lg text-xs sm:text-sm transition-colors cursor-pointer ${dictationMode === 'browser' ? 'bg-[rgba(239,159,31,0.12)] text-[#A15E03] border border-[rgba(239,159,31,0.30)] font-medium' : 'border border-transparent text-ink-600 hover:bg-paper-2 hover:text-ink-900/80'}`}
                     >
                       Standard
                     </button>
                   </div>
                 </div>
 
-                <div className="pt-6 border-t border-white/[0.07]">
-                  <h4 className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em] mb-3">{language === "german" ? "KI-Verbindung" : "AI Connection"}</h4>
-                  <p className="text-xs text-white/40 mb-4 leading-relaxed">
+                <div className="pt-6 border-t border-[rgba(33,27,18,0.08)]">
+                  <h4 className="text-[10px] font-bold text-ink-600 uppercase tracking-[0.2em] mb-3">{language === "german" ? "KI-Verbindung" : "AI Connection"}</h4>
+                  <p className="text-xs text-ink-600 mb-4 leading-relaxed">
                     {language === "german"
                       ? "Wähle aus, für welche Module der experimentelle Gemini Proxy genutzt werden soll. Die offizielle Google API dient immer als sicherer Fallback."
                       : "Choose which modules should use the experimental Gemini proxy. The official Google API will always act as a reliable fallback."}
                   </p>
                   {(isGenerating || isGrading) && (
-                    <div className="mb-4 text-xs font-semibold text-amber-300 flex items-center gap-2">
+                    <div className="mb-4 text-xs font-semibold text-amber-600 flex items-center gap-2">
                       <LockClosedIcon className="w-3.5 h-3.5" />
                       {language === "german" ? "Einstellungen gesperrt, während eine KI-Aktion läuft." : "Settings locked while AI generation is in progress."}
                     </div>
                   )}
-                  <div className="flex gap-2 bg-white/[0.02] border border-white/[0.06] rounded-xl p-1">
+                  <div className="flex gap-2 bg-paper-0 border border-[rgba(33,27,18,0.08)] rounded-xl p-1">
                     <button
                       disabled={isGenerating || isGrading}
                       onClick={() => {
@@ -3411,7 +3495,7 @@ export default function DashboardClient({
                           addToast("error", language === "german" ? "Einstellung konnte nicht gespeichert werden." : "Failed to save setting.");
                         });
                       }}
-                      className={`flex-1 py-2.5 rounded-lg text-xs sm:text-sm transition-colors cursor-pointer ${(isGenerating || isGrading) ? 'opacity-50 cursor-not-allowed' : ''} ${wrapperMode === "all" ? 'bg-amber-400/15 text-amber-100 border border-amber-400/30 font-medium' : 'border border-transparent text-white/45 hover:bg-white/[0.04] hover:text-white/70'}`}
+                      className={`flex-1 py-2.5 rounded-lg text-xs sm:text-sm transition-colors cursor-pointer ${(isGenerating || isGrading) ? 'opacity-50 cursor-not-allowed' : ''} ${wrapperMode === "all" ? 'bg-[rgba(239,159,31,0.12)] text-[#A15E03] border border-[rgba(239,159,31,0.30)] font-medium' : 'border border-transparent text-ink-600 hover:bg-paper-2 hover:text-ink-900/80'}`}
                     >
                       {language === "german" ? "Alles (Wrapper)" : "All (Proxy)"}
                     </button>
@@ -3433,7 +3517,7 @@ export default function DashboardClient({
                           addToast("error", language === "german" ? "Einstellung konnte nicht gespeichert werden." : "Failed to save setting.");
                         });
                       }}
-                      className={`flex-1 py-2.5 rounded-lg text-xs sm:text-sm transition-colors cursor-pointer ${(isGenerating || isGrading) ? 'opacity-50 cursor-not-allowed' : ''} ${wrapperMode === "generation_only" ? 'bg-amber-400/15 text-amber-100 border border-amber-400/30 font-medium' : 'border border-transparent text-white/45 hover:bg-white/[0.04] hover:text-white/70'}`}
+                      className={`flex-1 py-2.5 rounded-lg text-xs sm:text-sm transition-colors cursor-pointer ${(isGenerating || isGrading) ? 'opacity-50 cursor-not-allowed' : ''} ${wrapperMode === "generation_only" ? 'bg-[rgba(239,159,31,0.12)] text-[#A15E03] border border-[rgba(239,159,31,0.30)] font-medium' : 'border border-transparent text-ink-600 hover:bg-paper-2 hover:text-ink-900/80'}`}
                     >
                       {language === "german" ? "Nur Generierung" : "Gen Only"}
                     </button>
@@ -3455,16 +3539,16 @@ export default function DashboardClient({
                           addToast("error", language === "german" ? "Einstellung konnte nicht gespeichert werden." : "Failed to save setting.");
                         });
                       }}
-                      className={`flex-1 py-2.5 rounded-lg text-xs sm:text-sm transition-colors cursor-pointer ${(isGenerating || isGrading) ? 'opacity-50 cursor-not-allowed' : ''} ${wrapperMode === "none" ? 'bg-amber-400/15 text-amber-100 border border-amber-400/30 font-medium' : 'border border-transparent text-white/45 hover:bg-white/[0.04] hover:text-white/70'}`}
+                      className={`flex-1 py-2.5 rounded-lg text-xs sm:text-sm transition-colors cursor-pointer ${(isGenerating || isGrading) ? 'opacity-50 cursor-not-allowed' : ''} ${wrapperMode === "none" ? 'bg-[rgba(239,159,31,0.12)] text-[#A15E03] border border-[rgba(239,159,31,0.30)] font-medium' : 'border border-transparent text-ink-600 hover:bg-paper-2 hover:text-ink-900/80'}`}
                     >
                       {language === "german" ? "Nur Fallback" : "Fallback Only"}
                     </button>
                   </div>
                 </div>
 
-                <div className="pt-6 border-t border-rose-400/[0.12]">
-                  <h4 className="text-[10px] font-bold text-rose-300 uppercase tracking-[0.2em] mb-2">{language === "german" ? "Gefahrenzone" : "Danger Zone"}</h4>
-                  <p className="text-white/40 text-xs mb-4 leading-relaxed">{language === "german" ? "Der Start eines neuen Semesters erhöht den Semesterzähler und löscht deine aktuellen Modul-Voreinstellungen." : "Starting a new semester will increment your semester counter and wipe your current module presets so you can start fresh."}</p>
+                <div className="pt-6 border-t border-[rgba(176,106,78,0.22)]">
+                  <h4 className="text-[10px] font-bold text-[#96543C] uppercase tracking-[0.2em] mb-2">{language === "german" ? "Gefahrenzone" : "Danger Zone"}</h4>
+                  <p className="text-ink-600 text-xs mb-4 leading-relaxed">{language === "german" ? "Der Start eines neuen Semesters erhöht den Semesterzähler und löscht deine aktuellen Modul-Voreinstellungen." : "Starting a new semester will increment your semester counter and wipe your current module presets so you can start fresh."}</p>
                   <button
                     onClick={() => {
                       // Two-step confirmation instead of a blocking confirm().
@@ -3477,7 +3561,7 @@ export default function DashboardClient({
                       runSemesterAction('new_semester');
                     }}
                     disabled={isSemesterActionBusy}
-                    className={`w-full py-3.5 text-rose-300 border rounded-xl text-sm font-medium transition-colors flex items-center justify-center gap-2 mb-2 cursor-pointer disabled:opacity-50 disabled:cursor-wait ${confirmingNewSemester ? 'bg-rose-500/[0.2] border-rose-400/50' : 'bg-rose-500/[0.08] hover:bg-rose-500/[0.16] border-rose-400/20 hover:border-rose-400/35'}`}
+                    className={`w-full py-3.5 text-[#96543C] border rounded-xl text-sm font-medium transition-colors flex items-center justify-center gap-2 mb-2 cursor-pointer disabled:opacity-50 disabled:cursor-wait ${confirmingNewSemester ? 'bg-[rgba(176,106,78,0.18)] border-[rgba(176,106,78,0.25)]' : 'bg-[rgba(176,106,78,0.08)] hover:bg-[rgba(176,106,78,0.16)] border-[rgba(176,106,78,0.25)] hover:border-[rgba(176,106,78,0.25)]'}`}
                   >
                     {isSemesterActionBusy ? (
                       <ArrowPathIcon className="w-4 h-4 animate-spin" />
@@ -3500,7 +3584,7 @@ export default function DashboardClient({
                       runSemesterAction('reset_semester');
                     }}
                     disabled={isSemesterActionBusy}
-                    className={`w-full py-2.5 rounded-xl text-xs font-medium transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-wait ${confirmingResetSemester ? 'bg-rose-500/[0.16] text-rose-300 border border-rose-400/40' : 'bg-transparent hover:bg-rose-500/[0.08] text-white/40 hover:text-rose-300 border border-transparent hover:border-rose-400/20'}`}
+                    className={`w-full py-2.5 rounded-xl text-xs font-medium transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-wait ${confirmingResetSemester ? 'bg-[rgba(176,106,78,0.14)] text-[#96543C] border border-[rgba(176,106,78,0.25)]' : 'bg-transparent hover:bg-[rgba(176,106,78,0.08)] text-ink-600 hover:text-[#96543C] border border-transparent hover:border-[rgba(176,106,78,0.25)]'}`}
                   >
                     {confirmingResetSemester
                       ? (language === "german" ? "Wirklich auf Semester 1 zurücksetzen? Erneut klicken" : "Really reset to Semester 1? Click again")
@@ -3521,19 +3605,19 @@ export default function DashboardClient({
         {promptModal && (
           <motion.div
             {...overlayMotion}
-            className="fixed inset-0 z-[90] flex items-end sm:items-center justify-center p-4 bg-black/70 backdrop-blur-md"
+            className="fixed inset-0 z-[90] flex items-end sm:items-center justify-center p-4 bg-[rgba(33,27,18,0.32)] backdrop-blur-[3px]"
             onClick={() => setPromptModal(null)}
           >
             <motion.div
               {...modalPanel}
               onClick={(e) => e.stopPropagation()}
-              className="card-glass border border-white/[0.1] w-full max-w-2xl max-h-[80dvh] flex flex-col overflow-hidden"
+              className="card-glass border border-[rgba(33,27,18,0.10)] w-full max-w-2xl max-h-[80dvh] flex flex-col overflow-hidden"
             >
               {/* Header */}
-              <div className="flex items-start justify-between gap-4 px-6 py-5 border-b border-white/[0.07]">
+              <div className="flex items-start justify-between gap-4 px-6 py-5 border-b border-[rgba(33,27,18,0.08)]">
                 <div className="min-w-0">
                   <p className="eyebrow mb-1">{language === "german" ? "Prompt" : "Prompt"}</p>
-                  <h3 className="font-display text-base font-medium text-white truncate">{promptModal.title}</h3>
+                  <h3 className="font-display text-base font-medium text-ink-900 truncate">{promptModal.title}</h3>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <button
@@ -3542,13 +3626,13 @@ export default function DashboardClient({
                         .then(() => addToast("success", language === "german" ? "Kopiert!" : "Copied!"))
                         .catch(() => addToast("error", language === "german" ? "Kopieren fehlgeschlagen." : "Copy failed."));
                     }}
-                    className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-amber-400/[0.1] hover:bg-amber-400/[0.2] border border-amber-400/25 hover:border-amber-400/40 text-amber-300 transition-all cursor-pointer"
+                    className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-amber-400/[0.1] hover:bg-[rgba(239,159,31,0.14)] border border-[rgba(239,159,31,0.22)] hover:border-[rgba(239,159,31,0.35)] text-amber-600 transition-all cursor-pointer"
                   >
                     {language === "german" ? "Kopieren" : "Copy"}
                   </button>
                   <button
                     onClick={() => setPromptModal(null)}
-                    className="w-8 h-8 flex items-center justify-center rounded-lg bg-white/[0.05] hover:bg-white/[0.1] text-white/40 hover:text-white transition-all cursor-pointer"
+                    className="w-8 h-8 flex items-center justify-center rounded-lg bg-paper-2 hover:bg-paper-2 text-ink-600 hover:text-ink-900 transition-all cursor-pointer"
                   >
                     <XMarkIcon className="w-4 h-4" />
                   </button>
@@ -3556,7 +3640,7 @@ export default function DashboardClient({
               </div>
               {/* Body */}
               <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
-                <pre className="text-sm text-white/70 leading-relaxed whitespace-pre-wrap font-sans">{promptModal.content}</pre>
+                <pre className="text-sm text-ink-900/80 leading-relaxed whitespace-pre-wrap font-sans">{promptModal.content}</pre>
               </div>
             </motion.div>
           </motion.div>

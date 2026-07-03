@@ -47,21 +47,21 @@ export function ToastStack({ toasts, onDismiss }: { toasts: ToastItem[]; onDismi
             layout
             {...toastMotion}
             role="status"
-            className={`pointer-events-auto w-full flex items-start gap-3 px-4 py-3.5 rounded-2xl border backdrop-blur-xl shadow-[0_12px_40px_-12px_rgba(0,0,0,0.7)] text-sm leading-relaxed ${
+            className={`pointer-events-auto w-full flex items-start gap-3 px-4 py-3.5 rounded-[18px] border bg-paper-1 shadow-[0_2px_6px_rgba(50,38,20,0.06),0_24px_56px_-24px_rgba(50,38,20,0.32)] text-sm leading-relaxed text-ink-900 ${
               toast.variant === "success"
-                ? "bg-emerald-950/85 border-emerald-400/25 text-emerald-100"
-                : "bg-rose-950/85 border-rose-400/25 text-rose-100"
+                ? "border-[rgba(94,125,88,0.35)]"
+                : "border-[rgba(176,106,78,0.35)]"
             }`}
           >
             {toast.variant === "success" ? (
-              <CheckCircleIcon className="w-5 h-5 shrink-0 text-emerald-300 mt-0.5" />
+              <CheckCircleIcon className="w-5 h-5 shrink-0 text-[#5E7D58] mt-0.5" strokeWidth={1.6} />
             ) : (
-              <ExclamationTriangleIcon className="w-5 h-5 shrink-0 text-rose-300 mt-0.5" />
+              <ExclamationTriangleIcon className="w-5 h-5 shrink-0 text-[#B06A4E] mt-0.5" strokeWidth={1.6} />
             )}
             <span className="flex-1 break-words">{toast.message}</span>
             <button
               onClick={() => onDismiss(toast.id)}
-              className="shrink-0 text-white/40 hover:text-white transition-colors cursor-pointer p-0.5"
+              className="shrink-0 text-ink-600 hover:text-ink-900 transition-colors cursor-pointer p-0.5"
               aria-label="Close"
             >
               <XMarkIcon className="w-4 h-4" />

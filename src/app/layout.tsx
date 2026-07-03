@@ -20,7 +20,7 @@ export const metadata: Metadata = {
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
-    // Translucent so the dark app bar extends under the status bar (no visible
+    // Translucent so the paper app bar extends under the status bar (no visible
     // seam at the top). The mobile top bar pads with safe-area-inset-top.
     statusBarStyle: "black-translucent",
     title: "SRS Quiz",
@@ -33,7 +33,7 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#0b0908",
+  themeColor: "#F6F3EC",
 };
 
 export default function RootLayout({
@@ -48,9 +48,9 @@ export default function RootLayout({
     >
       <head>
         <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta name="theme-color" content="#0b0908" />
+        <meta name="theme-color" content="#F6F3EC" />
       </head>
-      <body className="min-h-full flex flex-col bg-background text-foreground font-sans selection:bg-amber-400/25 selection:text-amber-50">
+      <body className="min-h-full flex flex-col bg-background text-foreground font-sans selection:bg-amber-500/20 selection:text-ink-900">
         <Providers>
           {children}
         </Providers>

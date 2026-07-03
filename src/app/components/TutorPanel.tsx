@@ -5,7 +5,6 @@ import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { EASE_OUT, springTactile } from "@/lib/motion";
 import {
-  AcademicCapIcon,
   ArrowPathIcon,
   PaperAirplaneIcon,
   SparklesIcon,
@@ -269,65 +268,64 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
       {open && (
         <motion.aside
           key="tutor-panel"
-          initial={{ x: "100%" }}
-          animate={{ x: 0 }}
-          exit={{ x: "100%" }}
-          transition={{ duration: 0.5, ease: EASE_OUT }}
-          className="fixed inset-y-0 right-0 z-[70] w-full sm:w-[420px] card-glass border-l border-white/[0.1] flex flex-col print:hidden"
+          initial={{ x: 24, opacity: 0 }}
+          animate={{ x: 0, opacity: 1 }}
+          exit={{ x: 24, opacity: 0 }}
+          transition={{ duration: 0.24, ease: EASE_OUT }}
+          className="fixed inset-y-0 right-0 z-[70] w-full sm:w-[376px] bg-[#FAF7F0] border-l border-[rgba(33,27,18,0.08)] flex flex-col print:hidden shadow-[0_2px_6px_rgba(50,38,20,0.06),0_24px_56px_-24px_rgba(50,38,20,0.32)] xl:shadow-none"
           aria-label={de ? "Live Tutor Chat" : "Live tutor chat"}
         >
           {/* Header */}
-          <div className="flex items-center gap-3 px-5 pt-[max(1rem,env(safe-area-inset-top))] pb-4 border-b border-white/[0.07] shrink-0">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-300 to-amber-600 flex items-center justify-center shadow-[0_4px_16px_-4px_rgba(245,158,11,0.6)] shrink-0">
-              <AcademicCapIcon className="w-4.5 h-4.5 text-stone-950" strokeWidth={2} />
-            </div>
+          <div className="flex items-start gap-3 px-5 pt-[max(1.1rem,env(safe-area-inset-top))] pb-4 border-b border-[rgba(33,27,18,0.07)] shrink-0">
             <div className="min-w-0 flex-1">
-              <h3 className="font-display text-base font-medium text-white leading-tight">
-                Live <em className="text-gradient italic">Tutor</em>
+              <h3 className="text-[15px] text-ink-900 leading-tight font-sans" style={{ fontWeight: 650 }}>
+                Live Tutor
               </h3>
-              <p className="text-[11px] text-white/35 truncate">{subject} · {topic}</p>
+              <p className="text-xs text-ink-400 mt-1 leading-snug">
+                {de ? "Kennt diese Vorlesung, das Quiz und deine Entwürfe." : "Knows this lecture, the quiz, and your drafts."}
+              </p>
             </div>
             {messages.length > 0 && (
               <button
                 onClick={clearThread}
                 title={de ? "Gespräch zurücksetzen" : "Reset conversation"}
-                className="w-8 h-8 rounded-lg bg-white/[0.05] hover:bg-rose-500/15 flex items-center justify-center text-white/35 hover:text-rose-300 transition-colors cursor-pointer shrink-0"
+                className="btn-ghost-icon w-8 h-8 flex items-center justify-center hover:!text-[#B06A4E] hover:!bg-[rgba(176,106,78,0.10)] cursor-pointer shrink-0"
               >
-                <TrashIcon className="w-4 h-4" />
+                <TrashIcon className="w-4 h-4" strokeWidth={1.6} />
               </button>
             )}
             <button
               onClick={onClose}
               title={de ? "Schließen" : "Close"}
-              className="w-8 h-8 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] flex items-center justify-center text-white/40 hover:text-white transition-colors cursor-pointer shrink-0"
+              className="btn-ghost-icon w-8 h-8 flex items-center justify-center cursor-pointer shrink-0"
             >
-              <XMarkIcon className="w-4 h-4" />
+              <XMarkIcon className="w-4 h-4" strokeWidth={1.6} />
             </button>
           </div>
 
           {/* Messages */}
-          <div ref={scrollRef} className="flex-1 overflow-y-auto custom-scrollbar px-4 py-5 space-y-4">
+          <div ref={scrollRef} className="flex-1 overflow-y-auto custom-scrollbar px-5 py-5 space-y-5">
             {messages.length === 0 && (
-              <div className="flex flex-col items-center text-center pt-10 px-4">
-                <div className="w-12 h-12 rounded-2xl bg-amber-400/[0.08] border border-amber-400/20 flex items-center justify-center mb-4">
-                  <SparklesIcon className="w-6 h-6 text-amber-300" />
+              <div className="flex flex-col items-center text-center pt-10 px-2">
+                <div className="w-12 h-12 rounded-2xl bg-[rgba(239,159,31,0.10)] border border-[rgba(239,159,31,0.22)] flex items-center justify-center mb-4">
+                  <SparklesIcon className="w-6 h-6 text-amber-500" strokeWidth={1.6} />
                 </div>
-                <p className="text-white/60 text-sm font-medium mb-1.5">
+                <p className="text-ink-900 text-sm font-semibold mb-1.5">
                   {de ? "Dein Tutor kennt diese Vorlesung." : "Your tutor knows this lecture."}
                 </p>
-                <p className="text-white/30 text-xs leading-relaxed mb-6 max-w-[280px]">
+                <p className="text-ink-400 text-xs leading-relaxed mb-6 max-w-[280px]">
                   {de
-                    ? "Er sieht die Quizaufgaben und deine Entwürfe — und hilft mit Hinweisen statt Fertiglösungen."
-                    : "It sees the quiz tasks and your drafts — and helps with hints instead of ready-made solutions."}
+                    ? `${subject} · ${topic} — er sieht die Aufgaben und deine Entwürfe und hilft mit Hinweisen statt Fertiglösungen.`
+                    : `${subject} · ${topic} — it sees the tasks and your drafts and helps with hints instead of ready-made solutions.`}
                 </p>
                 <div className="flex flex-col gap-2 w-full">
                   {suggestions.map((s) => (
                     <motion.button
                       key={s}
-                      whileTap={{ scale: 0.98 }}
+                      whileTap={{ scale: 0.985 }}
                       transition={springTactile}
                       onClick={() => send(s)}
-                      className="text-left text-xs text-white/55 hover:text-amber-100 bg-white/[0.03] hover:bg-amber-400/[0.07] border border-white/[0.08] hover:border-amber-400/25 rounded-xl px-4 py-3 leading-relaxed transition-all cursor-pointer"
+                      className="text-left text-xs text-ink-600 hover:text-ink-900 bg-paper-1 hover:bg-paper-2 border border-[rgba(33,27,18,0.08)] rounded-xl px-4 py-3 leading-relaxed transition-colors cursor-pointer"
                     >
                       {s}
                     </motion.button>
@@ -337,45 +335,48 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
             )}
 
             {messages.map((msg) => (
-              <div key={msg.id} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-                <div
-                  className={`max-w-[88%] rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap break-words ${
-                    msg.role === "user"
-                      ? "bg-amber-400/[0.12] border border-amber-400/25 text-amber-50 rounded-br-md"
-                      : "bg-white/[0.04] border border-white/[0.08] text-white/75 rounded-bl-md"
-                  }`}
-                >
-                  {msg.text || (
-                    <span className="inline-flex items-center gap-1.5 text-white/35">
-                      <span className="ember-dot w-1.5 h-1.5 rounded-full bg-amber-300" />
-                      {de ? "denkt nach…" : "thinking…"}
-                    </span>
-                  )}
-                  {msg.role === "model" && msg.text && (
-                    <div className="mt-2 -mb-1 flex justify-end">
+              msg.role === "user" ? (
+                <div key={msg.id} className="flex justify-end">
+                  <div className="max-w-[86%] bg-paper-2 rounded-[16px_16px_6px_16px] px-4 py-3 text-[13.5px] leading-[1.55] text-ink-900 whitespace-pre-wrap break-words">
+                    {msg.text}
+                  </div>
+                </div>
+              ) : (
+                <div key={msg.id} className="pr-2">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <span className="caps-label !text-[10px]">Tutor</span>
+                    {msg.text && (
                       <button
                         onClick={() => speakMessage(msg)}
                         disabled={ttsLoadingId === msg.id}
                         title={speakingId === msg.id ? (de ? "Stopp" : "Stop") : (de ? "Vorlesen (Gemini-Stimme)" : "Read aloud (Gemini voice)")}
-                        className="w-7 h-7 rounded-lg flex items-center justify-center text-white/25 hover:text-amber-300 hover:bg-amber-400/[0.08] transition-colors cursor-pointer disabled:cursor-wait"
+                        className="w-6 h-6 rounded-lg flex items-center justify-center text-ink-400 hover:text-amber-600 hover:bg-[rgba(239,159,31,0.08)] transition-colors cursor-pointer disabled:cursor-wait"
                       >
                         {ttsLoadingId === msg.id ? (
                           <ArrowPathIcon className="w-3.5 h-3.5 animate-spin" />
                         ) : speakingId === msg.id ? (
-                          <StopIcon className="w-3.5 h-3.5 text-amber-300" />
+                          <StopIcon className="w-3.5 h-3.5 text-amber-600" strokeWidth={1.6} />
                         ) : (
-                          <SpeakerWaveIcon className="w-3.5 h-3.5" />
+                          <SpeakerWaveIcon className="w-3.5 h-3.5" strokeWidth={1.6} />
                         )}
                       </button>
-                    </div>
-                  )}
+                    )}
+                  </div>
+                  <div className="text-[13.5px] leading-[1.62] text-ink-900/85 whitespace-pre-wrap break-words">
+                    {msg.text || (
+                      <span className="inline-flex items-center gap-1.5 text-ink-400">
+                        <span className="ember-dot w-1.5 h-1.5 rounded-full bg-amber-500" />
+                        {de ? "denkt nach…" : "thinking…"}
+                      </span>
+                    )}
+                  </div>
                 </div>
-              </div>
+              )
             ))}
           </div>
 
           {/* Composer */}
-          <div className="border-t border-white/[0.07] px-4 pt-3 pb-[max(0.875rem,env(safe-area-inset-bottom))] shrink-0">
+          <div className="border-t border-[rgba(33,27,18,0.07)] px-4 pt-3 pb-[max(0.875rem,env(safe-area-inset-bottom))] shrink-0">
             <div className="flex items-end gap-2">
               <AutoGrowTextarea
                 value={input}
@@ -387,7 +388,7 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
                   }
                 }}
                 placeholder={de ? "Frag deinen Tutor…" : "Ask your tutor…"}
-                className="input-dark flex-1 px-4 py-3 text-sm leading-relaxed resize-none overflow-hidden min-h-[2.9rem] max-h-40"
+                className="input-dark flex-1 px-4 py-3 text-sm leading-relaxed resize-none overflow-hidden min-h-[2.9rem] max-h-40 !bg-paper-1"
               />
               <motion.button
                 whileTap={{ scale: 0.94 }}
@@ -395,16 +396,16 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
                 onClick={() => send(input)}
                 disabled={streaming || !input.trim()}
                 title={de ? "Senden (Enter)" : "Send (Enter)"}
-                className="btn-primary w-11 h-11 rounded-xl flex items-center justify-center shrink-0 cursor-pointer disabled:opacity-40"
+                className="btn-primary w-11 h-11 !rounded-xl flex items-center justify-center shrink-0 cursor-pointer"
               >
                 {streaming ? (
                   <ArrowPathIcon className="w-4.5 h-4.5 animate-spin" />
                 ) : (
-                  <PaperAirplaneIcon className="w-4.5 h-4.5" />
+                  <PaperAirplaneIcon className="w-4.5 h-4.5" strokeWidth={1.6} />
                 )}
               </motion.button>
             </div>
-            <p className="text-[10px] text-white/20 mt-2 px-1">
+            <p className="text-[11px] text-ink-400 mt-2 px-1">
               {de
                 ? "Der Tutor sieht Quiz + Entwürfe. Enter = senden, Shift+Enter = neue Zeile."
                 : "The tutor sees quiz + drafts. Enter = send, Shift+Enter = new line."}

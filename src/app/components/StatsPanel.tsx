@@ -223,8 +223,8 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
   }, [data, items, locale]);
 
   const heatColor = (count: number, future: boolean): string => {
-    if (future) return "bg-transparent border border-white/[0.03]";
-    if (count === 0) return "bg-white/[0.05]";
+    if (future) return "bg-transparent border border-[rgba(33,27,18,0.08)]";
+    if (count === 0) return "bg-paper-2";
     if (count === 1) return "bg-amber-400/25";
     if (count <= 2) return "bg-amber-400/45";
     if (count <= 4) return "bg-amber-400/70";
@@ -240,25 +240,25 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
       <div className="flex flex-col gap-6" aria-busy="true" aria-label={de ? "Statistiken werden geladen" : "Loading statistics"}>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="card-surface p-5 animate-pulse" style={{ animationDelay: `${i * 120}ms` }}>
-              <div className="w-5 h-5 rounded-md bg-white/[0.06] mb-4" />
-              <div className="w-14 h-8 rounded-lg bg-white/[0.08] mb-3" />
-              <div className="w-24 h-2.5 rounded-full bg-white/[0.05] mb-2" />
-              <div className="w-16 h-2 rounded-full bg-white/[0.03]" />
+            <div key={i} className="card-surface p-5" style={{ animationDelay: `${i * 120}ms` }}>
+              <div className="w-5 h-5 rounded-md bg-paper-2 mb-4" />
+              <div className="w-14 h-8 rounded-lg bg-paper-2 mb-3" />
+              <div className="w-24 h-2.5 rounded-full bg-paper-2 mb-2" />
+              <div className="w-16 h-2 rounded-full bg-paper-0" />
             </div>
           ))}
         </div>
-        <div className="card-surface p-6 animate-pulse">
-          <div className="w-56 h-3 rounded-full bg-white/[0.06] mb-6" />
+        <div className="card-surface p-6">
+          <div className="w-56 h-3 rounded-full bg-paper-2 mb-6" />
           <div className="flex items-end gap-2 h-32">
             {[35, 60, 20, 80, 45, 25, 70, 40, 55, 30, 65, 22, 50, 38].map((h, i) => (
-              <div key={i} className="flex-1 rounded-t-md bg-white/[0.04]" style={{ height: `${h}%` }} />
+              <div key={i} className="flex-1 rounded-t-md bg-paper-2" style={{ height: `${h}%` }} />
             ))}
           </div>
         </div>
-        <div className="card-surface p-6 animate-pulse">
-          <div className="w-48 h-3 rounded-full bg-white/[0.06] mb-6" />
-          <div className="h-28 rounded-xl bg-white/[0.03]" />
+        <div className="card-surface p-6">
+          <div className="w-48 h-3 rounded-full bg-paper-2 mb-6" />
+          <div className="h-28 rounded-xl bg-paper-0" />
         </div>
       </div>
     );
@@ -267,31 +267,31 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
   if (error) {
     return (
       <div className="card-surface p-14 flex flex-col items-center text-center">
-        <div className="w-12 h-12 rounded-2xl bg-rose-400/[0.08] border border-rose-400/20 flex items-center justify-center mb-5">
-          <ExclamationTriangleIcon className="w-6 h-6 text-rose-300" />
+        <div className="w-12 h-12 rounded-2xl bg-[rgba(176,106,78,0.10)] border border-[rgba(176,106,78,0.25)] flex items-center justify-center mb-5">
+          <ExclamationTriangleIcon className="w-6 h-6 text-[#96543C]" />
         </div>
-        <p className="text-white/40 text-sm">{de ? "Statistiken konnten nicht geladen werden." : "Couldn't load statistics."}</p>
+        <p className="text-ink-600 text-sm">{de ? "Statistiken konnten nicht geladen werden." : "Couldn't load statistics."}</p>
       </div>
     );
   }
 
   const statCards = [
     {
-      icon: <FireIcon className={`w-5 h-5 ${computed.streak > 0 ? "text-amber-300 drop-shadow-[0_0_8px_rgba(245,158,11,0.55)]" : "text-white/25"}`} />,
+      icon: <FireIcon className={`w-5 h-5 ${computed.streak > 0 ? "text-amber-600 drop-shadow-[0_0_8px_rgba(245,158,11,0.55)]" : "text-ink-300"}`} />,
       label: de ? "Tage-Streak" : "Day streak",
       value: computed.streak,
       gradient: computed.streak >= 3,
       sub: de ? "Tage in Folge gelernt" : "consecutive study days",
     },
     {
-      icon: <ClockIcon className="w-5 h-5 text-amber-300" />,
+      icon: <ClockIcon className="w-5 h-5 text-amber-600" />,
       label: de ? "Heute fällig" : "Due today",
       value: computed.dueToday,
       gradient: false,
       sub: de ? "inkl. überfälliger Reviews" : "incl. overdue reviews",
     },
     {
-      icon: <CheckCircleIcon className="w-5 h-5 text-emerald-300" />,
+      icon: <CheckCircleIcon className="w-5 h-5 text-[#4A6845]" />,
       label: de ? "Bestehensquote (30 T.)" : "Pass rate (30 d)",
       value: passRate30,
       suffix: "%",
@@ -306,7 +306,7 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
             : "no reviews yet",
     },
     {
-      icon: <AcademicCapIcon className="w-5 h-5 text-amber-300" />,
+      icon: <AcademicCapIcon className="w-5 h-5 text-amber-600" />,
       label: de ? "Reviews gesamt" : "Total reviews",
       value: totalReviews,
       gradient: false,
@@ -321,7 +321,7 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
         {statCards.map((card) => (
           <div key={card.label} className="card-surface p-5 relative overflow-hidden">
             <div className="flex items-center gap-2 mb-3">{card.icon}</div>
-            <div className={`font-display text-3xl font-medium leading-none tabular-nums ${card.gradient ? "text-gradient" : "text-white"}`}>
+            <div className={`font-display text-3xl font-medium leading-none tabular-nums text-ink-900`}>
               {typeof card.value === "number" ? (
                 <>
                   <AnimatedNumber value={card.value} />
@@ -331,16 +331,16 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
                 "—"
               )}
             </div>
-            <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-white/40 mt-2.5">{card.label}</div>
-            <div className="text-[11px] text-white/25 mt-1">{card.sub}</div>
+            <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-ink-600 mt-2.5">{card.label}</div>
+            <div className="text-[11px] text-ink-300 mt-1">{card.sub}</div>
           </div>
         ))}
       </motion.div>
 
       {/* ── Due forecast (next 14 days) ── */}
       <motion.div variants={riseChild} className="card-surface p-5 md:p-6">
-        <h3 className="text-xs font-bold uppercase tracking-[0.16em] text-white/50 mb-5 flex items-center gap-2">
-          <CalendarDaysIcon className="w-4 h-4 text-amber-300" />
+        <h3 className="text-xs font-bold uppercase tracking-[0.16em] text-ink-600 mb-5 flex items-center gap-2">
+          <CalendarDaysIcon className="w-4 h-4 text-amber-600" />
           {de ? "Anstehende Reviews — nächste 14 Tage" : "Upcoming reviews — next 14 days"}
         </h3>
         <div className="flex items-end gap-1.5 sm:gap-2 h-32">
@@ -350,20 +350,24 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
               className="flex-1 flex flex-col items-center justify-end h-full min-w-0 group/bar"
               title={`${day.date.toLocaleDateString(locale)}: ${day.count} Reviews`}
             >
-              <span className={`text-[10px] mb-1 tabular-nums transition-colors ${day.count > 0 ? "text-white/55 font-semibold group-hover/bar:text-amber-200" : "text-white/15"}`}>{day.count}</span>
-              <motion.div
-                initial={{ height: "4%" }}
-                animate={{ height: `${Math.max(4, (day.count / computed.maxForecast) * 100)}%` }}
-                transition={{ duration: 0.9, ease: EASE_OUT, delay: 0.2 + i * 0.045 }}
-                className={`w-full rounded-t-md ${
-                  day.isToday
-                    ? "bg-gradient-to-t from-amber-600 to-amber-300 shadow-[0_0_18px_-4px_rgba(245,158,11,0.55)]"
-                    : day.count > 0
-                      ? "bg-gradient-to-t from-white/[0.08] to-white/[0.18] group-hover/bar:from-amber-500/25 group-hover/bar:to-amber-300/35 transition-colors duration-300"
-                      : "bg-white/[0.04]"
-                }`}
-              />
-              <span className={`text-[9px] mt-1.5 whitespace-nowrap ${day.isToday ? "text-amber-300 font-bold" : "text-white/25"}`}>
+              <span className={`text-[10px] mb-1 tabular-nums transition-colors ${day.count > 0 ? "text-ink-600 font-semibold group-hover/bar:text-[#A15E03]" : "text-ink-300"}`}>{day.count}</span>
+              {/* Fixed-height slot; the fill scales via transform (never height) */}
+              <div className="w-full flex flex-col justify-end" style={{ height: `${Math.max(4, (day.count / computed.maxForecast) * 100)}%` }}>
+                <motion.div
+                  initial={{ scaleY: 0 }}
+                  animate={{ scaleY: 1 }}
+                  transition={{ duration: 0.5, ease: EASE_OUT, delay: 0.1 + Math.min(i, 8) * 0.03 }}
+                  style={{ transformOrigin: "bottom" }}
+                  className={`w-full h-full rounded-t-md ${
+                    day.isToday
+                      ? "bg-gradient-to-t from-amber-600 to-amber-300"
+                      : day.count > 0
+                        ? "bg-gradient-to-t from-[rgba(239,159,31,0.28)] to-[rgba(239,159,31,0.45)] group-hover/bar:from-[rgba(239,159,31,0.45)] group-hover/bar:to-[rgba(239,159,31,0.65)] transition-colors duration-300"
+                        : "bg-paper-2"
+                  }`}
+                />
+              </div>
+              <span className={`text-[9px] mt-1.5 whitespace-nowrap ${day.isToday ? "text-amber-600 font-bold" : "text-ink-300"}`}>
                 {day.isToday
                   ? de ? "Heute" : "Today"
                   : day.date.toLocaleDateString(locale, { weekday: "short" }).replace(".", "")}
@@ -371,21 +375,21 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
             </div>
           ))}
         </div>
-        <p className="text-[10px] text-white/20 mt-3">
+        <p className="text-[10px] text-ink-300 mt-3">
           {de ? "Überfällige Reviews zählen zu „Heute“." : "Overdue reviews are counted under “Today”."}
         </p>
       </motion.div>
 
       {/* ── Activity heatmap (last 13 weeks) ── */}
       <motion.div variants={riseChild} className="card-surface p-5 md:p-6">
-        <h3 className="text-xs font-bold uppercase tracking-[0.16em] text-white/50 mb-5 flex items-center gap-2">
-          <ChartBarIcon className="w-4 h-4 text-amber-300" />
+        <h3 className="text-xs font-bold uppercase tracking-[0.16em] text-ink-600 mb-5 flex items-center gap-2">
+          <ChartBarIcon className="w-4 h-4 text-amber-600" />
           {de ? "Aktivität — letzte 3 Monate" : "Activity — last 3 months"}
         </h3>
         <div className="overflow-x-auto custom-scrollbar pb-1">
           <div className="flex gap-2 min-w-max">
             {/* Weekday gutter (with a spacer matching the month-label row) */}
-            <div className="flex flex-col gap-1 pr-1 text-[8px] text-white/25">
+            <div className="flex flex-col gap-1 pr-1 text-[8px] text-ink-300">
               <span className="h-3" aria-hidden="true" />
               <span className="h-3.5 leading-[0.875rem]">{de ? "Mo" : "Mon"}</span>
               <span className="h-3.5" />
@@ -403,7 +407,7 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
                 transition={{ duration: 0.5, ease: EASE_OUT, delay: 0.15 + w * 0.035 }}
                 className="flex flex-col gap-1"
               >
-                <span className="h-3 text-[8px] text-white/30 leading-3 whitespace-nowrap">{week.label ?? ""}</span>
+                <span className="h-3 text-[8px] text-ink-400 leading-3 whitespace-nowrap">{week.label ?? ""}</span>
                 {week.days.map((cell) => (
                   <div
                     key={cell.key}
@@ -415,9 +419,9 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
             ))}
           </div>
         </div>
-        <div className="flex items-center gap-1.5 mt-4 text-[9px] text-white/25">
+        <div className="flex items-center gap-1.5 mt-4 text-[9px] text-ink-300">
           {de ? "Weniger" : "Less"}
-          <div className="w-3 h-3 rounded-[3px] bg-white/[0.05]" />
+          <div className="w-3 h-3 rounded-[3px] bg-paper-2" />
           <div className="w-3 h-3 rounded-[3px] bg-amber-400/25" />
           <div className="w-3 h-3 rounded-[3px] bg-amber-400/45" />
           <div className="w-3 h-3 rounded-[3px] bg-amber-400/70" />
@@ -429,33 +433,37 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
       <motion.div variants={riseChild} className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* ── Per-module stats ── */}
         <div className="card-surface p-5 md:p-6">
-          <h3 className="text-xs font-bold uppercase tracking-[0.16em] text-white/50 mb-5 flex items-center gap-2">
-            <AcademicCapIcon className="w-4 h-4 text-amber-300" />
+          <h3 className="text-xs font-bold uppercase tracking-[0.16em] text-ink-600 mb-5 flex items-center gap-2">
+            <AcademicCapIcon className="w-4 h-4 text-amber-600" />
             {de ? "Module" : "Modules"}
           </h3>
           {computed.modules.length === 0 ? (
-            <p className="text-white/25 text-sm">{de ? "Noch keine Daten." : "No data yet."}</p>
+            <p className="text-ink-300 text-sm">{de ? "Noch keine Daten." : "No data yet."}</p>
           ) : (
             <div className="space-y-4">
               {computed.modules.slice(0, 8).map((mod, i) => (
                 <div key={mod.name}>
                   <div className="flex items-baseline justify-between gap-3 mb-1.5">
-                    <span className="text-sm text-white/75 truncate">{mod.name}</span>
-                    <span className="text-[10px] text-white/30 whitespace-nowrap tabular-nums">
+                    <span className="text-sm text-ink-900/85 truncate">{mod.name}</span>
+                    <span className="text-[10px] text-ink-400 whitespace-nowrap tabular-nums">
                       {mod.reviews} {de ? "Reviews" : "reviews"}
                       {mod.items > 0 && <> · {mod.items} {de ? "Vorl." : "lect."} · Ø L{(mod.avgLevel + 1).toFixed(1)}</>}
                     </span>
                   </div>
                   <div className="flex items-center gap-2.5">
-                    <div className="flex-1 h-1.5 rounded-full bg-white/[0.05] overflow-hidden">
-                      <motion.div
-                        initial={{ width: 0 }}
-                        animate={{ width: `${mod.passRate ?? 0}%` }}
-                        transition={{ duration: 0.9, ease: EASE_OUT, delay: 0.25 + i * 0.07 }}
-                        className={`h-full rounded-full ${mod.passRate !== null && mod.passRate >= 80 ? "bg-gradient-to-r from-emerald-500/70 to-emerald-400/90" : mod.passRate !== null && mod.passRate >= 50 ? "bg-gradient-to-r from-amber-500/70 to-amber-400/90" : "bg-gradient-to-r from-rose-500/60 to-rose-400/80"}`}
-                      />
+                    <div className="flex-1 h-[7px] rounded-full bg-paper-2 overflow-hidden">
+                      {/* Fill scales via transform — box width stays constant */}
+                      <div className="h-full" style={{ width: `${mod.passRate ?? 0}%` }}>
+                        <motion.div
+                          initial={{ scaleX: 0 }}
+                          animate={{ scaleX: 1 }}
+                          transition={{ duration: 0.5, ease: EASE_OUT, delay: 0.15 + Math.min(i, 8) * 0.03 }}
+                          style={{ transformOrigin: "left" }}
+                          className={`h-full w-full rounded-full ${mod.passRate !== null && mod.passRate >= 80 ? "bg-[#5E7D58]" : mod.passRate !== null && mod.passRate >= 50 ? "bg-[#E0A43A]" : "bg-[#B06A4E]"}`}
+                        />
+                      </div>
                     </div>
-                    <span className="text-[10px] font-semibold text-white/45 w-9 text-right tabular-nums">
+                    <span className="text-[10px] font-semibold text-ink-600 w-9 text-right tabular-nums">
                       {mod.passRate === null ? "—" : `${mod.passRate}%`}
                     </span>
                   </div>
@@ -463,30 +471,34 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
               ))}
             </div>
           )}
-          <p className="text-[10px] text-white/20 mt-4">{de ? "Balken = Bestehensquote (letzte 12 Monate)." : "Bar = pass rate (last 12 months)."}</p>
+          <p className="text-[10px] text-ink-300 mt-4">{de ? "Balken = Bestehensquote (letzte 12 Monate)." : "Bar = pass rate (last 12 months)."}</p>
         </div>
 
         {/* ── Level distribution ── */}
         <div className="card-surface p-5 md:p-6">
-          <h3 className="text-xs font-bold uppercase tracking-[0.16em] text-white/50 mb-5 flex items-center gap-2">
-            <ChartBarIcon className="w-4 h-4 text-amber-300" />
+          <h3 className="text-xs font-bold uppercase tracking-[0.16em] text-ink-600 mb-5 flex items-center gap-2">
+            <ChartBarIcon className="w-4 h-4 text-amber-600" />
             {de ? "Level-Verteilung aktiver Vorlesungen" : "Level distribution of active lectures"}
           </h3>
           <div className="flex items-end gap-2 sm:gap-3 h-36">
             {computed.levelDist.map((count, level) => (
               <div key={level} className="flex-1 flex flex-col items-center justify-end h-full group/bar" title={`Level ${level + 1} (${LEVEL_LABELS[level]}): ${count}`}>
-                <span className={`text-[10px] mb-1 tabular-nums transition-colors ${count > 0 ? "text-white/55 font-semibold group-hover/bar:text-amber-200" : "text-white/15"}`}>{count}</span>
-                <motion.div
-                  initial={{ height: "4%" }}
-                  animate={{ height: `${Math.max(4, (count / computed.maxLevel) * 100)}%` }}
-                  transition={{ duration: 0.9, ease: EASE_OUT, delay: 0.3 + level * 0.06 }}
-                  className={`w-full rounded-t-md ${count > 0 ? "bg-gradient-to-t from-amber-600/60 to-amber-300/75 group-hover/bar:from-amber-600/80 group-hover/bar:to-amber-300 transition-colors duration-300" : "bg-white/[0.04]"}`}
-                />
-                <span className="text-[9px] mt-1.5 text-white/30">{LEVEL_LABELS[level]}</span>
+                <span className={`text-[10px] mb-1 tabular-nums transition-colors ${count > 0 ? "text-ink-600 font-semibold group-hover/bar:text-[#A15E03]" : "text-ink-300"}`}>{count}</span>
+                {/* Fixed-height slot; the fill scales via transform (never height) */}
+                <div className="w-full flex flex-col justify-end" style={{ height: `${Math.max(4, (count / computed.maxLevel) * 100)}%` }}>
+                  <motion.div
+                    initial={{ scaleY: 0 }}
+                    animate={{ scaleY: 1 }}
+                    transition={{ duration: 0.5, ease: EASE_OUT, delay: 0.2 + level * 0.03 }}
+                    style={{ transformOrigin: "bottom" }}
+                    className={`w-full h-full rounded-t-md ${count > 0 ? "bg-gradient-to-t from-amber-600/60 to-amber-300/75 group-hover/bar:from-amber-600/80 group-hover/bar:to-amber-300 transition-colors duration-300" : "bg-paper-2"}`}
+                  />
+                </div>
+                <span className="text-[9px] mt-1.5 text-ink-400">{LEVEL_LABELS[level]}</span>
               </div>
             ))}
           </div>
-          <p className="text-[10px] text-white/20 mt-4">
+          <p className="text-[10px] text-ink-300 mt-4">
             {de
               ? "Je weiter rechts, desto langfristiger sitzt der Stoff."
               : "The further right, the more durable the knowledge."}

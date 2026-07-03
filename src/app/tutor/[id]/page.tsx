@@ -37,7 +37,7 @@ export default async function TutorPage({ params }: { params: Params }) {
   return (
     <main className="min-h-screen bg-transparent">
       {/* Header bar */}
-      <header className="sticky top-0 z-10 border-b border-white/[0.06] bg-[#0b0908]/80 backdrop-blur-xl">
+      <header className="sticky top-0 z-10 border-b border-[rgba(33,27,18,0.08)] bg-[#0b0908]/80 backdrop-blur-xl">
         <div className="mx-auto flex max-w-3xl items-center gap-4 px-6 py-4">
           <div
             className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-sm shadow-lg shadow-black/40"
@@ -48,16 +48,16 @@ export default async function TutorPage({ params }: { params: Params }) {
             🤖
           </div>
           <div className="min-w-0 flex-1">
-            <h1 className="truncate font-display text-lg font-semibold text-white">
-              Tutor <em className="text-gradient not-italic font-display italic">Prompt</em>
+            <h1 className="truncate font-display text-lg font-semibold text-ink-900">
+              Tutor <em className="font-display italic text-amber-600">Prompt</em>
             </h1>
-            <p className="truncate text-sm text-white/40">
+            <p className="truncate text-sm text-ink-600">
               {item.subjectMain} – {item.subjectSub}
             </p>
           </div>
           <Link
             href="/"
-            className="rounded-lg border border-white/[0.1] bg-white/[0.04] px-4 py-2 text-sm font-medium text-white/60 transition hover:bg-white/[0.08] hover:text-white"
+            className="rounded-lg border border-[rgba(33,27,18,0.10)] bg-paper-2 px-4 py-2 text-sm font-medium text-ink-600 transition hover:bg-paper-2 hover:text-ink-900"
           >
             ← Zurück
           </Link>
@@ -69,20 +69,20 @@ export default async function TutorPage({ params }: { params: Params }) {
         <div className="card-surface-elevated p-6 md:p-10">
           {/* Metadata badges */}
           <div className="mb-8 flex flex-wrap gap-2">
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-[#f5b14a]/20 bg-[#f5b14a]/10 px-4 py-1.5 text-xs font-semibold text-[#f5b14a]">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-[rgba(239,159,31,0.22)] bg-[rgba(239,159,31,0.10)] px-4 py-1.5 text-xs font-semibold text-[#A15E03]">
               📚 {item.subjectMain}
             </span>
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.1] bg-white/[0.04] px-4 py-1.5 text-xs font-medium text-white/60">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-[rgba(33,27,18,0.10)] bg-paper-2 px-4 py-1.5 text-xs font-medium text-ink-600">
               📖 {item.subjectSub}
             </span>
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-4 py-1.5 text-xs font-semibold text-emerald-400">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-[rgba(94,125,88,0.30)] bg-[rgba(94,125,88,0.14)] px-4 py-1.5 text-xs font-semibold text-[#4A6845]">
               🎯 Level {item.currentLevel + 1}
             </span>
           </div>
 
           {/* Prompt content */}
           <div className="max-w-none">
-            <div className="whitespace-pre-wrap text-[15px] leading-relaxed text-white/75">
+            <div className="whitespace-pre-wrap text-[15px] leading-relaxed text-ink-900/85">
               {item.tutorPromptContent}
             </div>
           </div>
@@ -94,7 +94,7 @@ export default async function TutorPage({ params }: { params: Params }) {
         </div>
 
         {/* Footer info */}
-        <p className="mt-10 text-center text-xs text-white/25">
+        <p className="mt-10 text-center text-xs text-ink-400">
           Erstellt am {item.createdAt.toLocaleDateString("de-DE", { day: "2-digit", month: "long", year: "numeric" })}
           {" · "}ID: {item.id}
         </p>

@@ -1,71 +1,114 @@
 @import "tailwindcss";
 
 /* ============================================================
-   SRS Master — "Ember & Ink"
-   Warm near-black ink, brass/ember accent, Fraunces display serif.
-   Due items glow like a lit study lamp; everything else stays quiet.
+   SRS Master — "Paper & Ember"
+   Warm paper neutrals, ink-dark text, amber as the ONE scarce
+   accent. Medical-grade calm, warm-blooded execution.
+   Amber appears ONLY on: brand mark · the primary action ·
+   due-now signals · the earned pass moment.
    ============================================================ */
 
 @theme {
-  --color-background: #0b0908;
-  --color-foreground: #f7f4ef;
+  --color-background: #f6f3ec;
+  --color-foreground: #211b12;
+
+  /* Paper surfaces */
+  --color-paper-0: #f6f3ec;
+  --color-paper-1: #fffefb;
+  --color-paper-2: #f1ece2;
+
+  /* Ink text ramp */
+  --color-ink-900: #211b12;
+  --color-ink-600: #6e6455;
+  --color-ink-400: #a89d8b;
+  --color-ink-300: #c4baa9;
+
+  /* Hairlines & control borders */
+  --color-hairline: rgba(33, 27, 18, 0.07);
+  --color-hairline-card: rgba(33, 27, 18, 0.08);
+  --color-line: rgba(33, 27, 18, 0.13);
+
+  /* Amber — THE accent */
+  --color-amber-300: #fbd38d;
+  --color-amber-400: #f5b14a;
+  --color-amber-500: #ef9f1f;
+  --color-amber-600: #d97d06;
+  --color-amber-700: #a15e03;
+
+  /* Status */
+  --color-sage-600: #5e7d58;
+  --color-sage-700: #4a6845;
+  --color-clay-600: #b06a4e;
+  --color-clay-700: #96543c;
 
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   --font-display: var(--font-fraunces), ui-serif, Georgia, serif;
 
-  /* Make every Tailwind transition-* utility cinematic by default.
-     (Elements with an explicit duration-* keep their duration but inherit this curve.) */
-  --default-transition-duration: 300ms;
+  /* Quiet, physical default transitions. */
+  --default-transition-duration: 200ms;
   --default-transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @layer base {
   :root {
-    --background: #0b0908;
-    --foreground: #f7f4ef;
+    --background: #f6f3ec;
+    --foreground: #211b12;
 
-    /* Ember (brass / candlelight) */
-    --ember-200: #fde6b8;
+    /* Paper */
+    --paper-0: #f6f3ec;
+    --paper-1: #fffefb;
+    --paper-2: #f1ece2;
+    --paper-hover: #fbf9f4;
+
+    /* Ink */
+    --ink-900: #211b12;
+    --ink-600: #6e6455;
+    --ink-400: #a89d8b;
+    --ink-300: #c4baa9;
+
+    --hairline: rgba(33, 27, 18, 0.07);
+    --hairline-card: rgba(33, 27, 18, 0.08);
+    --line: rgba(33, 27, 18, 0.13);
+
+    /* Ember (amber) — the one accent */
     --ember-300: #fbd38d;
     --ember-400: #f5b14a;
     --ember-500: #ef9f1f;
     --ember-600: #d97d06;
+    --ember-700: #a15e03;
+    --amber-wash: rgba(239, 159, 31, 0.1);
+    --amber-wash-border: rgba(239, 159, 31, 0.22);
 
-    /* Layered warm glass surfaces */
-    --surface-1: rgba(255, 250, 240, 0.025);
-    --surface-2: rgba(255, 250, 240, 0.045);
-    --surface-3: rgba(255, 250, 240, 0.07);
+    /* Status */
+    --sage-600: #5e7d58;
+    --sage-700: #4a6845;
+    --sage-wash: rgba(94, 125, 88, 0.14);
+    --clay-600: #b06a4e;
+    --clay-700: #96543c;
+    --clay-wash: rgba(176, 106, 78, 0.12);
 
-    --border-subtle: rgba(255, 248, 235, 0.07);
-    --border-default: rgba(255, 248, 235, 0.12);
-    --border-strong: rgba(255, 248, 235, 0.22);
+    /* Text roles */
+    --text-primary: #211b12;
+    --text-secondary: #6e6455;
+    --text-tertiary: #a89d8b;
 
-    --text-primary: #f7f4ef;
-    --text-secondary: rgba(247, 244, 239, 0.62);
-    --text-tertiary: rgba(247, 244, 239, 0.38);
+    /* Warm-tinted elevation (never gray) */
+    --shadow-e1: 0 1px 2px rgba(50, 38, 20, 0.04);
+    --shadow-e2: 0 1px 2px rgba(50, 38, 20, 0.05), 0 14px 36px -22px rgba(50, 38, 20, 0.2);
+    --shadow-e2-hover: 0 2px 4px rgba(50, 38, 20, 0.06), 0 20px 44px -20px rgba(50, 38, 20, 0.28);
+    --shadow-e3: 0 2px 6px rgba(50, 38, 20, 0.06), 0 24px 56px -24px rgba(50, 38, 20, 0.32);
 
-    /* Motion — cinematic easing (mirrors src/lib/motion.ts) */
-    --ease-cinematic: cubic-bezier(0.16, 1, 0.3, 1);       /* easeOutExpo — glide to rest */
-    --ease-cinematic-soft: cubic-bezier(0.22, 1, 0.36, 1); /* easeOutQuint — gentler */
-    --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);         /* symmetric flow */
-    --dur-hover: 320ms;
+    /* Motion (mirrors src/lib/motion.ts) */
+    --ease-cinematic: cubic-bezier(0.16, 1, 0.3, 1);
+    --ease-cinematic-soft: cubic-bezier(0.22, 1, 0.36, 1);
+    --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+    --dur-hover: 150ms;
   }
 
   html {
-    color-scheme: dark;
+    color-scheme: light;
     scroll-behavior: smooth;
-    /* The atmospheric gradient lives on the ROOT (not only the fixed body::before
-       overlay) so it also fills the iOS rubber-band overscroll region — iOS only
-       paints the root's background there. Viewport-anchored (fixed) so it lines
-       up exactly with body::before: drag past the top/bottom and you keep seeing
-       the same gradient instead of a flat edge. */
     background-color: var(--background);
-    background-image:
-      radial-gradient(900px 600px at 12% -8%, rgba(245, 158, 11, 0.085), transparent 60%),
-      radial-gradient(800px 600px at 110% 110%, rgba(99, 102, 241, 0.06), transparent 60%),
-      radial-gradient(1200px 800px at 50% 120%, rgba(245, 158, 11, 0.03), transparent 55%);
-    background-attachment: fixed;
-    background-repeat: no-repeat;
     /* Stop iOS Safari from inflating font sizes in landscape. */
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
@@ -93,36 +136,10 @@
     overflow-wrap: break-word;
   }
 
-  /* Ambient atmosphere: lamplight top-left, cool dusk bottom-right, faint grain */
-  body::before {
-    content: "";
-    position: fixed;
-    /* Extend 100vh past top and bottom to seamlessly cover iOS overscroll area */
-    inset: -100vh 0;
-    z-index: -1;
-    pointer-events: none;
-    /* Adjusted positions with absolute vh to account for the -100vh top offset */
-    background:
-      radial-gradient(900px 600px at 12% 92vh, rgba(245, 158, 11, 0.085), transparent 60%),
-      radial-gradient(800px 600px at 110% 210vh, rgba(99, 102, 241, 0.06), transparent 60%),
-      radial-gradient(1200px 800px at 50% 220vh, rgba(245, 158, 11, 0.03), transparent 55%);
-  }
-
-  body::after {
-    content: "";
-    position: fixed;
-    /* Extend 100vh past top and bottom to seamlessly cover iOS overscroll area */
-    inset: -100vh 0;
-    z-index: -1;
-    pointer-events: none;
-    opacity: 0.5;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
-  }
-
   h1, h2, h3 {
     font-family: var(--font-display);
-    letter-spacing: -0.018em;
-    font-weight: 540;
+    letter-spacing: -0.02em;
+    font-weight: 470;
     /* Multi-line headlines break evenly instead of leaving a lonely last word. */
     text-wrap: balance;
   }
@@ -134,23 +151,27 @@
 
   h4, h5, h6 {
     font-family: var(--font-sans);
-    letter-spacing: -0.014em;
+    letter-spacing: -0.011em;
     font-weight: 600;
   }
 
   a, button, input, textarea, select {
-    /* Transition only compositor/paint-friendly props (never layout) on a
-       cinematic glide curve — this replaces the generic 160ms Material feel. */
-    transition-property: color, background-color, border-color, box-shadow,
-      transform, opacity, filter, backdrop-filter;
+    /* Only compositor/paint-friendly props — never layout, never filter. */
+    transition-property: color, background-color, border-color, opacity, transform;
     transition-duration: var(--dur-hover);
     transition-timing-function: var(--ease-cinematic);
   }
 
   *:focus-visible {
-    outline: 2px solid rgba(245, 177, 74, 0.7);
-    outline-offset: 2px;
-    border-radius: 6px;
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(239, 159, 31, 0.3);
+    border-radius: 8px;
+  }
+
+  /* Tabular numerals wherever dates/stats align in columns. */
+  .tnum {
+    font-feature-settings: "tnum";
+    font-variant-numeric: tabular-nums;
   }
 }
 
@@ -159,88 +180,63 @@
   /* ---------- Surfaces ---------- */
 
   .card-surface {
-    background: var(--surface-1);
-    border: 1px solid var(--border-subtle);
-    border-radius: 1.25rem;
-    box-shadow: inset 0 1px 0 rgba(255, 248, 235, 0.04);
-    transition: transform 0.45s var(--ease-cinematic),
-      border-color 0.4s var(--ease-cinematic),
-      background 0.4s var(--ease-cinematic),
-      box-shadow 0.5s var(--ease-cinematic);
-    will-change: transform;
+    background: var(--paper-1);
+    border: 1px solid var(--hairline-card);
+    border-radius: 18px;
+    box-shadow: var(--shadow-e1);
+    transition: border-color 150ms var(--ease-cinematic);
   }
-  /* Hover treatments only on devices that actually hover — on touch, iOS keeps
-     :hover styles "stuck" after a tap, so cards stayed lifted/brightened. */
   @media (hover: hover) {
     .card-surface:hover {
-      border-color: var(--border-default);
-      background: var(--surface-2);
+      border-color: var(--line);
     }
   }
 
+  /* Elevated card with a pre-rendered hover shadow layer (cross-faded via
+     opacity — box-shadow itself never animates). */
   .card-surface-elevated {
-    background: linear-gradient(180deg, var(--surface-2), var(--surface-1));
-    border: 1px solid var(--border-default);
-    border-radius: 1.25rem;
-    box-shadow:
-      inset 0 1px 0 rgba(255, 248, 235, 0.06),
-      0 8px 28px -10px rgba(0, 0, 0, 0.65);
-    transition: transform 0.45s var(--ease-cinematic),
-      border-color 0.4s var(--ease-cinematic),
-      background 0.4s var(--ease-cinematic),
-      box-shadow 0.5s var(--ease-cinematic);
-    will-change: transform;
-  }
-  @media (hover: hover) {
-    .card-surface-elevated:hover {
-      border-color: var(--border-strong);
-      background: linear-gradient(180deg, var(--surface-3), var(--surface-1));
-      transform: translateY(-4px);
-      box-shadow:
-        inset 0 1px 0 rgba(255, 248, 235, 0.1),
-        0 24px 56px -16px rgba(0, 0, 0, 0.85);
-    }
-  }
-
-  .card-glass {
-    background: rgba(16, 13, 10, 0.88);
-    backdrop-filter: blur(24px) saturate(140%);
-    -webkit-backdrop-filter: blur(24px) saturate(140%);
-    border-radius: 1.5rem;
-    box-shadow:
-      inset 0 1px 0 rgba(255, 248, 235, 0.07),
-      0 24px 60px -16px rgba(0, 0, 0, 0.85);
-  }
-
-  .gradient-border {
     position: relative;
-    background-clip: padding-box;
-    border: 1px solid transparent;
+    background: var(--paper-1);
+    border: 1px solid var(--hairline-card);
+    border-radius: 18px;
+    box-shadow: var(--shadow-e2);
+    transition: border-color 150ms var(--ease-cinematic);
   }
-  .gradient-border::before {
-    content: '';
+  .card-surface-elevated::after {
+    content: "";
     position: absolute;
     inset: -1px;
     border-radius: inherit;
-    padding: 1px;
-    background: linear-gradient(135deg, rgba(245, 177, 74, 0.5), rgba(245, 177, 74, 0.06) 45%, rgba(255, 248, 235, 0.1));
-    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-    -webkit-mask-composite: xor;
-    mask-composite: exclude;
+    box-shadow: var(--shadow-e2-hover);
+    opacity: 0;
+    transition: opacity 200ms var(--ease-cinematic);
     pointer-events: none;
-    opacity: 0.6;
-    transition: opacity 0.3s;
   }
   @media (hover: hover) {
-    .gradient-border:hover::before {
+    .card-surface-elevated:hover {
+      border-color: var(--line);
+    }
+    .card-surface-elevated:hover::after {
       opacity: 1;
     }
+  }
+
+  /* Modal / sheet surface. Blur is static — never animated. */
+  .card-glass {
+    background: var(--paper-1);
+    border-radius: 22px;
+    box-shadow: var(--shadow-e3);
+  }
+
+  /* Legacy hook: renders as a plain hairline now (no gradient ring). */
+  .gradient-border {
+    position: relative;
   }
 
   /* ---------- Type ---------- */
 
   .text-gradient {
-    background: linear-gradient(115deg, #fde6b8 0%, #f5b14a 45%, #ef9f1f 100%);
+    background: linear-gradient(115deg, #ef9f1f 0%, #d97d06 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
@@ -248,221 +244,311 @@
 
   .eyebrow {
     font-family: var(--font-sans);
-    font-size: 0.6875rem;
-    font-weight: 700;
+    font-size: 11px;
+    font-weight: 650;
     text-transform: uppercase;
-    letter-spacing: 0.22em;
-    color: rgba(245, 177, 74, 0.75);
+    letter-spacing: 0.11em;
+    color: var(--ink-400);
+  }
+
+  .caps-label {
+    font-family: var(--font-sans);
+    font-size: 11px;
+    font-weight: 650;
+    text-transform: uppercase;
+    letter-spacing: 0.11em;
+    color: var(--ink-400);
   }
 
   /* ---------- Buttons ---------- */
 
   .btn-primary {
     background: linear-gradient(180deg, #fbd38d 0%, #f5b14a 55%, #ef9f1f 100%);
-    color: #1a1308;
-    font-weight: 600;
-    border-radius: 0.875rem;
-    border: 1px solid rgba(255, 226, 178, 0.55);
+    color: #2a1d07;
+    font-weight: 650;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 226, 178, 0.9);
     box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.45),
-      0 8px 24px -8px rgba(245, 158, 11, 0.55);
-    transition: transform 0.4s var(--ease-cinematic),
-      filter 0.35s var(--ease-cinematic),
-      box-shadow 0.45s var(--ease-cinematic);
-    will-change: transform;
+      inset 0 1px 0 rgba(255, 255, 255, 0.5),
+      0 8px 20px -8px rgba(217, 125, 6, 0.55);
+    transition: transform 150ms var(--ease-cinematic), opacity 150ms var(--ease-cinematic);
   }
   @media (hover: hover) {
     .btn-primary:hover:not(:disabled) {
-      filter: brightness(1.07);
-      transform: translateY(-2px);
-      box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.5),
-        0 16px 38px -8px rgba(245, 158, 11, 0.7);
+      transform: translateY(-1px);
     }
   }
   .btn-primary:active:not(:disabled) {
-    transform: translateY(0) scale(0.985);
-    filter: brightness(0.98);
-    transition-duration: 0.12s;
+    transform: scale(0.985);
+    transition-duration: 120ms;
   }
   .btn-primary:disabled {
     cursor: not-allowed;
+    opacity: 0.55;
   }
 
   .btn-secondary {
-    background: var(--surface-2);
-    color: var(--text-primary);
-    border: 1px solid var(--border-default);
-    border-radius: 0.875rem;
-    font-weight: 500;
-    box-shadow: inset 0 1px 0 rgba(255, 248, 235, 0.05);
+    background: var(--paper-1);
+    color: var(--ink-900);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    font-weight: 600;
+    box-shadow: var(--shadow-e1);
+    transition: background-color 150ms var(--ease-cinematic), transform 120ms var(--ease-cinematic);
   }
   @media (hover: hover) {
     .btn-secondary:hover {
-      background: var(--surface-3);
-      border-color: var(--border-strong);
+      background: var(--paper-2);
     }
   }
   .btn-secondary:active {
-    /* Same tactile press the primary button has — parity across the pair. */
-    transform: scale(0.98);
-    transition-duration: 0.12s;
+    transform: scale(0.985);
+    transition-duration: 120ms;
+  }
+
+  /* Quiet icon-only button */
+  .btn-ghost-icon {
+    color: var(--ink-300);
+    border-radius: 10px;
+    transition: background-color 150ms var(--ease-cinematic), color 150ms var(--ease-cinematic);
+  }
+  @media (hover: hover) {
+    .btn-ghost-icon:hover {
+      background: var(--paper-2);
+      color: var(--ink-600);
+    }
   }
 
   /* ---------- Inputs ---------- */
+  /* (Class name kept from the dark theme so JSX call sites keep working.) */
 
   .input-dark {
-    background: rgba(255, 250, 240, 0.03);
-    border: 1px solid rgba(255, 248, 235, 0.1);
-    border-radius: 0.875rem;
-    color: var(--text-primary);
+    background: var(--paper-1);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    color: var(--ink-900);
   }
   .input-dark::placeholder {
-    color: var(--text-tertiary);
+    color: var(--ink-400);
   }
   @media (hover: hover) {
     .input-dark:hover {
-      border-color: rgba(255, 248, 235, 0.18);
-      background: rgba(255, 250, 240, 0.045);
+      border-color: rgba(33, 27, 18, 0.2);
     }
   }
   .input-dark:focus {
     outline: none;
-    border-color: rgba(245, 177, 74, 0.65);
-    background: rgba(255, 250, 240, 0.05);
-    box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.14);
+    border-color: rgba(239, 159, 31, 0.55);
+    box-shadow: 0 0 0 3px rgba(239, 159, 31, 0.18);
+  }
+  /* Inset variant for textareas inside cards */
+  .input-inset {
+    background: var(--paper-0);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    color: var(--ink-900);
+  }
+  .input-inset::placeholder {
+    color: var(--ink-400);
+  }
+  .input-inset:focus {
+    outline: none;
+    border-color: rgba(239, 159, 31, 0.55);
+    box-shadow: 0 0 0 3px rgba(239, 159, 31, 0.18);
   }
 
-  /* ---------- Badges ---------- */
+  /* ---------- Chips & badges ---------- */
 
   .badge-due {
-    background: rgba(245, 158, 11, 0.14);
-    color: #fbd38d;
-    border: 1px solid rgba(245, 158, 11, 0.32);
-    box-shadow: 0 0 16px -4px rgba(245, 158, 11, 0.35);
+    background: var(--amber-wash);
+    color: var(--ember-700);
+    border: 1px solid var(--amber-wash-border);
   }
   .badge-level {
-    background: rgba(255, 250, 240, 0.05);
-    color: rgba(247, 244, 239, 0.55);
-    border: 1px solid rgba(255, 248, 235, 0.1);
+    background: var(--paper-1);
+    color: var(--ink-600);
+    border: 1px solid var(--hairline-card);
+  }
+
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 30px;
+    padding: 0 11px;
+    border-radius: 10px;
+    background: var(--paper-2);
+    color: var(--ink-600);
+    font-size: 12px;
+    font-weight: 550;
+    border: 1px solid transparent;
+    transition: background-color 150ms var(--ease-cinematic), color 150ms var(--ease-cinematic);
+  }
+  @media (hover: hover) {
+    .chip:hover {
+      background: #e9e2d4;
+      color: var(--ink-900);
+    }
+  }
+  .chip-amber {
+    background: var(--amber-wash);
+    color: var(--ember-700);
+    border-color: var(--amber-wash-border);
+  }
+  @media (hover: hover) {
+    .chip-amber:hover {
+      background: rgba(239, 159, 31, 0.16);
+      color: var(--ember-700);
+    }
+  }
+  .chip-dashed {
+    background: transparent;
+    border: 1.5px dashed var(--line);
+    color: var(--ink-400);
+    cursor: default;
+  }
+  @media (hover: hover) {
+    .chip-dashed:hover {
+      background: transparent;
+      color: var(--ink-400);
+    }
+  }
+
+  /* ---------- Segmented control ---------- */
+
+  .segmented {
+    background: var(--paper-2);
+    border-radius: 13px;
+    padding: 4px;
+    display: flex;
+    gap: 4px;
+  }
+  .segmented-item {
+    flex: 1;
+    padding: 8px 10px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink-600);
+    border: 1px solid transparent;
+    text-align: center;
+    cursor: pointer;
+    transition: background-color 150ms var(--ease-cinematic), color 150ms var(--ease-cinematic);
+  }
+  .segmented-item[data-active="true"] {
+    background: var(--paper-1);
+    border-color: var(--hairline-card);
+    box-shadow: var(--shadow-e1);
+    color: var(--ink-900);
+  }
+  @media (hover: hover) {
+    .segmented-item:not([data-active="true"]):hover {
+      color: var(--ink-900);
+    }
   }
 
   /* ---------- Sidebar / Nav ---------- */
 
   .sidebar-gradient {
-    background:
-      linear-gradient(180deg, rgba(245, 158, 11, 0.045), transparent 220px),
-      #0e0c0a;
+    background: var(--paper-0);
   }
 
   .nav-item-active {
-    background: linear-gradient(90deg, rgba(245, 158, 11, 0.16), rgba(245, 158, 11, 0.05));
-    color: #fde6b8;
-    border-radius: 0.75rem;
-    box-shadow: inset 2px 0 0 rgba(245, 177, 74, 0.9), inset 0 1px 0 rgba(255, 248, 235, 0.05);
+    background: var(--paper-1);
+    color: var(--ink-900);
+    border: 1px solid var(--hairline-card);
+    border-radius: 12px;
+    box-shadow: var(--shadow-e1);
   }
 
   .nav-item-idle {
-    color: var(--text-secondary);
-    border-radius: 0.75rem;
+    color: var(--ink-600);
+    border: 1px solid transparent;
+    border-radius: 12px;
   }
   @media (hover: hover) {
     .nav-item-idle:hover {
-      background: rgba(255, 250, 240, 0.05);
-      color: var(--text-primary);
+      background: rgba(33, 27, 18, 0.045);
+      color: var(--ink-900);
     }
+  }
+
+  /* ---------- Brand mark ---------- */
+
+  .brand-tile {
+    background: linear-gradient(165deg, #f7bc5a 0%, #ef9f1f 58%, #de850b 100%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), 0 4px 10px -3px rgba(217, 125, 6, 0.45);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
   /* ---------- Progress ---------- */
 
   .progress-track {
-    background: rgba(255, 250, 240, 0.08);
+    background: var(--paper-2);
     border-radius: 999px;
     overflow: hidden;
-    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.5);
   }
   .progress-fill {
     position: relative;
-    background: linear-gradient(90deg, #f5b14a, #fbd38d);
+    height: 100%;
+    background: linear-gradient(90deg, #f5b14a, #ef9f1f);
     border-radius: 999px;
-    box-shadow: 0 0 14px -2px rgba(245, 158, 11, 0.7);
-    overflow: hidden;
-  }
-  .progress-fill::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(110deg, transparent 20%, rgba(255, 255, 255, 0.55) 50%, transparent 80%);
-    transform: translateX(-100%);
-    animation: shimmer 1.8s ease-in-out infinite;
   }
 
-  /* ---------- Glows ---------- */
-
-  .glow-success {
-    box-shadow:
-      inset 0 1px 0 rgba(52, 211, 153, 0.12),
-      0 0 44px -10px rgba(52, 211, 153, 0.35);
+  /* Amber gradient thread — due cards & the earned pass moment */
+  .amber-thread {
+    background: linear-gradient(180deg, #f5b14a, #d97d06);
+    border-radius: 999px;
   }
-  .glow-danger {
-    box-shadow:
-      inset 0 1px 0 rgba(251, 113, 133, 0.12),
-      0 0 44px -10px rgba(251, 113, 133, 0.35);
+  .amber-thread-h {
+    background: linear-gradient(90deg, #f5b14a, #d97d06);
+    border-radius: 999px;
   }
 
-  /* ---------- Signature: ember pulse for due items ---------- */
+  /* ---------- Live pulse (the ONLY ambient loop, for in-progress states) ---------- */
 
   .ember-dot {
-    animation: ember-pulse 2.2s ease-in-out infinite;
+    animation: ember-pulse 2s ease-in-out infinite;
+  }
+
+  /* Listening equalizer bars (interactive voice mode) */
+  .eq-bar {
+    display: inline-block;
+    width: 3px;
+    border-radius: 999px;
+    background: var(--sage-600);
+    animation: eq-pulse 1.1s ease-in-out infinite;
   }
 
   /* ---------- Scrollbars ---------- */
 
   .custom-scrollbar::-webkit-scrollbar {
     width: 5px;
-    height: 5px; /* horizontal scrollers (e.g. the activity heatmap) too */
+    height: 5px;
   }
   .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: rgba(245, 177, 74, 0.25);
+    background: rgba(33, 27, 18, 0.14);
     border-radius: 99px;
   }
-}
-
-@keyframes shimmer {
-  100% {
-    transform: translateX(100%);
-  }
-}
-
-/* Slowly drifting ambient orbs — used on the login brand panel */
-@keyframes drift-slow {
-  0%, 100% { transform: translate(0px, 0px) scale(1); }
-  33%       { transform: translate(18px, -14px) scale(1.04); }
-  66%       { transform: translate(-12px, 10px) scale(0.97); }
-}
-
-@keyframes drift-slower {
-  0%, 100% { transform: translate(0px, 0px) scale(1); }
-  50%       { transform: translate(-22px, 16px) scale(1.07); }
-}
-
-.ambient-drift-slow {
-  animation: drift-slow 22s ease-in-out infinite;
-}
-
-.ambient-drift-slower {
-  animation: drift-slower 30s ease-in-out infinite;
 }
 
 @keyframes ember-pulse {
   0%, 100% {
     opacity: 1;
-    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.55);
+    box-shadow: 0 0 0 0 rgba(239, 159, 31, 0.35);
   }
   50% {
-    opacity: 0.7;
-    box-shadow: 0 0 0 5px rgba(245, 158, 11, 0);
+    opacity: 0.75;
+    box-shadow: 0 0 0 5px rgba(239, 159, 31, 0);
   }
+}
+
+@keyframes eq-pulse {
+  0%, 100% { transform: scaleY(0.45); }
+  50% { transform: scaleY(1); }
 }
 
 ::-webkit-scrollbar {
@@ -473,11 +559,11 @@
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 248, 235, 0.12);
+  background: rgba(33, 27, 18, 0.12);
   border-radius: 99px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(245, 177, 74, 0.35);
+  background: rgba(33, 27, 18, 0.22);
 }
 
 /* Short viewports — chiefly large phones in landscape, which are wide enough to
@@ -499,10 +585,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .progress-fill::after,
   .ember-dot,
-  .ambient-drift-slow,
-  .ambient-drift-slower {
+  .eq-bar {
     animation: none;
   }
   .card-surface-elevated:hover,
