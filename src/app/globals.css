@@ -123,8 +123,8 @@
     color: var(--foreground);
     font-family: var(--font-sans);
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
+    /* No -webkit-font-smoothing override: default rendering keeps ink at full
+       density on macOS (forced "antialiased" thins text and washes it out). */
     letter-spacing: -0.011em;
     position: relative;
     min-height: 100%;
@@ -344,7 +344,7 @@
   /* Inset variant for textareas inside cards */
   .input-inset {
     background: var(--paper-0);
-    border: 1px solid var(--line);
+    border: 1px solid var(--hairline-card);
     border-radius: 14px;
     color: var(--ink-900);
   }
@@ -403,7 +403,7 @@
   }
   .chip-dashed {
     background: transparent;
-    border: 1.5px dashed var(--line);
+    border: 1.5px dashed rgba(33, 27, 18, 0.14);
     color: var(--ink-400);
     cursor: default;
   }
@@ -487,7 +487,7 @@
   /* ---------- Progress ---------- */
 
   .progress-track {
-    background: var(--paper-2);
+    background: #ebe5d8;
     border-radius: 999px;
     overflow: hidden;
   }

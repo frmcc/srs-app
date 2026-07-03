@@ -7,6 +7,9 @@ const fraunces = Fraunces({
   variable: "--font-fraunces",
   subsets: ["latin"],
   style: ["normal", "italic"],
+  // Optical size axis: display-grade cut (sharp serifs, high contrast) at
+  // heading sizes — without this, every size renders the soft 9pt text cut.
+  axes: ["opsz"],
 });
 
 const inter = Inter({
@@ -44,7 +47,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${fraunces.variable} ${inter.variable} h-full antialiased`}
+      className={`${fraunces.variable} ${inter.variable} h-full`}
     >
       <head>
         <meta name="apple-mobile-web-app-capable" content="yes" />

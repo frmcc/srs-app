@@ -337,20 +337,20 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
             {messages.map((msg) => (
               msg.role === "user" ? (
                 <div key={msg.id} className="flex justify-end">
-                  <div className="max-w-[86%] bg-paper-2 rounded-[16px_16px_6px_16px] px-4 py-3 text-[13.5px] leading-[1.55] text-ink-900 whitespace-pre-wrap break-words">
+                  <div className="max-w-[86%] bg-paper-2 rounded-[16px_16px_6px_16px] px-3.5 py-2.5 text-[13.5px] leading-[1.55] text-ink-900 whitespace-pre-wrap break-words">
                     {msg.text}
                   </div>
                 </div>
               ) : (
                 <div key={msg.id} className="pr-2">
                   <div className="flex items-center gap-2 mb-1.5">
-                    <span className="caps-label !text-[10px]">Tutor</span>
+                    <span className="caps-label !text-[10.5px] !tracking-[0.12em]">Tutor</span>
                     {msg.text && (
                       <button
                         onClick={() => speakMessage(msg)}
                         disabled={ttsLoadingId === msg.id}
                         title={speakingId === msg.id ? (de ? "Stopp" : "Stop") : (de ? "Vorlesen (Gemini-Stimme)" : "Read aloud (Gemini voice)")}
-                        className="w-6 h-6 rounded-lg flex items-center justify-center text-ink-400 hover:text-amber-600 hover:bg-[rgba(239,159,31,0.08)] transition-colors cursor-pointer disabled:cursor-wait"
+                        className="w-6 h-6 rounded-lg flex items-center justify-center text-ink-400 hover:text-[#C97706] hover:bg-[rgba(239,159,31,0.10)] transition-colors cursor-pointer disabled:cursor-wait"
                       >
                         {ttsLoadingId === msg.id ? (
                           <ArrowPathIcon className="w-3.5 h-3.5 animate-spin" />

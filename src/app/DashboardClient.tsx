@@ -15,7 +15,6 @@ import {
   springTactile,
 } from "@/lib/motion";
 import {
-  CpuChipIcon,
   BookOpenIcon,
   CalendarDaysIcon,
   ChevronRightIcon,
@@ -1299,7 +1298,7 @@ export default function DashboardClient({
             <div className="brand-tile w-7 h-7 rounded-[8px]">
               <span className="font-display italic font-semibold text-[13px] text-[#2A1D07] -translate-y-px">S</span>
             </div>
-            <h1 className="text-[15px] font-bold tracking-[-0.01em] text-ink-900">SRS <span className="font-display italic font-medium text-[#C97706]">Master</span></h1>
+            <h1 className="text-[15px] font-bold tracking-[-0.01em] text-ink-900">SRS <span className="font-display italic text-[#C97706]" style={{ fontWeight: 560 }}>Master</span></h1>
           </button>
           <button onClick={() => setShowMobileMenu(!showMobileMenu)} className="p-2 -mr-2 text-ink-600 hover:text-ink-900 cursor-pointer">
             {showMobileMenu ? <XMarkIcon className="w-6 h-6" /> : <Bars3Icon className="w-6 h-6" />}
@@ -1323,7 +1322,7 @@ export default function DashboardClient({
               <span className="font-display italic font-semibold text-lg text-[#2A1D07] -translate-y-px">S</span>
             </div>
             <div className="flex flex-col gap-[3px]">
-              <h1 className="text-[15px] font-bold tracking-[-0.01em] leading-none text-ink-900 font-sans">SRS <span className="font-display italic font-medium text-[#C97706]">Master</span></h1>
+              <h1 className="text-[15px] font-bold tracking-[-0.01em] leading-none text-ink-900 font-sans">SRS <span className="font-display italic text-[#C97706]" style={{ fontWeight: 560 }}>Master</span></h1>
               <div className="text-[10.5px] font-semibold uppercase tracking-[0.13em] text-ink-400">
                 Semester {currentSemester}
               </div>
@@ -1377,7 +1376,7 @@ export default function DashboardClient({
             </button>
 
             <div className="mt-3 card-surface p-4">
-              <SparklesIcon className="w-[17px] h-[17px] text-ink-9000 mb-2.5" strokeWidth={1.6} />
+              <SparklesIcon className="w-[17px] h-[17px] text-amber-500 mb-2.5" strokeWidth={1.6} />
               <h3 className="text-sm font-semibold text-ink-900">Live Tutor Pro</h3>
               <p className="text-[12.5px] leading-normal text-ink-600 mt-1">{language === "german" ? "Sprach-Tutoring neben jedem Quiz." : "Voice tutoring beside every quiz."}</p>
               <div className="mt-3 h-8 rounded-[10px] border border-[rgba(33,27,18,0.10)] flex items-center justify-center gap-[7px] text-ink-400 text-xs font-semibold">
@@ -1423,7 +1422,7 @@ export default function DashboardClient({
         {/* Main Content */}
         {/* Mobile: page scrolls naturally (URL bar can collapse, native momentum).
             md+: fixed app-shell — sidebar stays put, main scrolls internally. */}
-        <main className={`${showMobileMenu ? "hidden" : "block"} app-shell-main md:block flex-1 relative px-4 md:px-8 lg:px-12 pt-8 md:pt-12 pb-[max(2rem,env(safe-area-inset-bottom))] md:pb-[max(3rem,env(safe-area-inset-bottom))] md:h-[100dvh] md:overflow-y-auto`}>
+        <main className={`${showMobileMenu ? "hidden" : "block"} app-shell-main md:block flex-1 relative px-4 md:px-8 lg:px-12 pt-8 md:pt-[46px] pb-[max(2rem,env(safe-area-inset-bottom))] md:pb-[max(3rem,env(safe-area-inset-bottom))] md:h-[100dvh] md:overflow-y-auto`}>
           <AnimatePresence mode="wait">
             {activeTab === "dashboard" && (
               <motion.div
@@ -1888,7 +1887,7 @@ export default function DashboardClient({
 
                 {isGenerating ? (
                   <div className="card-surface-elevated px-8 py-12 md:py-14 flex flex-col items-center justify-center text-center">
-                    <div className="w-14 h-14 rounded-2xl bg-[rgba(239,159,31,0.10)] border border-[rgba(239,159,31,0.22)] flex items-center justify-center mb-6">
+                    <div className="w-16 h-16 rounded-[18px] bg-[rgba(239,159,31,0.10)] border border-[rgba(239,159,31,0.25)] flex items-center justify-center mb-6">
                       <ArrowPathIcon className="w-7 h-7 text-amber-600 animate-spin" strokeWidth={1.6} />
                     </div>
                     <h3 className="font-display text-[27px] text-ink-900 mb-2" style={{ fontWeight: 470 }}>{language === 'german' ? 'Dein Modul entsteht' : 'Building your module'}</h3>
@@ -1909,12 +1908,12 @@ export default function DashboardClient({
                         // not the old fictional "Quiz Agent Level 1–5" labels. The app
                         // only generates Quiz 1 at upload; later levels are made one-by-one
                         // during grading. Step numbers match the backend's progress() calls.
-                        { step: 1, label: language === "german" ? "Blueprint erstellen" : "Generate Blueprint" },
-                        { step: 2, label: language === "german" ? "Quiz 1 generieren" : "Generate Quiz 1" },
-                        { step: 3, label: language === "german" ? "Tutor- & Podcast-Prompts" : "Tutor & Podcast prompts" },
-                        { step: 5, label: language === "german" ? "NotebookLM einrichten" : "NotebookLM setup" },
-                        { step: 6, label: language === "german" ? "Google Drive Upload" : "Google Drive upload" },
-                        { step: 7, label: language === "german" ? "In Datenbank speichern" : "Save to database" },
+                        { step: 1, label: language === "german" ? "Blueprint aus deinem Material" : "Blueprint from your material" },
+                        { step: 2, label: language === "german" ? "Erstes Quiz geschrieben" : "First quiz written" },
+                        { step: 3, label: language === "german" ? "Tutor-Brief & Audio-Skripte" : "Tutor brief & audio scripts" },
+                        { step: 5, label: language === "german" ? "Notebook & Quellen einrichten" : "Notebook & source setup" },
+                        { step: 6, label: language === "german" ? "In Drive gespeichert" : "Saved to Drive" },
+                        { step: 7, label: language === "german" ? "Geplant — erste Wiederholung morgen" : "Scheduled — first review tomorrow" },
                       ].map(({ step, label }, i) => (
                         <motion.div
                           key={step}
@@ -1925,8 +1924,8 @@ export default function DashboardClient({
                         >
                           <AnimatePresence mode="wait">
                             {progressStep > step ? (
-                              <motion.span key="done" initial={{ scale: 0.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={springTactile} className="w-[22px] h-[22px] rounded-full bg-[rgba(94,125,88,0.14)] shrink-0 flex items-center justify-center">
-                                <CheckIcon className="w-3 h-3 text-[#5E7D58]" strokeWidth={2.5} />
+                              <motion.span key="done" initial={{ scale: 0.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={springTactile} className="w-[22px] h-[22px] rounded-full bg-[rgba(94,125,88,0.16)] shrink-0 flex items-center justify-center">
+                                <CheckIcon className="w-3 h-3 text-[#5E7D58]" strokeWidth={2.4} />
                               </motion.span>
                             ) : progressStep === step ? (
                               <span key="active" className="ember-dot w-[22px] h-[22px] rounded-full border-2 border-amber-500 shrink-0 flex items-center justify-center"><span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span></span>
@@ -1944,14 +1943,14 @@ export default function DashboardClient({
                     <div className="flex flex-col sm:flex-row gap-5">
                       <div className="flex-1 flex flex-col justify-end">
                         <div className="flex items-start justify-between mb-2 gap-2">
-                          <label className="text-xs font-semibold uppercase tracking-[0.12em] text-ink-600 leading-tight">{language === "german" ? `Modul (Semester ${currentSemester})` : `Module (Semester ${currentSemester})`}</label>
-                          <button onClick={() => { setShowSettingsModal(true); }} className="text-xs text-amber-600 hover:text-[#A15E03] transition-colors shrink-0 cursor-pointer">{language === "german" ? "Verwalten" : "Manage Presets"}</button>
+                          <label className="caps-label leading-tight">{language === "german" ? `Modul (Semester ${currentSemester})` : `Module (Semester ${currentSemester})`}</label>
+                          <button onClick={() => { setShowSettingsModal(true); }} className="text-xs text-[#C97706] hover:text-[#A15E03] transition-colors shrink-0 cursor-pointer" style={{ fontWeight: 550 }}>{language === "german" ? "Verwalten" : "Manage"}</button>
                         </div>
                         {modulePresets.length > 0 ? (
                           <select
                             value={subjectInput}
                             onChange={e => setSubjectInput(e.target.value)}
-                            className="input-dark w-full px-4 py-3.5 appearance-none cursor-pointer"
+                            className="input-dark w-full h-12 px-4 appearance-none cursor-pointer"
                           >
                             {modulePresets.map(preset => (
                               <option key={preset} value={preset}>{preset}</option>
@@ -1965,20 +1964,20 @@ export default function DashboardClient({
                         )}
                       </div>
                       <div className="flex-1 flex flex-col justify-end">
-                        <label className="block text-xs font-semibold uppercase tracking-[0.12em] text-ink-600 mb-2">{language === "german" ? "Thema" : "Topic"}</label>
+                        <label className="caps-label block mb-2">{language === "german" ? "Thema" : "Topic"}</label>
                         <input
                           type="text"
                           value={topicInput}
                           onChange={e => setTopicInput(e.target.value)}
                           placeholder={language === "german" ? "z.B. Gedächtnis & Motivation" : "e.g. Memory & Motivation"}
-                          className="input-dark w-full px-4 py-3.5"
+                          className="input-dark w-full h-12 px-4"
                         />
                       </div>
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold uppercase tracking-[0.12em] text-ink-600 mb-2.5">{language === "german" ? "Vorlesungsmaterial (Dateien oder Text)" : "Lecture Material (Files or Text)"}</label>
+                      <label className="caps-label block mb-2.5">{language === "german" ? "Vorlesungsmaterial (Dateien oder Text)" : "Lecture material (files or text)"}</label>
                       <div
-                        className={`w-full border-[1.5px] border-dashed rounded-[18px] p-6 md:p-10 mb-4 flex flex-col items-center justify-center transition-colors ${isDragging ? 'border-[rgba(239,159,31,0.55)] bg-[rgba(239,159,31,0.08)]' : 'border-[rgba(33,27,18,0.10)] bg-[#FBF9F4]'}`}
+                        className={`w-full border-[1.5px] border-dashed rounded-[18px] p-6 md:p-10 mb-4 flex flex-col items-center justify-center transition-colors ${isDragging ? 'border-[rgba(239,159,31,0.55)] bg-[rgba(239,159,31,0.08)]' : 'border-[rgba(33,27,18,0.16)] bg-[#FBF9F4]'}`}
                         onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
                         onDragLeave={() => setIsDragging(false)}
                         onDrop={(e) => {
@@ -1996,8 +1995,11 @@ export default function DashboardClient({
                         <div className="w-12 h-12 rounded-xl bg-[rgba(239,159,31,0.08)] border border-[rgba(239,159,31,0.22)] flex items-center justify-center mb-4">
                           <CloudArrowUpIcon className="w-6 h-6 text-amber-600" />
                         </div>
-                        <p className="text-ink-600 text-sm text-center mb-4 leading-relaxed">
-                          {language === "german" ? "Ziehe deine PDFs, Excel- oder Word-Dateien hierher" : "Drag and drop your PDFs, Excel, or Word files here"}
+                        <p className="text-ink-900 text-[15px] font-semibold text-center leading-snug">
+                          {language === "german" ? "Zieh dein PDF, deine Folien oder Notizen hierher" : "Drop your PDF, slides, or notes here"}
+                        </p>
+                        <p className="text-ink-400 text-[12.5px] text-center mt-1.5 mb-4">
+                          {language === "german" ? "PDF, DOCX, XLSX, CSV oder TXT · oder füge unten Text ein" : "PDF, DOCX, XLSX, CSV or TXT · or paste text below"}
                         </p>
                         <input
                           type="file"
@@ -2024,7 +2026,7 @@ export default function DashboardClient({
                       {uploadedFiles.length > 0 && (
                         <div className="flex flex-wrap gap-2 mb-4">
                           {uploadedFiles.map((file, idx) => (
-                            <div key={idx} className="flex items-center gap-2 bg-[rgba(239,159,31,0.08)] text-[#A15E03]/90 px-3.5 py-2 rounded-lg text-xs font-medium border border-[rgba(239,159,31,0.22)]">
+                            <div key={idx} className="flex items-center gap-2 bg-[rgba(239,159,31,0.10)] text-[#A15E03] h-[30px] px-[11px] rounded-[10px] text-xs border border-[rgba(239,159,31,0.22)]" style={{ fontWeight: 550 }}>
                               <DocumentTextIcon className="w-4 h-4 text-amber-600" />
                               {file.name}
                               <button onClick={() => setUploadedFiles(prev => prev.filter((_, i) => i !== idx))} className="ml-1.5 text-[#A15E03]/60 hover:text-ink-900 cursor-pointer">
@@ -2039,27 +2041,34 @@ export default function DashboardClient({
                         value={textInput}
                         onChange={e => setTextInput(e.target.value)}
                         placeholder={language === "german" ? "...oder füge deine Vorlesungsskripte, Transkripte oder rohen Text hier ein..." : "...or paste your lecture notes, transcript, or raw text here..."}
-                        className="input-dark w-full px-4 py-4 h-32 resize-none text-sm leading-relaxed"
+                        className="input-dark w-full px-4 py-3.5 h-[120px] resize-none text-sm leading-relaxed"
                       />
                     </div>
-                    <div className="flex gap-3">
-                      <select
-                        value={generationModel}
-                        onChange={e => setGenerationModel(e.target.value)}
-                        className="input-dark w-1/3 px-4 py-4 text-sm cursor-pointer appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M5%208l5%205%205-5%22%20stroke%3D%22%239ca3af%22%20stroke-width%3D%222%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-no-repeat bg-[position:right_1rem_center]"
-                      >
-                        <option value="gemini-3.5-flash">3.5 Flash (Standard)</option>
-                        <option value="gemini-3.1-pro-preview">3.1 Pro (Preview)</option>
-                        <option value="gemini-3.1-flash-lite">3.1 Flash-Lite</option>
-                      </select>
-                      <button
-                        onClick={handleGenerate}
-                        disabled={isGenerating || (!textInput && uploadedFiles.length === 0) || !subjectInput}
-                        className="btn-primary flex-1 py-4 text-sm flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-40"
-                      >
-                        <CpuChipIcon className="w-5 h-5" />
-                        {language === "german" ? "6-Stufen KI-Generierung starten" : "Start 6-Stage AI Generation"}
-                      </button>
+                    <div>
+                      <div className="flex flex-col sm:flex-row gap-3">
+                        <select
+                          value={generationModel}
+                          onChange={e => setGenerationModel(e.target.value)}
+                          className="input-dark sm:w-[200px] h-[52px] px-4 text-sm cursor-pointer appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M5%208l5%205%205-5%22%20stroke%3D%22%23A89D8B%22%20stroke-width%3D%222%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-no-repeat bg-[position:right_1rem_center]"
+                        >
+                          <option value="gemini-3.5-flash">3.5 Flash (Standard)</option>
+                          <option value="gemini-3.1-pro-preview">3.1 Pro (Preview)</option>
+                          <option value="gemini-3.1-flash-lite">3.1 Flash-Lite</option>
+                        </select>
+                        <button
+                          onClick={handleGenerate}
+                          disabled={isGenerating || (!textInput && uploadedFiles.length === 0) || !subjectInput}
+                          className="btn-primary flex-1 h-[52px] text-sm flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-40"
+                        >
+                          <SparklesIcon className="w-[18px] h-[18px]" strokeWidth={1.6} />
+                          {language === "german" ? "Erstelle mein Quiz-Set" : "Generate my quiz set"}
+                        </button>
+                      </div>
+                      <p className="text-[12.5px] text-ink-400 text-center mt-4">
+                        {language === "german"
+                          ? "Sechs Schritte laufen automatisch — Blueprint, erstes Quiz, Tutor-Brief, Audio und Terminierung. Dauert etwa eine Minute."
+                          : "Six steps run automatically — blueprint, first quiz, tutor brief, audio, and scheduling. Takes about a minute."}
+                      </p>
                     </div>
                   </div>
                 )}
@@ -2097,7 +2106,7 @@ export default function DashboardClient({
                       value={librarySearch}
                       onChange={e => setLibrarySearch(e.target.value)}
                       placeholder={language === "german" ? "Modul oder Vorlesung suchen…" : "Search module or lecture…"}
-                      className="input-dark w-full pl-11 pr-10 py-3 text-sm"
+                      className="input-dark w-full h-12 pl-11 pr-10 text-sm"
                     />
                     {librarySearching && (
                       <button
@@ -2124,18 +2133,23 @@ export default function DashboardClient({
                 {/* ── Empty state ─────────────────────────────────────────── */}
                 {rawItems.length === 0 && !isLoadingReviews && (
                   <div className="card-surface p-12 md:p-16 flex flex-col items-center text-center">
-                    <div className="w-16 h-16 rounded-2xl bg-paper-2 border border-[rgba(33,27,18,0.08)] flex items-center justify-center mb-6">
-                      <BookOpenIcon className="w-8 h-8 text-ink-300" />
+                    <div className="w-[52px] h-[52px] rounded-2xl bg-paper-2 flex items-center justify-center mb-6">
+                      <BookOpenIcon className="w-6 h-6 text-ink-400" strokeWidth={1.6} />
                     </div>
-                    <p className="eyebrow mb-3">{language === "german" ? "Noch leer" : "Still empty"}</p>
-                    <h3 className="font-display text-xl font-medium text-ink-900 mb-2">
-                      {language === "german" ? "Keine Vorlesungen vorhanden" : "No lectures yet"}
+                    <h3 className="font-display text-[22px] text-ink-900 mb-2.5" style={{ fontWeight: 480 }}>
+                      {language === "german" ? "Noch nichts hier" : "Nothing here yet"}
                     </h3>
-                    <p className="text-ink-400 text-sm leading-relaxed max-w-sm">
+                    <p className="text-ink-600 text-sm leading-relaxed max-w-sm">
                       {language === "german"
-                        ? "Lade dein erstes Vorlesungsmaterial hoch, um deine Bibliothek aufzubauen."
-                        : "Upload your first lecture material to start building your library."}
+                        ? "Aus deiner ersten Vorlesung wird in etwa einer Minute ein Quiz — und alles, was du erstellst, lebt hier."
+                        : "Your first lecture becomes a quiz in about a minute — and everything you make lives here."}
                     </p>
+                    <button
+                      onClick={() => setActiveTab("upload")}
+                      className="btn-primary h-11 px-6 text-sm mt-7 cursor-pointer"
+                    >
+                      {language === "german" ? "Lade deine erste Vorlesung hoch" : "Upload your first lecture"}
+                    </button>
                   </div>
                 )}
 
@@ -2158,21 +2172,21 @@ export default function DashboardClient({
                         className="w-full flex items-center gap-3 py-2 group cursor-pointer"
                       >
                         <motion.div animate={{ rotate: semOpen ? 90 : 0 }} transition={springTactile}>
-                          <ChevronRightIcon className="w-4 h-4 text-amber-600/60 group-hover:text-amber-600 transition-colors shrink-0" />
+                          <ChevronRightIcon className={`w-4 h-4 transition-colors shrink-0 ${semOpen ? "text-[#C97706]" : "text-ink-300 group-hover:text-ink-600"}`} strokeWidth={2} />
                         </motion.div>
-                        <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-ink-400 group-hover:text-ink-600 transition-colors whitespace-nowrap">
+                        <span className="caps-label group-hover:text-ink-600 transition-colors whitespace-nowrap">
                           {language === "german" ? "Semester" : "Semester"}
                         </span>
                         <span className="font-display text-2xl font-medium leading-none text-ink-900 group-hover:text-[#A15E03] transition-all">
                           {sem}
                         </span>
                         {isCurrentSemester && (
-                          <span className="text-[9px] font-bold uppercase tracking-[0.12em] px-2 py-0.5 rounded-full bg-[rgba(239,159,31,0.10)] border border-[rgba(239,159,31,0.22)] text-amber-600">
+                          <span className="text-[9.5px] uppercase tracking-[0.12em] px-2 py-0.5 rounded-full bg-[rgba(239,159,31,0.10)] border border-[rgba(239,159,31,0.22)] text-[#A15E03]" style={{ fontWeight: 700 }}>
                             {language === "german" ? "Aktiv" : "Active"}
                           </span>
                         )}
-                        <div className="flex-1 h-px bg-paper-2 mx-1" />
-                        <span className="text-[10px] text-ink-300 font-medium whitespace-nowrap">
+                        <div className="flex-1 h-px bg-[rgba(33,27,18,0.07)] mx-1" />
+                        <span className="text-[11px] text-ink-400 font-medium whitespace-nowrap">
                           {modules.size} {language === "german" ? "Module" : "modules"} · {totalLectures} {language === "german" ? "Vorlesungen" : "lectures"}
                         </span>
                       </button>
@@ -2207,11 +2221,11 @@ export default function DashboardClient({
                                       <motion.div animate={{ rotate: modOpen ? 90 : 0 }} transition={springTactile}>
                                         <ChevronRightIcon className="w-3.5 h-3.5 text-ink-300 group-hover:text-ink-600 transition-colors shrink-0" />
                                       </motion.div>
-                                      <FolderOpenIcon className="w-4 h-4 text-ink-300 shrink-0" />
-                                      <span className="font-display text-base font-medium text-ink-900 group-hover:text-ink-900 transition-colors flex-1 text-left truncate">
+                                      <FolderOpenIcon className="w-4 h-4 text-[#C4B7A0] shrink-0" strokeWidth={1.6} />
+                                      <span className="text-[15px] font-semibold text-ink-900 transition-colors flex-1 text-left truncate">
                                         {moduleName}
                                       </span>
-                                      <span className="text-[10px] text-ink-300 font-medium shrink-0">
+                                      <span className="text-[11px] text-ink-400 font-medium shrink-0">
                                         {lectures.length} {language === "german" ? (lectures.length === 1 ? "Vorlesung" : "Vorlesungen") : (lectures.length === 1 ? "lecture" : "lectures")}
                                       </span>
                                     </button>
@@ -2259,19 +2273,17 @@ export default function DashboardClient({
                                                         <div
                                                           key={l}
                                                           title={`Level ${l+1} (${LIB_LEVEL_FULL[l]}): ${l < item.currentLevel ? (language === "german" ? "Bestanden" : "Passed") : l === item.currentLevel ? (language === "german" ? "Aktuell" : "Current") : generated ? (language === "german" ? "Generiert" : "Generated") : (language === "german" ? "Ausstehend" : "Pending")}`}
-                                                          className={`w-2 h-2 rounded-full transition-all ${
+                                                          className={`w-[7px] h-[7px] rounded-full transition-all ${
                                                             l < item.currentLevel
-                                                              ? "bg-amber-400"
+                                                              ? "bg-amber-500"
                                                               : l === item.currentLevel
-                                                                ? "bg-amber-300/50 ring-1 ring-amber-300/60"
-                                                                : generated
-                                                                  ? "bg-paper-2"
-                                                                  : "bg-paper-2"
+                                                                ? "bg-[rgba(239,159,31,0.35)] shadow-[0_0_0_1.5px_rgba(239,159,31,0.4)]"
+                                                                : "bg-[rgba(33,27,18,0.10)]"
                                                           }`}
                                                         />
                                                       ))}
                                                     </div>
-                                                    <span className="text-[10px] text-ink-300 font-medium shrink-0 w-8 text-right">
+                                                    <span className="text-xs text-ink-400 font-medium shrink-0 w-8 text-right">
                                                       L{item.currentLevel + 1}
                                                     </span>
                                                     <motion.div animate={{ rotate: itemOpen ? 180 : 0 }} transition={springTactile}>
@@ -2290,33 +2302,33 @@ export default function DashboardClient({
                                                         exit="exit"
                                                         style={{ overflow: "hidden" }}
                                                       >
-                                                        <div className="px-5 pb-5 pt-1 bg-paper-0 space-y-5">
+                                                        <div className="px-5 pb-5 pt-1 bg-[#FBF9F4] space-y-5">
 
                                                           {/* Level progress detail */}
                                                           <div>
-                                                            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-ink-300 mb-3">
-                                                              {language === "german" ? "Level-Fortschritt" : "Level Progress"}
+                                                            <p className="caps-label mb-3">
+                                                              {language === "german" ? "Level-Fortschritt" : "Level progress"}
                                                             </p>
                                                             <div className="flex items-start gap-2 sm:gap-3">
                                                               {item.generatedLevels.map((generated, l) => (
                                                                 <div key={l} className="flex flex-col items-center gap-1.5 flex-1 min-w-0">
-                                                                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
+                                                                  <div className={`w-5 h-5 rounded-full flex items-center justify-center transition-all ${
                                                                     l < item.currentLevel
-                                                                      ? "bg-amber-400 border-amber-400"
+                                                                      ? "bg-amber-500"
                                                                       : l === item.currentLevel
-                                                                        ? "bg-transparent border-amber-300 shadow-[0_0_10px_rgba(245,158,11,0.35)]"
+                                                                        ? "bg-transparent border-2 border-amber-500 shadow-[0_0_8px_rgba(239,159,31,0.3)]"
                                                                         : generated
-                                                                          ? "bg-paper-2 border-[rgba(33,27,18,0.13)]"
-                                                                          : "bg-transparent border-[rgba(33,27,18,0.08)]"
+                                                                          ? "bg-transparent border-2 border-[rgba(33,27,18,0.13)]"
+                                                                          : "bg-transparent border-2 border-[rgba(33,27,18,0.08)]"
                                                                   }`}>
                                                                     {l < item.currentLevel && (
-                                                                      <CheckIcon className="w-3 h-3 text-stone-900" strokeWidth={3} />
+                                                                      <CheckIcon className="w-3 h-3 text-[#2A1D07]" strokeWidth={2.6} />
                                                                     )}
                                                                     {l === item.currentLevel && (
-                                                                      <div className="w-1.5 h-1.5 rounded-full bg-amber-300" />
+                                                                      <div className="w-1.5 h-1.5 rounded-full bg-amber-500" />
                                                                     )}
                                                                   </div>
-                                                                  <span className="text-[8px] font-medium text-ink-300 leading-none text-center">
+                                                                  <span className={`text-[9px] leading-none text-center ${l === item.currentLevel ? "text-[#A15E03] font-semibold" : "text-ink-400 font-medium"}`}>
                                                                     {LIB_LEVEL_SHORT[l]}
                                                                   </span>
                                                                 </div>
@@ -2326,7 +2338,7 @@ export default function DashboardClient({
 
                                                           {/* Quiz generation status */}
                                                           <div>
-                                                            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-ink-300 mb-2">
+                                                            <p className="caps-label mb-2">
                                                               {language === "german" ? "Quiz-Generierung" : "Quiz Generation"}
                                                             </p>
                                                             <div className="flex flex-wrap gap-1.5">
@@ -2355,7 +2367,7 @@ export default function DashboardClient({
                                                           {/* Study materials */}
                                                           {hasStudyMaterials && (
                                                             <div>
-                                                              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-ink-300 mb-2">
+                                                              <p className="caps-label mb-2">
                                                                 {language === "german" ? "Lernmaterialien" : "Study Materials"}
                                                               </p>
                                                               <div className="flex flex-wrap gap-2">
@@ -2505,7 +2517,7 @@ export default function DashboardClient({
                                                           {/* Last feedback snippet */}
                                                           {item.lastFeedback && (
                                                             <div>
-                                                              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-ink-300 mb-2">
+                                                              <p className="caps-label mb-2">
                                                                 {language === "german" ? "Letztes Feedback" : "Last Assessment"}
                                                               </p>
                                                               <div className="bg-paper-0 rounded-xl border border-[rgba(33,27,18,0.08)] p-3.5 max-h-28 overflow-y-auto custom-scrollbar">
@@ -2515,17 +2527,19 @@ export default function DashboardClient({
                                                           )}
 
                                                           {/* Meta row */}
-                                                          <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[11px] text-ink-300 pt-1 border-t border-[rgba(33,27,18,0.08)]">
+                                                          <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-xs text-ink-400 pt-1 border-t border-[rgba(33,27,18,0.08)]">
                                                             <span className="flex items-center gap-1.5">
-                                                              <CalendarDaysIcon className="w-3.5 h-3.5" />
+                                                              <CalendarDaysIcon className="w-3.5 h-3.5" strokeWidth={1.6} />
                                                               {language === "german" ? "Erstellt: " : "Created: "}
                                                               <span className="text-ink-600">{new Date(item.createdAt).toLocaleDateString()}</span>
                                                             </span>
                                                             <span className="flex items-center gap-1.5">
-                                                              <ClockIcon className="w-3.5 h-3.5" />
-                                                              {language === "german" ? "Nächste Wdh.: " : "Next review: "}
-                                                              <span className={isDue ? "text-amber-600" : "text-ink-600"}>
-                                                                {new Date(item.nextReviewDate).toLocaleDateString()}
+                                                              <ClockIcon className="w-3.5 h-3.5" strokeWidth={1.6} />
+                                                              {language === "german" ? "Nächste Wiederholung — " : "Next review — "}
+                                                              <span className={isDue ? "text-[#A15E03]" : "text-ink-600"} style={isDue ? { fontWeight: 550 } : undefined}>
+                                                                {isDue
+                                                                  ? (language === "german" ? "jetzt fällig" : "due now")
+                                                                  : new Date(item.nextReviewDate).toLocaleDateString()}
                                                               </span>
                                                             </span>
                                                           </div>
@@ -2564,7 +2578,7 @@ export default function DashboardClient({
                 className="max-w-5xl mx-auto"
               >
                 <header className="mb-8 md:mb-10">
-                  <p className="caps-label tracking-[0.14em] mb-3">{language === "german" ? "Fortschritt" : "Progress"}</p>
+                  <p className="caps-label tracking-[0.14em] mb-2.5">{language === "german" ? "Fortschritt" : "Progress"}</p>
                   <h1 className="font-display text-[34px] sm:text-[40px] tracking-[-0.02em] leading-[1.05] text-ink-900 mb-3" style={{ fontWeight: 470 }}>
                     {language === "german" ? "Dein Fortschritt" : "Your progress"}
                   </h1>
@@ -2606,8 +2620,8 @@ export default function DashboardClient({
                     <span className="text-ink-300">·</span>
                     <span className="caps-label whitespace-nowrap">Level {selectedReview.level + 1}</span>
                     {interactive.active && (
-                      <span className="inline-flex items-center gap-1.5 h-6 px-2.5 rounded-full bg-[rgba(239,159,31,0.10)] border border-[rgba(239,159,31,0.22)] text-[#A15E03] text-[11px] font-semibold">
-                        <MicrophoneIcon className="w-3 h-3" strokeWidth={2} />
+                      <span className="inline-flex items-center gap-1.5 h-[34px] px-[14px] rounded-full bg-[rgba(239,159,31,0.12)] border border-[rgba(239,159,31,0.28)] text-[#A15E03] text-[12.5px] font-semibold">
+                        <MicrophoneIcon className="w-3.5 h-3.5" strokeWidth={2} />
                         {language === "german" ? "Freihändig" : "Hands-free"}
                       </span>
                     )}
@@ -2615,18 +2629,27 @@ export default function DashboardClient({
                   <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 sm:gap-6">
                     <div className="min-w-0">
                       <h1 className="font-display text-[27px] sm:text-[31px] tracking-[-0.018em] leading-[1.1] text-ink-900" style={{ fontWeight: 470 }}>{selectedReview.topic}</h1>
-                      {parsedTasks.length > 0 && (
-                        <p className="text-[13px] text-ink-400 mt-2">
-                          {parsedTasks.length} {language === "german" ? (parsedTasks.length === 1 ? "Aufgabe" : "Aufgaben") : (parsedTasks.length === 1 ? "task" : "tasks")} · {language === "german" ? "ohne Zeitlimit" : "untimed"}
-                        </p>
-                      )}
+                      {parsedTasks.length > 0 && (() => {
+                        // "4 tasks · 8 points · untimed" — points summed from task labels ("TASK 1 - 2 POINTS")
+                        const totalPoints = parsedTasks.reduce((sum, t) => {
+                          const m = t.label.match(/(\d+)\s*(?:POINTS?|PUNKTE?)/i);
+                          return sum + (m ? parseInt(m[1], 10) : 0);
+                        }, 0);
+                        return (
+                          <p className="text-[13px] text-ink-400 mt-2">
+                            {parsedTasks.length} {language === "german" ? (parsedTasks.length === 1 ? "Aufgabe" : "Aufgaben") : (parsedTasks.length === 1 ? "task" : "tasks")}
+                            {totalPoints > 0 && <> · {totalPoints} {language === "german" ? "Punkte" : "points"}</>}
+                            {" · "}{language === "german" ? "ohne Zeitlimit" : "untimed"}
+                          </p>
+                        );
+                      })()}
                     </div>
                     <div className="flex flex-wrap items-center gap-2 shrink-0">
                       <motion.button
                         {...pressable}
                         onClick={() => setShowTutorPanel(prev => !prev)}
                         title={language === "german" ? "Live Tutor: kennt deine Vorlesung, das Quiz und deine Entwürfe" : "Live tutor: knows your lecture, the quiz, and your drafts"}
-                        className={`flex items-center gap-2 h-9 px-4 text-[13px] font-semibold cursor-pointer rounded-xl transition-colors ${showTutorPanel ? "bg-[rgba(239,159,31,0.10)] text-[#A15E03] border border-[rgba(239,159,31,0.30)]" : "btn-secondary"}`}
+                        className={`flex items-center gap-2 h-9 px-4 text-[13px] font-semibold cursor-pointer rounded-xl transition-colors ${showTutorPanel ? "bg-[rgba(239,159,31,0.10)] text-[#A15E03] border border-[rgba(239,159,31,0.35)]" : "btn-secondary"}`}
                       >
                         <AcademicCapIcon className="w-4 h-4" strokeWidth={1.6} />
                         Tutor
@@ -2727,7 +2750,7 @@ export default function DashboardClient({
 
                 {isGrading ? (
                   <div className="card-surface-elevated px-8 py-12 md:py-14 flex flex-col items-center justify-center text-center">
-                    <div className="w-14 h-14 rounded-2xl bg-[rgba(239,159,31,0.10)] border border-[rgba(239,159,31,0.22)] flex items-center justify-center mb-6">
+                    <div className="w-16 h-16 rounded-[18px] bg-[rgba(239,159,31,0.10)] border border-[rgba(239,159,31,0.25)] flex items-center justify-center mb-6">
                       <ArrowPathIcon className="w-7 h-7 text-amber-600 animate-spin" strokeWidth={1.6} />
                     </div>
                     <h3 className="font-display text-[27px] text-ink-900 mb-2" style={{ fontWeight: 470 }}>{language === "german" ? "Deine Antworten werden bewertet" : "Grading your answers"}</h3>
@@ -2758,8 +2781,8 @@ export default function DashboardClient({
                         >
                           <AnimatePresence mode="wait">
                             {gradingStep > step ? (
-                              <motion.span key="done" initial={{ scale: 0.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={springTactile} className="w-[22px] h-[22px] rounded-full bg-[rgba(94,125,88,0.14)] shrink-0 flex items-center justify-center">
-                                <CheckIcon className="w-3 h-3 text-[#5E7D58]" strokeWidth={2.5} />
+                              <motion.span key="done" initial={{ scale: 0.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={springTactile} className="w-[22px] h-[22px] rounded-full bg-[rgba(94,125,88,0.16)] shrink-0 flex items-center justify-center">
+                                <CheckIcon className="w-3 h-3 text-[#5E7D58]" strokeWidth={2.4} />
                               </motion.span>
                             ) : gradingStep === step ? (
                               <span key="active" className="ember-dot w-[22px] h-[22px] rounded-full border-2 border-amber-500 shrink-0 flex items-center justify-center"><span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span></span>
@@ -2879,14 +2902,14 @@ export default function DashboardClient({
                               transition={{ delay: Math.min(idx, 8) * 0.03, duration: DUR.base, ease: EASE_OUT }}
                               className={`card-surface-elevated p-[22px] md:px-[26px] transition-all duration-300 ${
                                 interactive.active && interactive.currentIndex === idx
-                                  ? "!border-[rgba(239,159,31,0.45)] ring-[3px] ring-[rgba(239,159,31,0.14)] shadow-[0_10px_36px_-16px_rgba(217,125,6,0.35)]"
+                                  ? "!border-[rgba(239,159,31,0.45)] ring-[3px] ring-[rgba(239,159,31,0.14)] shadow-[0_20px_48px_-20px_rgba(217,125,6,0.28)]"
                                   : interactive.active
                                   ? "opacity-50"
                                   : ""
                               }`}
                             >
                               <div className="flex items-center gap-3 mb-4">
-                                <span className={`font-display text-xl italic leading-none ${interactive.active && interactive.currentIndex === idx ? "text-ink-9000" : "text-ink-300"}`}>{String(idx + 1).padStart(2, "0")}</span>
+                                <span className={`font-display text-xl italic leading-none ${interactive.active && interactive.currentIndex === idx ? "text-amber-500" : "text-ink-300"}`}>{String(idx + 1).padStart(2, "0")}</span>
                                 <h3 className="caps-label !text-ink-600">{task.label}</h3>
                               </div>
                               {interactive.active && interactive.currentIndex === idx && (
@@ -2916,7 +2939,7 @@ export default function DashboardClient({
                               </div>
 
                               <div className="border-t border-[rgba(33,27,18,0.07)] pt-5">
-                                <span className="caps-label block mb-2.5">{language === "german" ? "Deine Antwort" : "Your answer"}</span>
+                                <span className="caps-label block mb-2">{language === "german" ? "Deine Antwort" : "Your answer"}</span>
                                 <AutoGrowTextarea
                                   value={individualAnswers[task.id] || ""}
                                   onChange={e => {
@@ -2928,7 +2951,7 @@ export default function DashboardClient({
                                   placeholder={language === "german"
                                     ? (isMC ? "Tippe A, B, C oder D …" : "Antworte in eigenen Worten — oder diktiere im interaktiven Modus.")
                                     : (isMC ? "Type A, B, C, or D …" : "Answer in your own words — or dictate it in interactive mode.")}
-                                  className={`input-inset w-full px-4 py-3.5 text-sm leading-relaxed resize-none overflow-hidden ${isMC ? "min-h-[3rem]" : "min-h-[88px]"}`}
+                                  className={`input-inset w-full px-4 py-[13px] text-sm leading-[1.6] resize-none overflow-hidden ${isMC ? "min-h-[3rem]" : "min-h-[88px]"}`}
                                 />
                               </div>
                             </motion.div>
@@ -3086,7 +3109,7 @@ export default function DashboardClient({
                 {/* Header/Title */}
                 <div className="border-b border-[rgba(33,27,18,0.08)] bg-paper-0 px-6 py-3.5 flex items-center gap-2.5">
                   <DocumentTextIcon className="w-4 h-4 text-amber-600" />
-                  <h3 className="text-xs font-bold uppercase tracking-[0.16em] text-ink-600">{language === "german" ? "Feedback & Auswertung" : "Remediation Brief & Feedback"}</h3>
+                  <h3 className="caps-label !text-ink-600">{language === "german" ? "Feedback & Auswertung" : "Examiner's brief"}</h3>
                 </div>
 
                 {/* Body */}
@@ -3097,9 +3120,9 @@ export default function DashboardClient({
 
                   {/* Review history: every graded attempt of this module (ReviewLog) */}
                   <div className="mt-8 pt-6 border-t border-[rgba(33,27,18,0.08)]">
-                    <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-ink-400 mb-4 flex items-center gap-2">
-                      <ClockIcon className="w-3.5 h-3.5 text-amber-600/70" />
-                      {language === "german" ? "Bewertungs-Verlauf" : "Review History"}
+                    <h4 className="caps-label mb-4 flex items-center gap-2">
+                      <ClockIcon className="w-3.5 h-3.5" strokeWidth={1.6} />
+                      {language === "german" ? "Bewertungs-Verlauf" : "Review history"}
                     </h4>
 
                     {historyLoading ? (
@@ -3191,13 +3214,12 @@ export default function DashboardClient({
             >
               <motion.div
                 {...modalPanel}
-                className="card-glass p-5 sm:p-6 md:p-7 max-w-lg w-full border border-[rgba(33,27,18,0.10)] max-h-[90dvh] overflow-y-auto custom-scrollbar"
+                className="card-glass p-5 sm:p-6 md:p-7 max-w-[560px] w-full border border-[rgba(33,27,18,0.10)] max-h-[90dvh] overflow-y-auto custom-scrollbar"
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="flex items-center justify-between mb-2">
-                  <h2 className="font-display text-xl font-medium flex items-center gap-2.5 text-ink-900">
-                    <CalendarDaysIcon className="w-5 h-5 text-amber-600" />
-                    {language === "german" ? "Kalender-Sync" : "Calendar Sync"}
+                  <h2 className="font-display text-2xl text-ink-900 tracking-[-0.015em]" style={{ fontWeight: 480 }}>
+                    {language === "german" ? "Kalender-Sync" : "Calendar sync"}
                   </h2>
                   <button onClick={() => setShowCalendarModal(false)} className="text-ink-600 hover:text-ink-900 p-2 transition-colors cursor-pointer">
                     <XMarkIcon className="w-5 h-5" />
@@ -3212,7 +3234,7 @@ export default function DashboardClient({
 
                 {/* Apple Calendar */}
                 <div className="mb-5">
-                  <h3 className="text-xs font-bold uppercase tracking-[0.14em] mb-2.5 flex items-center gap-2 text-ink-900/80">🍎 Apple Calendar (Mac/iPhone)</h3>
+                  <h3 className="caps-label mb-2.5">Apple Calendar (Mac/iPhone)</h3>
                   <a
                     href={`webcal://${typeof window !== 'undefined' ? window.location.host : 'localhost:3000'}/api/calendar?lang=${language}${calTokenAnd}`}
                     className="btn-secondary flex items-center justify-center gap-2 w-full py-3.5 text-sm"
@@ -3225,7 +3247,7 @@ export default function DashboardClient({
 
                 {/* Google Calendar */}
                 <div className="mb-5">
-                  <h3 className="text-xs font-bold uppercase tracking-[0.14em] mb-2.5 flex items-center gap-2 text-ink-900/80">📅 Google Calendar</h3>
+                  <h3 className="caps-label mb-2.5">Google Calendar</h3>
                   <div className="flex gap-2">
                     <input
                       readOnly
@@ -3256,8 +3278,8 @@ export default function DashboardClient({
 
                 {/* Done Calendar */}
                 <div className="mb-5">
-                  <h3 className="text-xs font-bold uppercase tracking-[0.14em] mb-2.5 flex items-center gap-2 text-ink-900/80">
-                    🟢 {language === "german" ? "Erledigt-Kalender (Optional)" : "Done Calendar (Optional)"}
+                  <h3 className="caps-label mb-2.5">
+                    {language === "german" ? "Erledigt-Kalender (optional)" : "Done calendar (optional)"}
                   </h3>
                   <a
                     href={`webcal://${typeof window !== 'undefined' ? window.location.host : 'localhost:3000'}/api/calendar/done${calTokenOnly}`}
@@ -3278,9 +3300,10 @@ export default function DashboardClient({
                   <a
                     href={`/api/calendar${calTokenOnly}`}
                     download="srs-reviews.ics"
-                    className="flex items-center justify-center gap-2 w-full py-2.5 bg-paper-0 hover:bg-paper-2 rounded-xl text-xs font-medium text-ink-600 hover:text-ink-600 transition-all border border-[rgba(33,27,18,0.08)]"
+                    className="flex items-center justify-center gap-1.5 w-full py-1 text-xs text-ink-400 hover:text-ink-600 transition-colors"
+                    style={{ fontWeight: 550 }}
                   >
-                    <DocumentTextIcon className="w-4 h-4" />
+                    <DocumentTextIcon className="w-3.5 h-3.5" strokeWidth={1.6} />
                     {language === "german" ? ".ics-Datei herunterladen (Einmal-Import)" : "Download .ics file (one-time import)"}
                   </a>
                 </div>
@@ -3301,14 +3324,18 @@ export default function DashboardClient({
           >
             <motion.div
               {...modalPanel}
-              className="card-glass p-5 sm:p-6 md:p-7 w-full max-w-lg border border-[rgba(33,27,18,0.10)] max-h-[90dvh] overflow-y-auto custom-scrollbar"
+              className="card-glass p-5 sm:p-6 md:p-7 w-full max-w-[560px] border border-[rgba(33,27,18,0.10)] max-h-[90dvh] overflow-y-auto custom-scrollbar"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex justify-between items-center mb-7">
-                <h3 className="font-display text-xl font-medium text-ink-900 flex items-center gap-2.5">
-                  <AcademicCapIcon className="w-5 h-5 text-amber-600" />
-                  {language === "german" ? "Semester-Einstellungen" : "Semester Settings"}
-                </h3>
+              <div className="flex justify-between items-start mb-7">
+                <div>
+                  <h3 className="font-display text-2xl text-ink-900 tracking-[-0.015em]" style={{ fontWeight: 480 }}>
+                    {language === "german" ? "Einstellungen" : "Settings"}
+                  </h3>
+                  <p className="text-[13px] text-ink-600 mt-1.5">
+                    {language === "german" ? "Semester, Module, Sprache und Stimme." : "Semester, modules, language, and voice."}
+                  </p>
+                </div>
                 <button
                   onClick={() => setShowSettingsModal(false)}
                   className="p-2 hover:bg-paper-2 rounded-full transition-colors text-ink-600 hover:text-ink-900 cursor-pointer"
@@ -3319,23 +3346,26 @@ export default function DashboardClient({
 
               <div className="space-y-7">
                 <div>
-                  <h4 className="text-[10px] font-bold text-ink-600 uppercase tracking-[0.2em] mb-3">{language === "german" ? "Aktueller Status" : "Current Status"}</h4>
-                  <div className="card-surface p-4 flex items-center justify-between">
+                  <h4 className="caps-label mb-3">{language === "german" ? "Aktuelles Semester" : "Current semester"}</h4>
+                  <div className="bg-paper-0 border border-[rgba(33,27,18,0.07)] rounded-[14px] px-4 py-4 flex items-center justify-between">
                     <div>
-                      <div className="font-display text-2xl font-medium text-ink-900">Semester <span className="font-display italic text-amber-600">{currentSemester}</span></div>
-                      <div className="text-sm text-ink-600 mt-0.5">{language === "german" ? "Aktiver Studienzeitraum" : "Active study period"}</div>
+                      <div className="font-display text-2xl font-medium text-ink-900">Semester {currentSemester}</div>
+                      <div className="text-[13px] text-ink-600 mt-1">
+                        {language === "german" ? "Aktiver Studienzeitraum" : "Active study period"}
+                        {modulePresets.length > 0 && <> · {modulePresets.length} {language === "german" ? "Module" : (modulePresets.length === 1 ? "module" : "modules")}</>}
+                      </div>
                     </div>
                   </div>
                 </div>
 
                 <div>
-                  <h4 className="text-[10px] font-bold text-ink-600 uppercase tracking-[0.2em] mb-3">{language === "german" ? "Modul-Voreinstellungen" : "Module Presets"}</h4>
+                  <h4 className="caps-label mb-3">{language === "german" ? "Modul-Voreinstellungen" : "Module presets"}</h4>
                   <div className="space-y-2 mb-3">
                     {modulePresets.length === 0 ? (
                       <div className="text-ink-400 text-sm italic py-2">{language === "german" ? "Noch keine Module definiert." : "No modules defined yet."}</div>
                     ) : (
                       modulePresets.map((preset, idx) => (
-                        <div key={idx} className="flex items-center justify-between card-surface px-4 py-3">
+                        <div key={idx} className="flex items-center justify-between h-11 bg-paper-0 border border-[rgba(33,27,18,0.07)] rounded-xl px-4">
                           <span className="text-ink-900 text-sm">{preset}</span>
                           <button
                             onClick={() => {
@@ -3387,8 +3417,8 @@ export default function DashboardClient({
                 </div>
 
                 <div className="pt-6 border-t border-[rgba(33,27,18,0.08)]">
-                  <h4 className="text-[10px] font-bold text-ink-600 uppercase tracking-[0.2em] mb-3">{language === "german" ? "Sprache" : "Language Setting"}</h4>
-                  <div className="flex gap-2 bg-paper-0 border border-[rgba(33,27,18,0.08)] rounded-xl p-1">
+                  <h4 className="caps-label mb-3">{language === "german" ? "Sprache" : "Language"}</h4>
+                  <div className="segmented">
                     <button
                       onClick={() => {
                         fetch('/api/settings', {
@@ -3406,9 +3436,10 @@ export default function DashboardClient({
                           addToast("error", language === "german" ? "Einstellung konnte nicht gespeichert werden." : "Failed to save setting.");
                         });
                       }}
-                      className={`flex-1 py-2.5 rounded-lg text-sm transition-colors cursor-pointer ${language === 'german' ? 'bg-[rgba(239,159,31,0.12)] text-[#A15E03] border border-[rgba(239,159,31,0.30)] font-medium' : 'border border-transparent text-ink-600 hover:bg-paper-2 hover:text-ink-900/80'}`}
+                      className="segmented-item"
+                      data-active={language === 'german'}
                     >
-                      German
+                      Deutsch
                     </button>
                     <button
                       onClick={() => {
@@ -3427,7 +3458,8 @@ export default function DashboardClient({
                           addToast("error", language === "german" ? "Einstellung konnte nicht gespeichert werden." : "Failed to save setting.");
                         });
                       }}
-                      className={`flex-1 py-2.5 rounded-lg text-sm transition-colors cursor-pointer ${language === 'english' ? 'bg-[rgba(239,159,31,0.12)] text-[#A15E03] border border-[rgba(239,159,31,0.30)] font-medium' : 'border border-transparent text-ink-600 hover:bg-paper-2 hover:text-ink-900/80'}`}
+                      className="segmented-item"
+                      data-active={language === 'english'}
                     >
                       English
                     </button>
@@ -3435,36 +3467,39 @@ export default function DashboardClient({
                 </div>
 
                 <div className="pt-6 border-t border-[rgba(33,27,18,0.08)]">
-                  <h4 className="text-[10px] font-bold text-ink-600 uppercase tracking-[0.2em] mb-3">{language === "german" ? "Interaktiver Modus — Diktat" : "Interactive Mode — Dictation"}</h4>
+                  <h4 className="caps-label mb-3">{language === "german" ? "Interaktiver Modus · Diktat" : "Interactive mode · dictation"}</h4>
                   <p className="text-xs text-ink-600 mb-4 leading-relaxed">
                     {language === "german"
                       ? "Hybrid: Die Browser-Diktierfunktion schreibt sofort mit — sagst du „nächste Aufgabe“, ersetzt die KI-Transkription deine Antwort automatisch in besserer Qualität. Gemini: nur KI (verzögert, aber zuverlässig auf dem iPhone). Standard: nur Browser (sofort, ohne KI-Korrektur)."
                       : "Hybrid: browser dictation types instantly — when you say “nächste Aufgabe”, the AI transcription automatically replaces your answer with a higher-quality version. Gemini: AI only (delayed, but reliable on iPhone). Standard: browser only (instant, no AI polish)."}
                   </p>
-                  <div className="flex gap-2 bg-paper-0 border border-[rgba(33,27,18,0.08)] rounded-xl p-1">
+                  <div className="segmented">
                     <button
                       onClick={() => updateDictationMode("hybrid")}
-                      className={`flex-1 py-2.5 rounded-lg text-xs sm:text-sm transition-colors cursor-pointer ${dictationMode === 'hybrid' ? 'bg-[rgba(239,159,31,0.12)] text-[#A15E03] border border-[rgba(239,159,31,0.30)] font-medium' : 'border border-transparent text-ink-600 hover:bg-paper-2 hover:text-ink-900/80'}`}
+                      className="segmented-item"
+                      data-active={dictationMode === 'hybrid'}
                     >
-                      {language === "german" ? "Hybrid (Empfohlen)" : "Hybrid (Recommended)"}
+                      {language === "german" ? "Hybrid · empfohlen" : "Hybrid · recommended"}
                     </button>
                     <button
                       onClick={() => updateDictationMode("gemini")}
-                      className={`flex-1 py-2.5 rounded-lg text-xs sm:text-sm transition-colors cursor-pointer ${dictationMode === 'gemini' ? 'bg-[rgba(239,159,31,0.12)] text-[#A15E03] border border-[rgba(239,159,31,0.30)] font-medium' : 'border border-transparent text-ink-600 hover:bg-paper-2 hover:text-ink-900/80'}`}
+                      className="segmented-item"
+                      data-active={dictationMode === 'gemini'}
                     >
-                      {language === "german" ? "Gemini (KI)" : "Gemini (AI)"}
+                      Gemini
                     </button>
                     <button
                       onClick={() => updateDictationMode("browser")}
-                      className={`flex-1 py-2.5 rounded-lg text-xs sm:text-sm transition-colors cursor-pointer ${dictationMode === 'browser' ? 'bg-[rgba(239,159,31,0.12)] text-[#A15E03] border border-[rgba(239,159,31,0.30)] font-medium' : 'border border-transparent text-ink-600 hover:bg-paper-2 hover:text-ink-900/80'}`}
+                      className="segmented-item"
+                      data-active={dictationMode === 'browser'}
                     >
-                      Standard
+                      Browser
                     </button>
                   </div>
                 </div>
 
                 <div className="pt-6 border-t border-[rgba(33,27,18,0.08)]">
-                  <h4 className="text-[10px] font-bold text-ink-600 uppercase tracking-[0.2em] mb-3">{language === "german" ? "KI-Verbindung" : "AI Connection"}</h4>
+                  <h4 className="caps-label mb-3">{language === "german" ? "KI-Verbindung" : "AI connection"}</h4>
                   <p className="text-xs text-ink-600 mb-4 leading-relaxed">
                     {language === "german"
                       ? "Wähle aus, für welche Module der experimentelle Gemini Proxy genutzt werden soll. Die offizielle Google API dient immer als sicherer Fallback."
@@ -3476,7 +3511,7 @@ export default function DashboardClient({
                       {language === "german" ? "Einstellungen gesperrt, während eine KI-Aktion läuft." : "Settings locked while AI generation is in progress."}
                     </div>
                   )}
-                  <div className="flex gap-2 bg-paper-0 border border-[rgba(33,27,18,0.08)] rounded-xl p-1">
+                  <div className="segmented">
                     <button
                       disabled={isGenerating || isGrading}
                       onClick={() => {
@@ -3495,9 +3530,10 @@ export default function DashboardClient({
                           addToast("error", language === "german" ? "Einstellung konnte nicht gespeichert werden." : "Failed to save setting.");
                         });
                       }}
-                      className={`flex-1 py-2.5 rounded-lg text-xs sm:text-sm transition-colors cursor-pointer ${(isGenerating || isGrading) ? 'opacity-50 cursor-not-allowed' : ''} ${wrapperMode === "all" ? 'bg-[rgba(239,159,31,0.12)] text-[#A15E03] border border-[rgba(239,159,31,0.30)] font-medium' : 'border border-transparent text-ink-600 hover:bg-paper-2 hover:text-ink-900/80'}`}
+                      className={`segmented-item ${(isGenerating || isGrading) ? 'opacity-50 !cursor-not-allowed' : ''}`}
+                      data-active={wrapperMode === "all"}
                     >
-                      {language === "german" ? "Alles (Wrapper)" : "All (Proxy)"}
+                      {language === "german" ? "Proxy für alles" : "Proxy for all"}
                     </button>
                     <button
                       disabled={isGenerating || isGrading}
@@ -3517,9 +3553,10 @@ export default function DashboardClient({
                           addToast("error", language === "german" ? "Einstellung konnte nicht gespeichert werden." : "Failed to save setting.");
                         });
                       }}
-                      className={`flex-1 py-2.5 rounded-lg text-xs sm:text-sm transition-colors cursor-pointer ${(isGenerating || isGrading) ? 'opacity-50 cursor-not-allowed' : ''} ${wrapperMode === "generation_only" ? 'bg-[rgba(239,159,31,0.12)] text-[#A15E03] border border-[rgba(239,159,31,0.30)] font-medium' : 'border border-transparent text-ink-600 hover:bg-paper-2 hover:text-ink-900/80'}`}
+                      className={`segmented-item ${(isGenerating || isGrading) ? 'opacity-50 !cursor-not-allowed' : ''}`}
+                      data-active={wrapperMode === "generation_only"}
                     >
-                      {language === "german" ? "Nur Generierung" : "Gen Only"}
+                      {language === "german" ? "Nur Generierung" : "Generation only"}
                     </button>
                     <button
                       disabled={isGenerating || isGrading}
@@ -3539,15 +3576,16 @@ export default function DashboardClient({
                           addToast("error", language === "german" ? "Einstellung konnte nicht gespeichert werden." : "Failed to save setting.");
                         });
                       }}
-                      className={`flex-1 py-2.5 rounded-lg text-xs sm:text-sm transition-colors cursor-pointer ${(isGenerating || isGrading) ? 'opacity-50 cursor-not-allowed' : ''} ${wrapperMode === "none" ? 'bg-[rgba(239,159,31,0.12)] text-[#A15E03] border border-[rgba(239,159,31,0.30)] font-medium' : 'border border-transparent text-ink-600 hover:bg-paper-2 hover:text-ink-900/80'}`}
+                      className={`segmented-item ${(isGenerating || isGrading) ? 'opacity-50 !cursor-not-allowed' : ''}`}
+                      data-active={wrapperMode === "none"}
                     >
-                      {language === "german" ? "Nur Fallback" : "Fallback Only"}
+                      {language === "german" ? "Nur Fallback" : "Fallback only"}
                     </button>
                   </div>
                 </div>
 
                 <div className="pt-6 border-t border-[rgba(176,106,78,0.22)]">
-                  <h4 className="text-[10px] font-bold text-[#96543C] uppercase tracking-[0.2em] mb-2">{language === "german" ? "Gefahrenzone" : "Danger Zone"}</h4>
+                  <h4 className="caps-label !text-[#96543C] mb-2">{language === "german" ? "Semesterwechsel" : "Semester change"}</h4>
                   <p className="text-ink-600 text-xs mb-4 leading-relaxed">{language === "german" ? "Der Start eines neuen Semesters erhöht den Semesterzähler und löscht deine aktuellen Modul-Voreinstellungen." : "Starting a new semester will increment your semester counter and wipe your current module presets so you can start fresh."}</p>
                   <button
                     onClick={() => {

@@ -66,10 +66,10 @@ export default function LoginClient({ error, callbackUrl = "/" }: { error?: stri
           >
 
             <motion.div variants={riseChild} className="flex items-center gap-3">
-              <div className="brand-tile !rounded-xl w-10 h-10">
+              <div className="brand-tile w-10 h-10">
                 <span className="font-display italic font-semibold text-[21px] text-[#2A1D07] -translate-y-px">S</span>
               </div>
-              <h1 className="text-[17px] font-bold tracking-[-0.01em] leading-none text-ink-900 font-sans">SRS <span className="font-display italic font-medium text-[#C97706]">Master</span></h1>
+              <h1 className="text-[17px] font-bold tracking-[-0.01em] leading-none text-ink-900 font-sans">SRS <span className="font-display italic text-[#C97706]" style={{ fontWeight: 560 }}>Master</span></h1>
             </motion.div>
 
             <motion.h2 variants={riseChild} className="font-display text-4xl sm:text-[54px] tracking-[-0.022em] text-ink-900 leading-[1.06] mt-11" style={{ fontWeight: 460 }}>
@@ -114,7 +114,7 @@ export default function LoginClient({ error, callbackUrl = "/" }: { error?: stri
               </p>
 
               {errorMessage && (
-                <div className="mt-6 p-4 rounded-xl bg-[rgba(176,106,78,0.08)] border border-[rgba(176,106,78,0.22)] text-[#96543C] text-[13px] flex items-start gap-2.5 leading-relaxed">
+                <div className="mt-6 p-4 rounded-xl bg-[rgba(176,106,78,0.08)] border border-[rgba(176,106,78,0.25)] text-[#96543C] text-[13px] flex items-start gap-2.5 leading-relaxed">
                   <ExclamationTriangleIcon className="w-[18px] h-[18px] shrink-0 mt-0.5 text-[#B06A4E]" strokeWidth={1.6} />
                   <span>{errorMessage}</span>
                 </div>
@@ -145,7 +145,7 @@ export default function LoginClient({ error, callbackUrl = "/" }: { error?: stri
               </div>
 
               <p className="text-xs text-ink-600 leading-relaxed flex items-start gap-2">
-                <LockClosedIcon className="w-3.5 h-3.5 shrink-0 mt-0.5 text-amber-600" strokeWidth={1.6} />
+                <LockClosedIcon className="w-3.5 h-3.5 shrink-0 mt-0.5 text-[#C97706]" strokeWidth={1.7} />
                 <span>
                   Privater Lernbereich — nur freigeschaltete Google-Konten können sich anmelden.
                   Google bestätigt deine Identität, mehr nicht.

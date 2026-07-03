@@ -7,9 +7,7 @@ import {
   FireIcon,
   CheckCircleIcon,
   ClockIcon,
-  AcademicCapIcon,
-  ChartBarIcon,
-  CalendarDaysIcon,
+  ArrowTrendingUpIcon,
   ExclamationTriangleIcon,
 } from "@heroicons/react/24/outline";
 
@@ -140,14 +138,14 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
       cursor = addDays(cursor, -1);
     }
 
-    // Heatmap: last 12 full weeks + current week, columns = weeks, rows = Mon–Sun.
-    // A column is labeled with its month when it contains the 1st (or is the
-    // first column), giving the grid a quiet time axis like a wall calendar.
+    // Heatmap: last 25 full weeks + current week (≈ 6 months, per the design's
+    // "Last 6 months"), columns = weeks, rows = Mon–Sun. A column is labeled
+    // with its month when it contains the 1st (or is the first column).
     const dowMon0 = (today.getDay() + 6) % 7; // Mon=0 … Sun=6
     const thisMonday = addDays(today, -dowMon0);
-    const firstMonday = addDays(thisMonday, -12 * 7);
+    const firstMonday = addDays(thisMonday, -25 * 7);
     const weeks: { label: string | null; days: { key: string; count: number; date: Date; future: boolean }[] }[] = [];
-    for (let w = 0; w < 13; w++) {
+    for (let w = 0; w < 26; w++) {
       const col: { key: string; count: number; date: Date; future: boolean }[] = [];
       let label: string | null = null;
       for (let d = 0; d < 7; d++) {
@@ -222,13 +220,15 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
     return { streak, weeks, recent, recentPassed, modules, forecast, levelDist, dueToday, maxForecast, maxLevel };
   }, [data, items, locale]);
 
+  /* Heatmap ramp per Stats.dc.html: zero = #ECE6DA, then amber-500 washes
+     0.28 → 0.5 → 0.72 → solid #EF9F1F. No glow — quiet until touched. */
   const heatColor = (count: number, future: boolean): string => {
-    if (future) return "bg-transparent border border-[rgba(33,27,18,0.08)]";
-    if (count === 0) return "bg-paper-2";
-    if (count === 1) return "bg-amber-400/25";
-    if (count <= 2) return "bg-amber-400/45";
-    if (count <= 4) return "bg-amber-400/70";
-    return "bg-amber-300 shadow-[0_0_8px_-1px_rgba(245,158,11,0.5)]";
+    if (future) return "bg-transparent border border-[rgba(33,27,18,0.06)]";
+    if (count === 0) return "bg-[#ECE6DA]";
+    if (count === 1) return "bg-[rgba(239,159,31,0.28)]";
+    if (count <= 2) return "bg-[rgba(239,159,31,0.5)]";
+    if (count <= 4) return "bg-[rgba(239,159,31,0.72)]";
+    return "bg-[#EF9F1F]";
   };
 
   const passRate30 = computed.recent > 0 ? Math.round((computed.recentPassed / computed.recent) * 100) : null;
@@ -275,27 +275,48 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
     );
   }
 
+  // Empty state — no reviews logged and no active lectures yet.
+  if ((data?.totals.total ?? 0) === 0 && items.length === 0) {
+    return (
+      <div className="card-surface p-12 md:p-16 flex flex-col items-center text-center">
+        <div className="w-[52px] h-[52px] rounded-2xl bg-paper-2 flex items-center justify-center mb-6">
+          <ArrowTrendingUpIcon className="w-6 h-6 text-ink-400" strokeWidth={1.6} />
+        </div>
+        <h3 className="font-display text-[22px] text-ink-900 mb-2.5" style={{ fontWeight: 480 }}>
+          {de ? "Noch keine Daten" : "No data yet"}
+        </h3>
+        <p className="text-ink-600 text-sm leading-relaxed max-w-sm">
+          {de ? "Dein erstes Review schreibt den ersten Datenpunkt." : "Your first review writes the first data point."}
+        </p>
+      </div>
+    );
+  }
+
   const statCards = [
     {
-      icon: <FireIcon className={`w-5 h-5 ${computed.streak > 0 ? "text-amber-600 drop-shadow-[0_0_8px_rgba(245,158,11,0.55)]" : "text-ink-300"}`} />,
+      icon: <FireIcon className={`w-4 h-4 ${computed.streak > 0 ? "text-amber-500" : "text-ink-300"}`} strokeWidth={1.7} />,
       label: de ? "Tage-Streak" : "Day streak",
       value: computed.streak,
-      gradient: computed.streak >= 3,
       sub: de ? "Tage in Folge gelernt" : "consecutive study days",
     },
     {
-      icon: <ClockIcon className="w-5 h-5 text-amber-600" />,
+      icon: <ClockIcon className="w-4 h-4 text-ink-400" strokeWidth={1.7} />,
       label: de ? "Heute fällig" : "Due today",
       value: computed.dueToday,
-      gradient: false,
-      sub: de ? "inkl. überfälliger Reviews" : "incl. overdue reviews",
+      sub:
+        computed.dueToday > 0
+          ? de
+            ? `~${computed.dueToday * 7} Minuten`
+            : `~${computed.dueToday * 7} minutes`
+          : de
+            ? "inkl. überfälliger Reviews"
+            : "incl. overdue reviews",
     },
     {
-      icon: <CheckCircleIcon className="w-5 h-5 text-[#4A6845]" />,
-      label: de ? "Bestehensquote (30 T.)" : "Pass rate (30 d)",
+      icon: <ArrowTrendingUpIcon className="w-4 h-4 text-[#5E7D58]" strokeWidth={1.7} />,
+      label: de ? "Quote · 30 T." : "Pass rate · 30d",
       value: passRate30,
       suffix: "%",
-      gradient: false,
       sub:
         computed.recent > 0
           ? de
@@ -306,98 +327,64 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
             : "no reviews yet",
     },
     {
-      icon: <AcademicCapIcon className="w-5 h-5 text-amber-600" />,
+      icon: <CheckCircleIcon className="w-4 h-4 text-ink-400" strokeWidth={1.7} />,
       label: de ? "Reviews gesamt" : "Total reviews",
       value: totalReviews,
-      gradient: false,
       sub: de ? "seit Beginn" : "all time",
     },
   ];
 
   return (
-    <motion.div variants={staggerContainer} initial="initial" animate="animate" className="flex flex-col gap-6">
+    <motion.div variants={staggerContainer} initial="initial" animate="animate" className="flex flex-col gap-4">
       {/* ── Stat cards ── */}
-      <motion.div variants={riseChild} className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <motion.div variants={riseChild} className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
         {statCards.map((card) => (
-          <div key={card.label} className="card-surface p-5 relative overflow-hidden">
-            <div className="flex items-center gap-2 mb-3">{card.icon}</div>
-            <div className={`font-display text-3xl font-medium leading-none tabular-nums text-ink-900`}>
+          <div
+            key={card.label}
+            className="bg-paper-1 border border-hairline-card rounded-[18px] p-5 shadow-[0_1px_2px_rgba(50,38,20,0.05),0_14px_36px_-22px_rgba(50,38,20,0.18)]"
+          >
+            <div className="flex items-center gap-2">
+              {card.icon}
+              <span className="caps-label tracking-[0.1em]">{card.label}</span>
+            </div>
+            <div
+              className="font-display text-[34px] lg:text-[40px] leading-none tracking-[-0.01em] tabular-nums text-ink-900 mt-2.5"
+              style={{ fontWeight: 520 }}
+            >
               {typeof card.value === "number" ? (
                 <>
                   <AnimatedNumber value={card.value} />
-                  {card.suffix ?? ""}
+                  {card.suffix ? <span className="text-2xl text-ink-600">{card.suffix}</span> : null}
                 </>
               ) : (
                 "—"
               )}
             </div>
-            <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-ink-600 mt-2.5">{card.label}</div>
-            <div className="text-[11px] text-ink-300 mt-1">{card.sub}</div>
+            <div className="text-xs text-ink-600 mt-1.5">{card.sub}</div>
           </div>
         ))}
       </motion.div>
 
-      {/* ── Due forecast (next 14 days) ── */}
-      <motion.div variants={riseChild} className="card-surface p-5 md:p-6">
-        <h3 className="text-xs font-bold uppercase tracking-[0.16em] text-ink-600 mb-5 flex items-center gap-2">
-          <CalendarDaysIcon className="w-4 h-4 text-amber-600" />
-          {de ? "Anstehende Reviews — nächste 14 Tage" : "Upcoming reviews — next 14 days"}
-        </h3>
-        <div className="flex items-end gap-1.5 sm:gap-2 h-32">
-          {computed.forecast.map((day, i) => (
-            <div
-              key={i}
-              className="flex-1 flex flex-col items-center justify-end h-full min-w-0 group/bar"
-              title={`${day.date.toLocaleDateString(locale)}: ${day.count} Reviews`}
-            >
-              <span className={`text-[10px] mb-1 tabular-nums transition-colors ${day.count > 0 ? "text-ink-600 font-semibold group-hover/bar:text-[#A15E03]" : "text-ink-300"}`}>{day.count}</span>
-              {/* Fixed-height slot; the fill scales via transform (never height) */}
-              <div className="w-full flex flex-col justify-end" style={{ height: `${Math.max(4, (day.count / computed.maxForecast) * 100)}%` }}>
-                <motion.div
-                  initial={{ scaleY: 0 }}
-                  animate={{ scaleY: 1 }}
-                  transition={{ duration: 0.5, ease: EASE_OUT, delay: 0.1 + Math.min(i, 8) * 0.03 }}
-                  style={{ transformOrigin: "bottom" }}
-                  className={`w-full h-full rounded-t-md ${
-                    day.isToday
-                      ? "bg-gradient-to-t from-amber-600 to-amber-300"
-                      : day.count > 0
-                        ? "bg-gradient-to-t from-[rgba(239,159,31,0.28)] to-[rgba(239,159,31,0.45)] group-hover/bar:from-[rgba(239,159,31,0.45)] group-hover/bar:to-[rgba(239,159,31,0.65)] transition-colors duration-300"
-                        : "bg-paper-2"
-                  }`}
-                />
-              </div>
-              <span className={`text-[9px] mt-1.5 whitespace-nowrap ${day.isToday ? "text-amber-600 font-bold" : "text-ink-300"}`}>
-                {day.isToday
-                  ? de ? "Heute" : "Today"
-                  : day.date.toLocaleDateString(locale, { weekday: "short" }).replace(".", "")}
-              </span>
-            </div>
-          ))}
+      {/* ── Activity heatmap (≈ 6 months) ── */}
+      <motion.div variants={riseChild} className="card-surface p-5 md:px-6 md:py-[22px]">
+        <div className="flex items-baseline justify-between mb-4">
+          <h4 className="text-sm text-ink-900" style={{ fontWeight: 650 }}>
+            {de ? "Aktivität" : "Activity"}
+          </h4>
+          <span className="text-xs text-ink-400">{de ? "Letzte 6 Monate" : "Last 6 months"}</span>
         </div>
-        <p className="text-[10px] text-ink-300 mt-3">
-          {de ? "Überfällige Reviews zählen zu „Heute“." : "Overdue reviews are counted under “Today”."}
-        </p>
-      </motion.div>
-
-      {/* ── Activity heatmap (last 13 weeks) ── */}
-      <motion.div variants={riseChild} className="card-surface p-5 md:p-6">
-        <h3 className="text-xs font-bold uppercase tracking-[0.16em] text-ink-600 mb-5 flex items-center gap-2">
-          <ChartBarIcon className="w-4 h-4 text-amber-600" />
-          {de ? "Aktivität — letzte 3 Monate" : "Activity — last 3 months"}
-        </h3>
         <div className="overflow-x-auto custom-scrollbar pb-1">
-          <div className="flex gap-2 min-w-max">
+          <div className="flex gap-1 min-w-max">
             {/* Weekday gutter (with a spacer matching the month-label row) */}
-            <div className="flex flex-col gap-1 pr-1 text-[8px] text-ink-300">
+            <div className="flex flex-col gap-1 pr-1.5 text-[8px] text-ink-300">
               <span className="h-3" aria-hidden="true" />
-              <span className="h-3.5 leading-[0.875rem]">{de ? "Mo" : "Mon"}</span>
-              <span className="h-3.5" />
-              <span className="h-3.5" />
-              <span className="h-3.5 leading-[0.875rem]">{de ? "Do" : "Thu"}</span>
-              <span className="h-3.5" />
-              <span className="h-3.5" />
-              <span className="h-3.5 leading-[0.875rem]">{de ? "So" : "Sun"}</span>
+              <span className="h-[13px] leading-[13px]">{de ? "Mo" : "Mon"}</span>
+              <span className="h-[13px]" />
+              <span className="h-[13px]" />
+              <span className="h-[13px] leading-[13px]">{de ? "Do" : "Thu"}</span>
+              <span className="h-[13px]" />
+              <span className="h-[13px]" />
+              <span className="h-[13px] leading-[13px]">{de ? "So" : "Sun"}</span>
             </div>
             {computed.weeks.map((week, w) => (
               <motion.div
@@ -412,98 +399,154 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
                   <div
                     key={cell.key}
                     title={`${cell.date.toLocaleDateString(locale)}: ${cell.count} ${cell.count === 1 ? "Review" : "Reviews"}`}
-                    className={`w-3.5 h-3.5 rounded-[3px] transition-transform duration-200 hover:scale-125 ${heatColor(cell.count, cell.future)}`}
+                    className={`w-[13px] h-[13px] rounded-[3px] ${heatColor(cell.count, cell.future)}`}
                   />
                 ))}
               </motion.div>
             ))}
           </div>
         </div>
-        <div className="flex items-center gap-1.5 mt-4 text-[9px] text-ink-300">
+        <div className="flex items-center justify-end gap-1.5 mt-4 text-[10px] text-ink-400">
           {de ? "Weniger" : "Less"}
-          <div className="w-3 h-3 rounded-[3px] bg-paper-2" />
-          <div className="w-3 h-3 rounded-[3px] bg-amber-400/25" />
-          <div className="w-3 h-3 rounded-[3px] bg-amber-400/45" />
-          <div className="w-3 h-3 rounded-[3px] bg-amber-400/70" />
-          <div className="w-3 h-3 rounded-[3px] bg-amber-300" />
+          <div className="w-3 h-3 rounded-[3px] bg-[#ECE6DA]" />
+          <div className="w-3 h-3 rounded-[3px] bg-[rgba(239,159,31,0.28)]" />
+          <div className="w-3 h-3 rounded-[3px] bg-[rgba(239,159,31,0.5)]" />
+          <div className="w-3 h-3 rounded-[3px] bg-[rgba(239,159,31,0.72)]" />
+          <div className="w-3 h-3 rounded-[3px] bg-[#EF9F1F]" />
           {de ? "Mehr" : "More"}
         </div>
       </motion.div>
 
-      <motion.div variants={riseChild} className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <motion.div variants={riseChild} className="grid grid-cols-1 lg:grid-cols-2 gap-3.5">
         {/* ── Per-module stats ── */}
-        <div className="card-surface p-5 md:p-6">
-          <h3 className="text-xs font-bold uppercase tracking-[0.16em] text-ink-600 mb-5 flex items-center gap-2">
-            <AcademicCapIcon className="w-4 h-4 text-amber-600" />
-            {de ? "Module" : "Modules"}
-          </h3>
+        <div className="card-surface p-5 md:px-6 md:py-[22px]">
+          <h4 className="text-sm text-ink-900 mb-[18px]" style={{ fontWeight: 650 }}>
+            {de ? "Bestehensquote nach Modul" : "Pass rate by module"}
+          </h4>
           {computed.modules.length === 0 ? (
             <p className="text-ink-300 text-sm">{de ? "Noch keine Daten." : "No data yet."}</p>
           ) : (
-            <div className="space-y-4">
+            <div className="flex flex-col gap-4">
               {computed.modules.slice(0, 8).map((mod, i) => (
                 <div key={mod.name}>
-                  <div className="flex items-baseline justify-between gap-3 mb-1.5">
-                    <span className="text-sm text-ink-900/85 truncate">{mod.name}</span>
-                    <span className="text-[10px] text-ink-400 whitespace-nowrap tabular-nums">
-                      {mod.reviews} {de ? "Reviews" : "reviews"}
-                      {mod.items > 0 && <> · {mod.items} {de ? "Vorl." : "lect."} · Ø L{(mod.avgLevel + 1).toFixed(1)}</>}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2.5">
-                    <div className="flex-1 h-[7px] rounded-full bg-paper-2 overflow-hidden">
-                      {/* Fill scales via transform — box width stays constant */}
-                      <div className="h-full" style={{ width: `${mod.passRate ?? 0}%` }}>
-                        <motion.div
-                          initial={{ scaleX: 0 }}
-                          animate={{ scaleX: 1 }}
-                          transition={{ duration: 0.5, ease: EASE_OUT, delay: 0.15 + Math.min(i, 8) * 0.03 }}
-                          style={{ transformOrigin: "left" }}
-                          className={`h-full w-full rounded-full ${mod.passRate !== null && mod.passRate >= 80 ? "bg-[#5E7D58]" : mod.passRate !== null && mod.passRate >= 50 ? "bg-[#E0A43A]" : "bg-[#B06A4E]"}`}
-                        />
-                      </div>
-                    </div>
-                    <span className="text-[10px] font-semibold text-ink-600 w-9 text-right tabular-nums">
+                  <div
+                    className="flex justify-between gap-3 text-[13px] mb-[7px]"
+                    title={`${mod.reviews} ${de ? "Reviews" : "reviews"}${mod.items > 0 ? ` · ${mod.items} ${de ? "Vorl." : "lect."} · Ø L${(mod.avgLevel + 1).toFixed(1)}` : ""}`}
+                  >
+                    <span className="text-ink-900 truncate" style={{ fontWeight: 550 }}>{mod.name}</span>
+                    <span className="text-ink-600 tabular-nums whitespace-nowrap">
                       {mod.passRate === null ? "—" : `${mod.passRate}%`}
                     </span>
+                  </div>
+                  <div className="h-[7px] rounded-full bg-paper-2 overflow-hidden">
+                    {/* Fill scales via transform — box width stays constant */}
+                    <div className="h-full" style={{ width: `${mod.passRate ?? 0}%` }}>
+                      <motion.div
+                        initial={{ scaleX: 0 }}
+                        animate={{ scaleX: 1 }}
+                        transition={{ duration: 0.5, ease: EASE_OUT, delay: 0.15 + Math.min(i, 8) * 0.03 }}
+                        style={{ transformOrigin: "left" }}
+                        className={`h-full w-full rounded-full ${mod.passRate !== null && mod.passRate >= 80 ? "bg-[#5E7D58]" : mod.passRate !== null && mod.passRate >= 50 ? "bg-[#E0A43A]" : "bg-[#B06A4E]"}`}
+                      />
+                    </div>
                   </div>
                 </div>
               ))}
             </div>
           )}
-          <p className="text-[10px] text-ink-300 mt-4">{de ? "Balken = Bestehensquote (letzte 12 Monate)." : "Bar = pass rate (last 12 months)."}</p>
+          <p className="text-[11.5px] text-ink-400 mt-[18px]">
+            {de ? "Balken zeigt die Bestehensquote der letzten 12 Monate." : "Bar shows pass rate over the last 12 months."}
+          </p>
         </div>
 
-        {/* ── Level distribution ── */}
-        <div className="card-surface p-5 md:p-6">
-          <h3 className="text-xs font-bold uppercase tracking-[0.16em] text-ink-600 mb-5 flex items-center gap-2">
-            <ChartBarIcon className="w-4 h-4 text-amber-600" />
-            {de ? "Level-Verteilung aktiver Vorlesungen" : "Level distribution of active lectures"}
-          </h3>
-          <div className="flex items-end gap-2 sm:gap-3 h-36">
-            {computed.levelDist.map((count, level) => (
-              <div key={level} className="flex-1 flex flex-col items-center justify-end h-full group/bar" title={`Level ${level + 1} (${LEVEL_LABELS[level]}): ${count}`}>
-                <span className={`text-[10px] mb-1 tabular-nums transition-colors ${count > 0 ? "text-ink-600 font-semibold group-hover/bar:text-[#A15E03]" : "text-ink-300"}`}>{count}</span>
+        {/* ── Review load · next 14 days ── */}
+        <div className="card-surface p-5 md:px-6 md:py-[22px]">
+          <h4 className="text-sm text-ink-900" style={{ fontWeight: 650 }}>
+            {de ? "Review-Last · nächste 14 Tage" : "Review load · next 14 days"}
+          </h4>
+          <div className="flex items-end gap-1.5 h-[150px] mt-5">
+            {computed.forecast.map((day, i) => (
+              <div
+                key={i}
+                className="flex-1 flex flex-col items-center justify-end h-full min-w-0 gap-2"
+                title={`${day.date.toLocaleDateString(locale)}: ${day.count} Reviews`}
+              >
+                <span className="text-xs font-semibold tabular-nums text-ink-600">{day.count}</span>
                 {/* Fixed-height slot; the fill scales via transform (never height) */}
-                <div className="w-full flex flex-col justify-end" style={{ height: `${Math.max(4, (count / computed.maxLevel) * 100)}%` }}>
+                <div
+                  className="w-full flex flex-col justify-end"
+                  style={{ height: day.count === 0 ? "4px" : `${Math.max(4, (day.count / computed.maxForecast) * 100)}%` }}
+                >
+                  <motion.div
+                    initial={{ scaleY: 0 }}
+                    animate={{ scaleY: 1 }}
+                    transition={{ duration: 0.5, ease: EASE_OUT, delay: 0.1 + Math.min(i, 8) * 0.03 }}
+                    style={{ transformOrigin: "bottom" }}
+                    className={`w-full h-full rounded-t-[5px] ${
+                      day.count === 0
+                        ? "bg-[#E4DCCD]"
+                        : day.isToday
+                          ? "bg-[#EF9F1F]"
+                          : "bg-[rgba(239,159,31,0.4)]"
+                    }`}
+                  />
+                </div>
+                <span className={`text-[9px] whitespace-nowrap ${day.isToday ? "text-[#A15E03] font-bold" : "text-ink-400"}`}>
+                  {day.isToday
+                    ? de ? "Heute" : "Today"
+                    : day.date.toLocaleDateString(locale, { weekday: "short" }).replace(".", "")}
+                </span>
+              </div>
+            ))}
+          </div>
+          <p className="text-[11.5px] text-ink-400 mt-3.5">
+            {de
+              ? "Heute trägt die größte Last — von hier aus wird es leichter."
+              : "Today carries the heaviest load — it eases from here."}
+          </p>
+        </div>
+      </motion.div>
+
+      {/* ── Level distribution (full width) ── */}
+      <motion.div variants={riseChild} className="card-surface p-5 md:px-6 md:py-[22px]">
+          <h4 className="text-sm text-ink-900 mb-5" style={{ fontWeight: 650 }}>
+            {de ? "Wo deine Vorlesungen stehen" : "Where your lectures sit"}
+          </h4>
+          <div className="flex items-end gap-3 sm:gap-3.5 h-[130px]">
+            {computed.levelDist.map((count, level) => (
+              <div key={level} className="flex-1 flex flex-col items-center justify-end h-full gap-2" title={`Level ${level + 1} (${LEVEL_LABELS[level]}): ${count}`}>
+                <span className="text-xs font-semibold tabular-nums text-ink-600">{count}</span>
+                {/* Fixed-height slot; the fill scales via transform (never height) */}
+                <div
+                  className="w-full flex flex-col justify-end"
+                  style={{ height: count === 0 ? "4px" : `${Math.max(4, (count / computed.maxLevel) * 100)}%` }}
+                >
                   <motion.div
                     initial={{ scaleY: 0 }}
                     animate={{ scaleY: 1 }}
                     transition={{ duration: 0.5, ease: EASE_OUT, delay: 0.2 + level * 0.03 }}
-                    style={{ transformOrigin: "bottom" }}
-                    className={`w-full h-full rounded-t-md ${count > 0 ? "bg-gradient-to-t from-amber-600/60 to-amber-300/75 group-hover/bar:from-amber-600/80 group-hover/bar:to-amber-300 transition-colors duration-300" : "bg-paper-2"}`}
+                    style={{
+                      transformOrigin: "bottom",
+                      /* Amber intensity scales with height; the tallest bar is solid. */
+                      background:
+                        count === 0
+                          ? "#E4DCCD"
+                          : count === computed.maxLevel
+                            ? "#EF9F1F"
+                            : `rgba(239,159,31,${(0.12 + 0.45 * (count / computed.maxLevel)).toFixed(2)})`,
+                    }}
+                    className="w-full h-full rounded-t-lg"
                   />
                 </div>
-                <span className="text-[9px] mt-1.5 text-ink-400">{LEVEL_LABELS[level]}</span>
+                <span className="text-[10px] text-ink-400">{LEVEL_LABELS[level]}</span>
               </div>
             ))}
           </div>
-          <p className="text-[10px] text-ink-300 mt-4">
+          <p className="text-[11.5px] text-ink-400 mt-[18px]">
             {de
-              ? "Je weiter rechts, desto langfristiger sitzt der Stoff."
-              : "The further right, the more durable the knowledge."}
+              ? "Jede Vorlesung klettert mit jedem Bestehen vom 1-Tages-Intervall Richtung Jahresintervall."
+              : "Each lecture climbs from a 1-day interval toward a yearly one as you keep passing."}
           </p>
-        </div>
       </motion.div>
     </motion.div>
   );
