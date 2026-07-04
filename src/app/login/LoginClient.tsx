@@ -51,7 +51,7 @@ export default function LoginClient({ error, callbackUrl = "/" }: { error?: stri
       <div
         className="fixed inset-0 pointer-events-none z-0"
         aria-hidden="true"
-        style={{ background: "radial-gradient(900px 600px at 14% -6%, rgba(239,159,31,0.09), transparent 62%)" }}
+        style={{ background: "radial-gradient(1000px 640px at 12% -8%, var(--a-lamp), transparent 62%)" }}
       />
 
       <div className="flex-1 flex items-center justify-center px-5 py-12 lg:px-16 relative z-10">
@@ -67,14 +67,14 @@ export default function LoginClient({ error, callbackUrl = "/" }: { error?: stri
 
             <motion.div variants={riseChild} className="flex items-center gap-3">
               <div className="brand-tile w-10 h-10">
-                <span className="font-display italic font-semibold text-[21px] text-[#2A1D07] -translate-y-px">S</span>
+                <span className="font-display italic font-semibold text-[21px] text-(--accent-on) -translate-y-px">S</span>
               </div>
-              <h1 className="text-[17px] font-bold tracking-[-0.01em] leading-none text-ink-900 font-sans">SRS <span className="font-display italic text-[#C97706]" style={{ fontWeight: 560 }}>Master</span></h1>
+              <h1 className="text-[17px] font-bold tracking-[-0.01em] leading-none text-ink-900 font-sans">SRS <span className="font-display italic text-(--accent-text)" style={{ fontWeight: 560 }}>Master</span></h1>
             </motion.div>
 
             <motion.h2 variants={riseChild} className="font-display text-4xl sm:text-[54px] tracking-[-0.022em] text-ink-900 leading-[1.06] mt-11" style={{ fontWeight: 460 }}>
               Lerne weniger.<br />
-              Behalte <em className="font-display italic text-[#C97706]">mehr</em>.
+              Behalte <em className="font-display italic text-(--accent-text)">mehr</em>.
             </motion.h2>
             <motion.p variants={riseChild} className="text-ink-600 text-[15px] sm:text-base leading-[1.6] max-w-[440px] mt-5">
               Lade deine Vorlesungsunterlagen hoch — die KI schreibt deine Quizze, brieft deinen Tutor,
@@ -83,15 +83,15 @@ export default function LoginClient({ error, callbackUrl = "/" }: { error?: stri
 
             <motion.ul variants={riseChild} className="flex flex-col gap-3.5 text-[14.5px] text-ink-900 mt-9">
               <li className="flex items-center gap-3">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#EF9F1F] shrink-0"></span>
+                <span className="w-1.5 h-1.5 rounded-full bg-(--a-g2) shrink-0"></span>
                 Quizze, generiert aus deinen eigenen Unterlagen
               </li>
               <li className="flex items-center gap-3">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#EF9F1F] shrink-0"></span>
+                <span className="w-1.5 h-1.5 rounded-full bg-(--a-g2) shrink-0"></span>
                 Wiederholungen über Monate verteilt, mit Kalender-Sync
               </li>
               <li className="flex items-center gap-3">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#EF9F1F] shrink-0"></span>
+                <span className="w-1.5 h-1.5 rounded-full bg-(--a-g2) shrink-0"></span>
                 Tutor und Audio-Begleiter neben jedem Quiz
               </li>
             </motion.ul>
@@ -104,7 +104,7 @@ export default function LoginClient({ error, callbackUrl = "/" }: { error?: stri
             transition={{ duration: DUR.gentle, ease: EASE_OUT, delay: 0.2 }}
             className="w-full max-w-[420px] mx-auto lg:mx-0 lg:justify-self-end"
           >
-            <div className="card-glass px-[34px] py-9 border border-[rgba(33,27,18,0.08)]">
+            <div className="card-glass px-[34px] py-9 border border-(--hairline-card)">
               <p className="caps-label tracking-[0.13em]">Willkommen zurück</p>
               <h3 className="font-display text-[26px] tracking-[-0.015em] text-ink-900 mt-2.5" style={{ fontWeight: 480 }}>
                 In dein Studienarchiv
@@ -114,8 +114,8 @@ export default function LoginClient({ error, callbackUrl = "/" }: { error?: stri
               </p>
 
               {errorMessage && (
-                <div className="mt-6 p-4 rounded-xl bg-[rgba(176,106,78,0.08)] border border-[rgba(176,106,78,0.25)] text-[#96543C] text-[13px] flex items-start gap-2.5 leading-relaxed">
-                  <ExclamationTriangleIcon className="w-[18px] h-[18px] shrink-0 mt-0.5 text-[#B06A4E]" strokeWidth={1.6} />
+                <div className="mt-6 p-4 rounded-xl bg-(--grade-fail-wash) border border-(--grade-fail-border) text-(--grade-fail-text) text-[13px] flex items-start gap-2.5 leading-relaxed">
+                  <ExclamationTriangleIcon className="w-[18px] h-[18px] shrink-0 mt-0.5 text-(--grade-fail-accent)" strokeWidth={1.6} />
                   <span>{errorMessage}</span>
                 </div>
               )}
@@ -123,7 +123,7 @@ export default function LoginClient({ error, callbackUrl = "/" }: { error?: stri
               <button
                 onClick={handleSignIn}
                 disabled={isSigningIn}
-                className="w-full h-[50px] mt-[26px] bg-paper-1 hover:bg-[#FBF9F4] text-ink-900 font-semibold rounded-[14px] px-5 flex items-center justify-center gap-[11px] text-[14.5px] transition-all cursor-pointer border border-[rgba(33,27,18,0.13)] shadow-[0_1px_2px_rgba(50,38,20,0.05)] hover:-translate-y-px hover:shadow-[0_6px_18px_-8px_rgba(50,38,20,0.25)] active:translate-y-0 active:scale-[0.99] disabled:opacity-60 disabled:cursor-wait disabled:hover:translate-y-0"
+                className="w-full h-[50px] mt-[26px] bg-paper-1 hover:bg-(--paper-hover) text-ink-900 font-semibold rounded-[14px] px-5 flex items-center justify-center gap-[11px] text-[14.5px] transition-all cursor-pointer border border-(--line) shadow-(--shadow-e1) hover:-translate-y-px hover:shadow-(--shadow-lift) active:translate-y-0 active:scale-[0.99] disabled:opacity-60 disabled:cursor-wait disabled:hover:translate-y-0"
               >
                 {isSigningIn ? (
                   <>
@@ -139,13 +139,13 @@ export default function LoginClient({ error, callbackUrl = "/" }: { error?: stri
               </button>
 
               <div className="flex items-center gap-3 my-7">
-                <div className="flex-1 h-px bg-[rgba(33,27,18,0.08)]"></div>
+                <div className="flex-1 h-px bg-(--hairline-card)"></div>
                 <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-ink-400">Privat</span>
-                <div className="flex-1 h-px bg-[rgba(33,27,18,0.08)]"></div>
+                <div className="flex-1 h-px bg-(--hairline-card)"></div>
               </div>
 
               <p className="text-xs text-ink-600 leading-relaxed flex items-start gap-2">
-                <LockClosedIcon className="w-3.5 h-3.5 shrink-0 mt-0.5 text-[#C97706]" strokeWidth={1.7} />
+                <LockClosedIcon className="w-3.5 h-3.5 shrink-0 mt-0.5 text-(--accent-text)" strokeWidth={1.7} />
                 <span>
                   Privater Lernbereich — nur freigeschaltete Google-Konten können sich anmelden.
                   Google bestätigt deine Identität, mehr nicht.

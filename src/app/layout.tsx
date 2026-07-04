@@ -48,10 +48,65 @@ export default function RootLayout({
     <html
       lang="en"
       className={`${fraunces.variable} ${inter.variable} h-full`}
+      suppressHydrationWarning
     >
       <head>
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="theme-color" content="#F6F3EC" />
+        {/* Appearance no-flash script — sets data-theme/data-accent BEFORE first
+            paint from localStorage, resolves "auto" live via matchMedia, and
+            exposes window.__srsAppearance for the Settings UI (APPEARANCE.md). */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function () {
+                var KEY = "srsAppearance";
+                var ACCENTS = ["amber", "slate", "eucalyptus", "heather", "graphite"];
+                var mq = window.matchMedia("(prefers-color-scheme: dark)");
+                function read() {
+                  var s = {};
+                  try { s = JSON.parse(localStorage.getItem(KEY) || "{}") || {}; } catch (e) {}
+                  return {
+                    mode: (s.mode === "ink" || s.mode === "auto" || s.mode === "paper") ? s.mode : "paper",
+                    accent: ACCENTS.indexOf(s.accent) >= 0 ? s.accent : "amber"
+                  };
+                }
+                function resolve(mode) { return mode === "auto" ? (mq.matches ? "ink" : "paper") : mode; }
+                var fadeT;
+                function apply(pref, fade) {
+                  var el = document.documentElement;
+                  var theme = resolve(pref.mode);
+                  if (fade && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+                    el.setAttribute("data-appearance-fade", "");
+                    clearTimeout(fadeT);
+                    fadeT = setTimeout(function () { el.removeAttribute("data-appearance-fade"); }, 450);
+                  }
+                  el.setAttribute("data-theme", theme);
+                  el.setAttribute("data-accent", pref.accent);
+                  var m = document.querySelector('meta[name="theme-color"]');
+                  if (m) m.setAttribute("content", theme === "ink" ? "#1B1713" : "#F6F3EC");
+                }
+                apply(read(), false);
+                var onChange = function () { var p = read(); if (p.mode === "auto") apply(p, true); };
+                if (mq.addEventListener) mq.addEventListener("change", onChange);
+                else if (mq.addListener) mq.addListener(onChange);
+                window.__srsAppearance = {
+                  get: read,
+                  set: function (patch) {
+                    var cur = read();
+                    var next = {
+                      mode: patch && patch.mode ? patch.mode : cur.mode,
+                      accent: patch && patch.accent ? patch.accent : cur.accent
+                    };
+                    try { localStorage.setItem(KEY, JSON.stringify(next)); } catch (e) {}
+                    apply(next, true);
+                  },
+                  resolve: resolve
+                };
+              })();
+            `,
+          }}
+        />
       </head>
       <body className="min-h-full flex flex-col bg-background text-foreground font-sans selection:bg-amber-500/20 selection:text-ink-900">
         <Providers>

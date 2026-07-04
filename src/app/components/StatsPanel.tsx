@@ -220,15 +220,15 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
     return { streak, weeks, recent, recentPassed, modules, forecast, levelDist, dueToday, maxForecast, maxLevel };
   }, [data, items, locale]);
 
-  /* Heatmap ramp per Stats.dc.html: zero = #ECE6DA, then amber-500 washes
-     0.28 → 0.5 → 0.72 → solid #EF9F1F. No glow — quiet until touched. */
+  /* Heatmap ramp per Stats.dc.html: zero = var(--chart-zero), then amber-500 washes
+     0.28 → 0.5 → 0.72 → solid var(--a-g2). No glow — quiet until touched. */
   const heatColor = (count: number, future: boolean): string => {
-    if (future) return "bg-transparent border border-[rgba(33,27,18,0.06)]";
-    if (count === 0) return "bg-[#ECE6DA]";
-    if (count === 1) return "bg-[rgba(239,159,31,0.28)]";
-    if (count <= 2) return "bg-[rgba(239,159,31,0.5)]";
-    if (count <= 4) return "bg-[rgba(239,159,31,0.72)]";
-    return "bg-[#EF9F1F]";
+    if (future) return "bg-transparent border border-(--heat-future-border)";
+    if (count === 0) return "bg-(--chart-zero)";
+    if (count === 1) return "bg-(--accent-heat-1)";
+    if (count <= 2) return "bg-(--accent-heat-2)";
+    if (count <= 4) return "bg-(--accent-heat-3)";
+    return "bg-(--a-g2)";
   };
 
   const passRate30 = computed.recent > 0 ? Math.round((computed.recentPassed / computed.recent) * 100) : null;
@@ -267,8 +267,8 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
   if (error) {
     return (
       <div className="card-surface p-14 flex flex-col items-center text-center">
-        <div className="w-12 h-12 rounded-2xl bg-[rgba(176,106,78,0.10)] border border-[rgba(176,106,78,0.25)] flex items-center justify-center mb-5">
-          <ExclamationTriangleIcon className="w-6 h-6 text-[#96543C]" />
+        <div className="w-12 h-12 rounded-2xl bg-(--grade-fail-wash) border border-(--grade-fail-border) flex items-center justify-center mb-5">
+          <ExclamationTriangleIcon className="w-6 h-6 text-(--grade-fail-text)" />
         </div>
         <p className="text-ink-600 text-sm">{de ? "Statistiken konnten nicht geladen werden." : "Couldn't load statistics."}</p>
       </div>
@@ -313,7 +313,7 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
             : "incl. overdue reviews",
     },
     {
-      icon: <ArrowTrendingUpIcon className="w-4 h-4 text-[#5E7D58]" strokeWidth={1.7} />,
+      icon: <ArrowTrendingUpIcon className="w-4 h-4 text-(--grade-pass-accent)" strokeWidth={1.7} />,
       label: de ? "Quote · 30 T." : "Pass rate · 30d",
       value: passRate30,
       suffix: "%",
@@ -341,7 +341,7 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
         {statCards.map((card) => (
           <div
             key={card.label}
-            className="bg-paper-1 border border-hairline-card rounded-[18px] p-5 shadow-[0_1px_2px_rgba(50,38,20,0.05),0_14px_36px_-22px_rgba(50,38,20,0.18)]"
+            className="bg-paper-1 border border-hairline-card rounded-[18px] p-5 shadow-(--shadow-e2)"
           >
             <div className="flex items-center gap-2">
               {card.icon}
@@ -408,11 +408,11 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
         </div>
         <div className="flex items-center justify-end gap-1.5 mt-4 text-[10px] text-ink-400">
           {de ? "Weniger" : "Less"}
-          <div className="w-3 h-3 rounded-[3px] bg-[#ECE6DA]" />
-          <div className="w-3 h-3 rounded-[3px] bg-[rgba(239,159,31,0.28)]" />
-          <div className="w-3 h-3 rounded-[3px] bg-[rgba(239,159,31,0.5)]" />
-          <div className="w-3 h-3 rounded-[3px] bg-[rgba(239,159,31,0.72)]" />
-          <div className="w-3 h-3 rounded-[3px] bg-[#EF9F1F]" />
+          <div className="w-3 h-3 rounded-[3px] bg-(--chart-zero)" />
+          <div className="w-3 h-3 rounded-[3px] bg-(--accent-heat-1)" />
+          <div className="w-3 h-3 rounded-[3px] bg-(--accent-heat-2)" />
+          <div className="w-3 h-3 rounded-[3px] bg-(--accent-heat-3)" />
+          <div className="w-3 h-3 rounded-[3px] bg-(--a-g2)" />
           {de ? "Mehr" : "More"}
         </div>
       </motion.div>
@@ -446,7 +446,7 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
                         animate={{ scaleX: 1 }}
                         transition={{ duration: 0.5, ease: EASE_OUT, delay: 0.15 + Math.min(i, 8) * 0.03 }}
                         style={{ transformOrigin: "left" }}
-                        className={`h-full w-full rounded-full ${mod.passRate !== null && mod.passRate >= 80 ? "bg-[#5E7D58]" : mod.passRate !== null && mod.passRate >= 50 ? "bg-[#E0A43A]" : "bg-[#B06A4E]"}`}
+                        className={`h-full w-full rounded-full ${mod.passRate !== null && mod.passRate >= 80 ? "bg-(--grade-pass-accent)" : mod.passRate !== null && mod.passRate >= 50 ? "bg-(--grade-mid)" : "bg-(--grade-fail-accent)"}`}
                       />
                     </div>
                   </div>
@@ -484,14 +484,14 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
                     style={{ transformOrigin: "bottom" }}
                     className={`w-full h-full rounded-t-[5px] ${
                       day.count === 0
-                        ? "bg-[#E4DCCD]"
+                        ? "bg-(--chart-stub)"
                         : day.isToday
-                          ? "bg-[#EF9F1F]"
-                          : "bg-[rgba(239,159,31,0.4)]"
+                          ? "bg-(--a-g2)"
+                          : "bg-[color-mix(in_srgb,var(--a-g2)_40%,transparent)]"
                     }`}
                   />
                 </div>
-                <span className={`text-[9px] whitespace-nowrap ${day.isToday ? "text-[#A15E03] font-bold" : "text-ink-400"}`}>
+                <span className={`text-[9px] whitespace-nowrap ${day.isToday ? "text-(--accent-text-strong) font-bold" : "text-ink-400"}`}>
                   {day.isToday
                     ? de ? "Heute" : "Today"
                     : day.date.toLocaleDateString(locale, { weekday: "short" }).replace(".", "")}
@@ -530,10 +530,10 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
                       /* Amber intensity scales with height; the tallest bar is solid. */
                       background:
                         count === 0
-                          ? "#E4DCCD"
+                          ? "var(--chart-stub)"
                           : count === computed.maxLevel
-                            ? "#EF9F1F"
-                            : `rgba(239,159,31,${(0.12 + 0.45 * (count / computed.maxLevel)).toFixed(2)})`,
+                            ? "var(--a-g2)"
+                            : `color-mix(in srgb, var(--a-g2) ${Math.round((0.12 + 0.45 * (count / computed.maxLevel)) * 100)}%, transparent)`,
                     }}
                     className="w-full h-full rounded-t-lg"
                   />

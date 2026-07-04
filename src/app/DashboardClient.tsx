@@ -55,6 +55,7 @@ import { useState, useEffect, useCallback, useRef, useMemo, useTransition, type 
 import { createPortal } from "react-dom";
 
 import { useToasts, ToastStack } from "./components/Toast";
+import { getAppearance, setAppearance, APPEARANCE_ACCENTS, type AppearancePref, type AppearanceAccent } from "@/lib/appearance";
 import { useInteractiveQuiz, type DictationMode } from "./useInteractiveQuiz";
 import { AutoGrowTextarea } from "./components/AutoGrowTextarea";
 import StatsPanel from "./components/StatsPanel";
@@ -303,11 +304,42 @@ function detectFeedbackLanguage(text: string): "german" | "english" | "unknown" 
   return de > en ? "german" : "english";
 }
 
+/**
+ * Appearance settings data (APPEARANCE.md) — per-accent preview/swatch values.
+ * These are LITERAL palette values on purpose: the theme cards depict each
+ * theme regardless of the active one, and the swatches show every accent's
+ * gradient for the CURRENT theme.
+ */
+const ACCENT_PREVIEW_DOT: Record<AppearanceAccent, { paper: string; ink: string }> = {
+  amber: { paper: "#EF9F1F", ink: "#F2A62E" },
+  slate: { paper: "#6E8FB4", ink: "#8BAACC" },
+  eucalyptus: { paper: "#619F88", ink: "#80B69F" },
+  heather: { paper: "#9C7EB6", ink: "#AC90C6" },
+  graphite: { paper: "#4E4638", ink: "#DED5C3" },
+};
+
+const ACCENT_SWATCH: Record<AppearanceAccent, { paper: [string, string, string]; ink: [string, string, string]; onPaper: string; onInk: string }> = {
+  amber: { paper: ["#F7BC5A", "#EF9F1F", "#DE850B"], ink: ["#F9C468", "#F2A62E", "#DE8A0E"], onPaper: "#2A1D07", onInk: "#2A1D07" },
+  slate: { paper: ["#97B2D0", "#6E8FB4", "#55779D"], ink: ["#AFC8E2", "#8BAACC", "#6F92B8"], onPaper: "#142638", onInk: "#142638" },
+  eucalyptus: { paper: ["#8FC0AC", "#619F88", "#4A8770"], ink: ["#A5D2BF", "#80B69F", "#649D86"], onPaper: "#0E241C", onInk: "#0E241C" },
+  heather: { paper: ["#BBA2CE", "#9C7EB6", "#83659F"], ink: ["#CBB4DD", "#AC90C6", "#9174AB"], onPaper: "#241533", onInk: "#241533" },
+  graphite: { paper: ["#6E6455", "#4E4638", "#37312A"], ink: ["#F4EEE1", "#DED5C3", "#C4B8A0"], onPaper: "#F6F3EC", onInk: "#211B12" },
+};
+
+/** Exact microcopy from APPEARANCE.md (German mirrors the tone). */
+const ACCENT_COPY: Record<AppearanceAccent, { name: string; en: string; de: string }> = {
+  amber: { name: "Amber", en: "— the house colour. Lamplight for the last review of the night.", de: "— die Hausfarbe. Lampenlicht für die letzte Wiederholung des Abends." },
+  slate: { name: "Slate", en: "— study-hall blue. It steadies attention when the list is long.", de: "— Studiensaal-Blau. Es beruhigt den Blick, wenn die Liste lang ist." },
+  eucalyptus: { name: "Eucalyptus", en: "— clinic green, the colour of scrubs and steady hands.", de: "— Klinikgrün, die Farbe von Kitteln und ruhigen Händen." },
+  heather: { name: "Heather", en: "— quiet violet from psychology's shelf of the library.", de: "— leises Violett aus dem Psychologie-Regal der Bibliothek." },
+  graphite: { name: "Graphite", en: "— no colour at all. Ink, paper, and your own focus.", de: "— gar keine Farbe. Tinte, Papier und dein eigener Fokus." },
+};
+
 /** Colorize standalone PASS/REPEAT verdicts inside feedback text. */
 function colorizeVerdicts(text: string, keyPrefix: string): ReactNode[] {
   return text.split(/\b(PASS|BESTANDEN|REPEAT|WIEDERHOLEN)\b/).map((part, i) => {
-    if (/^(PASS|BESTANDEN)$/.test(part)) return <span key={`${keyPrefix}-v${i}`} className="font-semibold text-[#4A6845]">{part}</span>;
-    if (/^(REPEAT|WIEDERHOLEN)$/.test(part)) return <span key={`${keyPrefix}-v${i}`} className="font-semibold text-[#96543C]">{part}</span>;
+    if (/^(PASS|BESTANDEN)$/.test(part)) return <span key={`${keyPrefix}-v${i}`} className="font-semibold text-(--grade-pass-text)">{part}</span>;
+    if (/^(REPEAT|WIEDERHOLEN)$/.test(part)) return <span key={`${keyPrefix}-v${i}`} className="font-semibold text-(--grade-fail-text)">{part}</span>;
     return <span key={`${keyPrefix}-v${i}`}>{part}</span>;
   });
 }
@@ -336,7 +368,7 @@ function FeedbackBody({ text, size = "base" }: { text: string; size?: "base" | "
     const line = raw.trim();
     const key = `fb-${i}`;
     if (!line) { out.push(<div key={key} className="h-2.5" aria-hidden="true" />); return; }
-    if (/^[-—_]{3,}$/.test(line)) { out.push(<div key={key} className="h-px bg-[rgba(33,27,18,0.07)] my-2.5" aria-hidden="true" />); return; }
+    if (/^[-—_]{3,}$/.test(line)) { out.push(<div key={key} className="h-px bg-(--hairline) my-2.5" aria-hidden="true" />); return; }
     const heading = line.match(/^#{1,6}\s+(.*)$/);
     if (heading) {
       out.push(
@@ -482,6 +514,29 @@ export default function DashboardClient({
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [newPresetInput, setNewPresetInput] = useState("");
+
+  // ── Appearance (theme + accent) — per-device, applied pre-paint by the
+  // <head> script; this state only mirrors it for the Settings UI. ──────────
+  const [appearance, setAppearancePref] = useState<AppearancePref>({ mode: "paper", accent: "amber" });
+  const [resolvedTheme, setResolvedTheme] = useState<"paper" | "ink">("paper");
+  useEffect(() => {
+    const sync = () => {
+      const pref = getAppearance();
+      setAppearancePref(pref);
+      setResolvedTheme(window.__srsAppearance?.resolve(pref.mode) ?? "paper");
+    };
+    // rAF: read AFTER the head script has applied the persisted preference.
+    const raf = requestAnimationFrame(sync);
+    const mql = window.matchMedia("(prefers-color-scheme: dark)");
+    const onChange = () => { if (getAppearance().mode === "auto") sync(); };
+    mql.addEventListener("change", onChange);
+    return () => { cancelAnimationFrame(raf); mql.removeEventListener("change", onChange); };
+  }, []);
+  const updateAppearance = useCallback((patch: Partial<AppearancePref>) => {
+    const next = setAppearance(patch);
+    setAppearancePref(next);
+    setResolvedTheme(window.__srsAppearance?.resolve(next.mode) ?? "paper");
+  }, []);
 
   useEffect(() => {
     fetch('/api/settings')
@@ -1494,12 +1549,12 @@ export default function DashboardClient({
       <div className="flex flex-col md:flex-row w-full print:hidden">
 
         {/* Mobile Top Bar */}
-        <div className="md:hidden flex items-center justify-between px-5 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] border-b border-[rgba(33,27,18,0.07)] bg-[#F6F3EC]/92 backdrop-blur-xl fixed top-0 left-0 right-0 z-50">
+        <div className="md:hidden flex items-center justify-between px-5 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] border-b border-(--hairline) bg-(--paper-0)/92 backdrop-blur-xl fixed top-0 left-0 right-0 z-50">
           <button onClick={() => { setActiveTab("dashboard"); setShowMobileMenu(false); }} className="flex items-center gap-2.5 cursor-pointer text-left transition-opacity hover:opacity-80">
             <div className="brand-tile w-7 h-7 rounded-[8px]">
-              <span className="font-display italic font-semibold text-[13px] text-[#2A1D07] -translate-y-px">S</span>
+              <span className="font-display italic font-semibold text-[13px] text-(--accent-on) -translate-y-px">S</span>
             </div>
-            <h1 className="text-[15px] font-bold tracking-[-0.01em] text-ink-900">SRS <span className="font-display italic text-[#C97706]" style={{ fontWeight: 560 }}>Master</span></h1>
+            <h1 className="text-[15px] font-bold tracking-[-0.01em] text-ink-900">SRS <span className="font-display italic text-(--accent-text)" style={{ fontWeight: 560 }}>Master</span></h1>
           </button>
           <button onClick={() => setShowMobileMenu(!showMobileMenu)} className="p-2 -mr-2 text-ink-600 hover:text-ink-900 cursor-pointer">
             {showMobileMenu ? <XMarkIcon className="w-6 h-6" /> : <Bars3Icon className="w-6 h-6" />}
@@ -1516,14 +1571,14 @@ export default function DashboardClient({
           initial={{ x: -24, opacity: 0 }}
           animate={{ x: 0, opacity: 1 }}
           transition={{ duration: 0.32, ease: EASE_OUT }}
-          className={`${showMobileMenu ? 'flex' : 'hidden'} app-shell-sidebar md:flex w-full md:w-[264px] sidebar-gradient border-r border-[rgba(33,27,18,0.07)] flex-col px-[18px] pt-[26px] pb-[max(1.25rem,env(safe-area-inset-bottom))] md:sticky md:top-0 min-h-[calc(100dvh_-_61px)] md:min-h-0 md:h-[100dvh] z-40 overflow-y-auto custom-scrollbar`}
+          className={`${showMobileMenu ? 'flex' : 'hidden'} app-shell-sidebar md:flex w-full md:w-[264px] sidebar-gradient border-r border-(--hairline) flex-col px-[18px] pt-[26px] pb-[max(1.25rem,env(safe-area-inset-bottom))] md:sticky md:top-0 min-h-[calc(100dvh_-_61px)] md:min-h-0 md:h-[100dvh] z-40 overflow-y-auto custom-scrollbar`}
         >
           <button onClick={() => { setActiveTab("dashboard"); setShowMobileMenu(false); }} className="hidden md:flex items-center gap-[11px] px-2 cursor-pointer text-left transition-opacity hover:opacity-80">
             <div className="brand-tile w-[34px] h-[34px]">
-              <span className="font-display italic font-semibold text-lg text-[#2A1D07] -translate-y-px">S</span>
+              <span className="font-display italic font-semibold text-lg text-(--accent-on) -translate-y-px">S</span>
             </div>
             <div className="flex flex-col gap-[3px]">
-              <h1 className="text-[15px] font-bold tracking-[-0.01em] leading-none text-ink-900 font-sans">SRS <span className="font-display italic text-[#C97706]" style={{ fontWeight: 560 }}>Master</span></h1>
+              <h1 className="text-[15px] font-bold tracking-[-0.01em] leading-none text-ink-900 font-sans">SRS <span className="font-display italic text-(--accent-text)" style={{ fontWeight: 560 }}>Master</span></h1>
               <div className="text-[10.5px] font-semibold uppercase tracking-[0.13em] text-ink-400">
                 Semester {currentSemester}
               </div>
@@ -1571,7 +1626,7 @@ export default function DashboardClient({
                   ? language === "german" ? "Mitteilungen blockiert" : "Notifications blocked"
                   : language === "german" ? "Mitteilungen aus" : "Notifications off"}
               </span>
-              <span className={`w-7 h-[17px] rounded-full relative inline-block transition-colors ${pushPermission === "granted" && pushSubscribed ? "bg-ink-900" : "bg-[rgba(33,27,18,0.18)]"}`}>
+              <span className={`w-7 h-[17px] rounded-full relative inline-block transition-colors ${pushPermission === "granted" && pushSubscribed ? "bg-ink-900" : "bg-[color-mix(in_srgb,var(--foreground)_18%,transparent)]"}`}>
                 <span className={`absolute top-0.5 w-[13px] h-[13px] rounded-full bg-paper-1 transition-transform ${pushPermission === "granted" && pushSubscribed ? "right-0.5" : "left-0.5"}`}></span>
               </span>
             </button>
@@ -1580,14 +1635,14 @@ export default function DashboardClient({
               <SparklesIcon className="w-[17px] h-[17px] text-amber-500 mb-2.5" strokeWidth={1.6} />
               <h3 className="text-sm font-semibold text-ink-900">Live Tutor Pro</h3>
               <p className="text-[12.5px] leading-normal text-ink-600 mt-1">{language === "german" ? "Sprach-Tutoring neben jedem Quiz." : "Voice tutoring beside every quiz."}</p>
-              <div className="mt-3 h-8 rounded-[10px] border border-[rgba(33,27,18,0.10)] flex items-center justify-center gap-[7px] text-ink-400 text-xs font-semibold">
+              <div className="mt-3 h-8 rounded-[10px] border border-(--line-soft) flex items-center justify-center gap-[7px] text-ink-400 text-xs font-semibold">
                 <LockClosedIcon className="w-[13px] h-[13px]" strokeWidth={1.8} />
                 {language === "german" ? "Demnächst" : "Coming soon"}
               </div>
             </div>
 
             {/* User identity strip (Google account) */}
-            <div className="mt-4 pt-3.5 px-2 border-t border-[rgba(33,27,18,0.07)] flex items-center gap-2.5">
+            <div className="mt-4 pt-3.5 px-2 border-t border-(--hairline) flex items-center gap-2.5">
               {userImage ? (
                 // eslint-disable-next-line @next/next/no-img-element -- external Google avatar; next/image would need remote-domain config + fixed dimensions
                 <img
@@ -1597,8 +1652,8 @@ export default function DashboardClient({
                   className="w-8 h-8 rounded-full object-cover shrink-0"
                 />
               ) : (
-                <div className="w-8 h-8 rounded-full bg-[rgba(239,159,31,0.14)] flex items-center justify-center shrink-0">
-                  <span className="text-[#A15E03] text-[11.5px] font-bold leading-none tracking-[0.02em]">
+                <div className="w-8 h-8 rounded-full bg-(--accent-wash) flex items-center justify-center shrink-0">
+                  <span className="text-(--accent-text-strong) text-[11.5px] font-bold leading-none tracking-[0.02em]">
                     {userName?.[0]?.toUpperCase() ?? userEmail?.[0]?.toUpperCase() ?? "?"}
                   </span>
                 </div>
@@ -1612,7 +1667,7 @@ export default function DashboardClient({
               <button
                 onClick={() => signOut({ callbackUrl: "/login" })}
                 title={language === "german" ? "Abmelden" : "Sign out"}
-                className="w-7 h-7 flex items-center justify-center rounded-[9px] text-ink-400 hover:text-[#B06A4E] hover:bg-[rgba(176,106,78,0.10)] transition-all cursor-pointer shrink-0"
+                className="w-7 h-7 flex items-center justify-center rounded-[9px] text-ink-400 hover:text-(--grade-fail-accent) hover:bg-(--grade-fail-wash) transition-all cursor-pointer shrink-0"
               >
                 <ArrowRightOnRectangleIcon className="w-[15px] h-[15px]" strokeWidth={1.6} />
               </button>
@@ -1689,7 +1744,7 @@ export default function DashboardClient({
                           animate={{ scaleX: 1 }}
                           transition={{ duration: 1, ease: EASE_OUT, delay: 0.15 }}
                           className="h-0.5 mt-7 rounded-full origin-left"
-                          style={{ background: "linear-gradient(90deg, #F5B14A, #EF9F1F 60%, rgba(239,159,31,0))" }}
+                          style={{ background: "linear-gradient(90deg, var(--a-g1), var(--a-g2) 60%, color-mix(in srgb, var(--a-g2) 0%, transparent))" }}
                         />
                       )}
 
@@ -1729,8 +1784,8 @@ export default function DashboardClient({
                           ) : dueItems.length === 0 ? (
                             /* All clear */
                             <div className="card-surface-elevated p-8">
-                              <div className="w-10 h-10 rounded-full bg-[rgba(94,125,88,0.14)] flex items-center justify-center">
-                                <CheckIcon className="w-[18px] h-[18px] text-[#5E7D58]" strokeWidth={2} />
+                              <div className="w-10 h-10 rounded-full bg-(--grade-pass-wash) flex items-center justify-center">
+                                <CheckIcon className="w-[18px] h-[18px] text-(--grade-pass-accent)" strokeWidth={2} />
                               </div>
                               <div className="text-base tracking-[-0.011em] text-ink-900 mt-3.5" style={{ fontWeight: 650 }}>{de ? "Alles erledigt." : "All clear."}</div>
                               <p className="text-[13.5px] leading-relaxed text-ink-600 mt-1.5">
@@ -1743,7 +1798,7 @@ export default function DashboardClient({
                             /* Due today */
                             <div>
                               <div className="flex items-center gap-2 mb-3.5">
-                                <span className="w-1.5 h-1.5 rounded-full bg-[#EF9F1F] shadow-[0_0_8px_rgba(239,159,31,0.5)]"></span>
+                                <span className="w-1.5 h-1.5 rounded-full bg-(--a-g2) shadow-[0_0_8px_color-mix(in_srgb,var(--a-g2)_50%,transparent)]"></span>
                                 <h2 className="text-base tracking-[-0.011em] text-ink-900 font-sans" style={{ fontWeight: 650 }}>{de ? "Heute fällig" : "Due today"}</h2>
                               </div>
                               <motion.div variants={staggerContainer} initial="initial" animate="animate" className="flex flex-col gap-2.5">
@@ -1788,7 +1843,7 @@ export default function DashboardClient({
                                           <div className="caps-label truncate">{review.subject}</div>
                                           <div className="text-base font-semibold tracking-[-0.011em] text-ink-900 mt-[5px] truncate">{review.topic}</div>
                                         </div>
-                                        <span className="hidden sm:inline-block text-xs text-ink-600 border border-[rgba(33,27,18,0.10)] rounded-full px-2.5 py-1 whitespace-nowrap tnum" style={{ fontWeight: 550 }}>
+                                        <span className="hidden sm:inline-block text-xs text-ink-600 border border-(--line-soft) rounded-full px-2.5 py-1 whitespace-nowrap tnum" style={{ fontWeight: 550 }}>
                                           Level {review.level + 1} {de ? "von" : "of"} 7
                                         </span>
                                         {snoozeArmedId === review.id && !snoozingIds[review.id] ? (
@@ -1804,7 +1859,7 @@ export default function DashboardClient({
                                                 key={days}
                                                  
                                                 onClick={(e) => handleSnooze(e, review.id, days)}
-                                                className="h-7 px-2.5 rounded-full border border-[rgba(33,27,18,0.13)] bg-paper-1 hover:bg-paper-2 text-[11px] font-semibold text-ink-600 whitespace-nowrap cursor-pointer transition-colors"
+                                                className="h-7 px-2.5 rounded-full border border-(--line) bg-paper-1 hover:bg-paper-2 text-[11px] font-semibold text-ink-600 whitespace-nowrap cursor-pointer transition-colors"
                                                 title={de ? `Um ${days} Tag${days > 1 ? "e" : ""} verschieben` : `Snooze by ${days} day${days > 1 ? "s" : ""}`}
                                               >
                                                 +{days}{de ? " T" : " d"}
@@ -1829,7 +1884,7 @@ export default function DashboardClient({
                                       </div>
 
                                       {/* Footer: materials disclosure + quiet links + demoted delete */}
-                                      <div className="border-t border-[rgba(33,27,18,0.06)] mt-3.5 pt-[11px]" onClick={(e) => e.stopPropagation()}>
+                                      <div className="border-t border-(--hairline) mt-3.5 pt-[11px]" onClick={(e) => e.stopPropagation()}>
                                         <div className="flex flex-wrap items-center gap-x-[18px] gap-y-2">
                                           <button
                                             onClick={() => {
@@ -1874,7 +1929,7 @@ export default function DashboardClient({
                                               animate={{ opacity: 1, scale: 1 }}
                                               transition={springTactile}
                                               onClick={(e) => handleDeleteModule(e, review.id)}
-                                              className="inline-flex items-center gap-1.5 h-[30px] px-3 rounded-[10px] bg-[rgba(176,106,78,0.12)] text-[#96543C] text-xs font-semibold cursor-pointer"
+                                              className="inline-flex items-center gap-1.5 h-[30px] px-3 rounded-[10px] bg-(--grade-fail-wash) text-(--grade-fail-text) text-xs font-semibold cursor-pointer"
                                             >
                                               <TrashIcon className="w-3.5 h-3.5" strokeWidth={1.6} />
                                               {de ? "Wirklich löschen?" : "Really delete?"}
@@ -1884,7 +1939,7 @@ export default function DashboardClient({
                                               onClick={(e) => handleDeleteModule(e, review.id)}
                                               disabled={!!deletingIds[review.id]}
                                               title={de ? "Modul löschen" : "Delete module"}
-                                              className="btn-ghost-icon w-8 h-8 flex items-center justify-center opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:!text-[#B06A4E] disabled:opacity-60 disabled:cursor-wait cursor-pointer transition-opacity"
+                                              className="btn-ghost-icon w-8 h-8 flex items-center justify-center opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:!text-(--grade-fail-accent) disabled:opacity-60 disabled:cursor-wait cursor-pointer transition-opacity"
                                             >
                                               {deletingIds[review.id] ? (
                                                 <ArrowPathIcon className="w-4 h-4 animate-spin" />
@@ -1993,11 +2048,11 @@ export default function DashboardClient({
                               <div className="card-surface overflow-hidden">
                                 {visibleScheduled.map((review, idx) => (
                                   <div key={review.id}>
-                                    {idx > 0 && <div className="h-px bg-[rgba(33,27,18,0.06)] mx-[22px]" />}
+                                    {idx > 0 && <div className="h-px bg-(--hairline) mx-[22px]" />}
                                     <div
                                        
                                       onClick={() => startQuiz(review)}
-                                      className="grid grid-cols-[1fr_auto_auto] items-center gap-4 sm:gap-6 py-[13px] px-[22px] cursor-pointer hover:bg-[#FBF9F4] transition-colors"
+                                      className="grid grid-cols-[1fr_auto_auto] items-center gap-4 sm:gap-6 py-[13px] px-[22px] cursor-pointer hover:bg-(--paper-hover) transition-colors"
                                     >
                                       <div className="min-w-0">
                                         <div className="text-sm tracking-[-0.008em] text-ink-900 truncate" style={{ fontWeight: 570 }}>{review.topic}</div>
@@ -2011,7 +2066,7 @@ export default function DashboardClient({
                                 {scheduledItems.length > 6 && !showAllScheduled && (
                                   <button
                                     onClick={() => setShowAllScheduled(true)}
-                                    className="w-full border-t border-[rgba(33,27,18,0.06)] flex items-center justify-center gap-[7px] py-3 text-[13px] text-ink-400 hover:text-ink-900 hover:bg-[#FBF9F4] transition-colors cursor-pointer"
+                                    className="w-full border-t border-(--hairline) flex items-center justify-center gap-[7px] py-3 text-[13px] text-ink-400 hover:text-ink-900 hover:bg-(--paper-hover) transition-colors cursor-pointer"
                                     style={{ fontWeight: 550 }}
                                   >
                                     <ChevronDownIcon className="w-[13px] h-[13px]" strokeWidth={2} />
@@ -2038,7 +2093,7 @@ export default function DashboardClient({
                               </p>
                               <button
                                 onClick={() => { setActiveTab("upload"); setShowMobileMenu(false); }}
-                                className="mt-3.5 w-full h-[38px] rounded-xl border border-[rgba(33,27,18,0.13)] bg-transparent hover:bg-paper-2 text-ink-900 text-[13px] font-semibold cursor-pointer transition-colors"
+                                className="mt-3.5 w-full h-[38px] rounded-xl border border-(--line) bg-transparent hover:bg-paper-2 text-ink-900 text-[13px] font-semibold cursor-pointer transition-colors"
                               >
                                 {de ? "Vorlesung hochladen" : "Upload lecture"}
                               </button>
@@ -2056,7 +2111,7 @@ export default function DashboardClient({
                                     : `${passRate30.passed} of ${passRate30.total} reviews passed`}
                                 </div>
                                 <div className="h-[3px] rounded-full bg-paper-2 mt-3.5 overflow-hidden">
-                                  <div className="h-full rounded-full bg-[#5E7D58]" style={{ width: `${Math.round((passRate30.passed / passRate30.total) * 100)}%` }}></div>
+                                  <div className="h-full rounded-full bg-(--grade-pass-accent)" style={{ width: `${Math.round((passRate30.passed / passRate30.total) * 100)}%` }}></div>
                                 </div>
                               </div>
                             )}
@@ -2088,7 +2143,7 @@ export default function DashboardClient({
 
                 {isGenerating ? (
                   <div className="card-surface-elevated px-8 py-12 md:py-14 flex flex-col items-center justify-center text-center">
-                    <div className="w-16 h-16 rounded-[18px] bg-[rgba(239,159,31,0.10)] border border-[rgba(239,159,31,0.25)] flex items-center justify-center mb-6">
+                    <div className="w-16 h-16 rounded-[18px] bg-(--accent-wash-soft) border border-(--accent-border-soft) flex items-center justify-center mb-6">
                       <ArrowPathIcon className="w-7 h-7 text-amber-600 animate-spin" strokeWidth={1.6} />
                     </div>
                     <h3 className="font-display text-[27px] text-ink-900 mb-2" style={{ fontWeight: 470 }}>{language === 'german' ? 'Dein Modul entsteht' : 'Building your module'}</h3>
@@ -2121,17 +2176,17 @@ export default function DashboardClient({
                           initial={{ opacity: 0, x: -10 }}
                           animate={{ opacity: 1, x: 0 }}
                           transition={{ delay: i * 0.03, duration: 0.24, ease: EASE_OUT }}
-                          className={`flex items-center gap-3.5 text-sm transition-colors duration-500 ${progressStep > step ? 'text-[#4A6845]' : progressStep === step ? 'text-[#A15E03] font-semibold' : 'text-ink-400'}`}
+                          className={`flex items-center gap-3.5 text-sm transition-colors duration-500 ${progressStep > step ? 'text-(--grade-pass-text)' : progressStep === step ? 'text-(--accent-text-strong) font-semibold' : 'text-ink-400'}`}
                         >
                           <AnimatePresence mode="wait">
                             {progressStep > step ? (
-                              <motion.span key="done" initial={{ scale: 0.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={springTactile} className="w-[22px] h-[22px] rounded-full bg-[rgba(94,125,88,0.16)] shrink-0 flex items-center justify-center">
-                                <CheckIcon className="w-3 h-3 text-[#5E7D58]" strokeWidth={2.4} />
+                              <motion.span key="done" initial={{ scale: 0.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={springTactile} className="w-[22px] h-[22px] rounded-full bg-(--grade-pass-wash) shrink-0 flex items-center justify-center">
+                                <CheckIcon className="w-3 h-3 text-(--grade-pass-accent)" strokeWidth={2.4} />
                               </motion.span>
                             ) : progressStep === step ? (
                               <span key="active" className="ember-dot w-[22px] h-[22px] rounded-full border-2 border-amber-500 shrink-0 flex items-center justify-center"><span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span></span>
                             ) : (
-                              <div key="idle" className="w-[22px] h-[22px] rounded-full border border-[rgba(33,27,18,0.13)] shrink-0" />
+                              <div key="idle" className="w-[22px] h-[22px] rounded-full border border-(--line) shrink-0" />
                             )}
                           </AnimatePresence>
                           <span>{label}</span>
@@ -2145,7 +2200,7 @@ export default function DashboardClient({
                       <div className="flex-1 flex flex-col justify-end">
                         <div className="flex items-start justify-between mb-2 gap-2">
                           <label className="caps-label leading-tight">{language === "german" ? `Modul (Semester ${currentSemester})` : `Module (Semester ${currentSemester})`}</label>
-                          <button onClick={() => { setShowSettingsModal(true); }} className="text-xs text-[#C97706] hover:text-[#A15E03] transition-colors shrink-0 cursor-pointer" style={{ fontWeight: 550 }}>{language === "german" ? "Verwalten" : "Manage"}</button>
+                          <button onClick={() => { setShowSettingsModal(true); }} className="text-xs text-(--accent-text) hover:text-(--accent-text-strong) transition-colors shrink-0 cursor-pointer" style={{ fontWeight: 550 }}>{language === "german" ? "Verwalten" : "Manage"}</button>
                         </div>
                         {modulePresets.length > 0 ? (
                           <select
@@ -2160,7 +2215,7 @@ export default function DashboardClient({
                         ) : (
                           <div className="input-dark w-full px-4 py-3.5 text-ink-600 text-sm flex items-center justify-between gap-2">
                             {language === "german" ? `Keine Module für Semester ${currentSemester} definiert` : `No modules defined for Semester ${currentSemester}`}
-                            <button onClick={() => { setShowSettingsModal(true); }} className="text-amber-600 hover:text-[#A15E03] font-medium cursor-pointer shrink-0">{language === "german" ? "Hinzufügen" : "Add Presets"}</button>
+                            <button onClick={() => { setShowSettingsModal(true); }} className="text-amber-600 hover:text-(--accent-text-strong) font-medium cursor-pointer shrink-0">{language === "german" ? "Hinzufügen" : "Add Presets"}</button>
                           </div>
                         )}
                       </div>
@@ -2178,7 +2233,7 @@ export default function DashboardClient({
                     <div>
                       <label className="caps-label block mb-2.5">{language === "german" ? "Vorlesungsmaterial (Dateien oder Text)" : "Lecture material (files or text)"}</label>
                       <div
-                        className={`w-full border-[1.5px] border-dashed rounded-[18px] p-6 md:p-10 mb-4 flex flex-col items-center justify-center transition-colors ${isDragging ? 'border-[rgba(239,159,31,0.55)] bg-[rgba(239,159,31,0.08)]' : 'border-[rgba(33,27,18,0.16)] bg-[#FBF9F4]'}`}
+                        className={`w-full border-[1.5px] border-dashed rounded-[18px] p-6 md:p-10 mb-4 flex flex-col items-center justify-center transition-colors ${isDragging ? 'border-(--accent-border-strong) bg-(--accent-wash-softer)' : 'border-[color-mix(in_srgb,var(--foreground)_16%,transparent)] bg-(--paper-hover)'}`}
                         onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
                         onDragLeave={() => setIsDragging(false)}
                         onDrop={(e) => {
@@ -2193,7 +2248,7 @@ export default function DashboardClient({
                           }
                         }}
                       >
-                        <div className="w-12 h-12 rounded-xl bg-[rgba(239,159,31,0.08)] border border-[rgba(239,159,31,0.22)] flex items-center justify-center mb-4">
+                        <div className="w-12 h-12 rounded-xl bg-(--accent-wash-softer) border border-(--accent-border-soft) flex items-center justify-center mb-4">
                           <CloudArrowUpIcon className="w-6 h-6 text-amber-600" />
                         </div>
                         <p className="text-ink-900 text-[15px] font-semibold text-center leading-snug">
@@ -2227,10 +2282,10 @@ export default function DashboardClient({
                       {uploadedFiles.length > 0 && (
                         <div className="flex flex-wrap gap-2 mb-4">
                           {uploadedFiles.map((file, idx) => (
-                            <div key={idx} className="flex items-center gap-2 bg-[rgba(239,159,31,0.10)] text-[#A15E03] h-[30px] px-[11px] rounded-[10px] text-xs border border-[rgba(239,159,31,0.22)]" style={{ fontWeight: 550 }}>
+                            <div key={idx} className="flex items-center gap-2 bg-(--accent-wash-soft) text-(--accent-text-strong) h-[30px] px-[11px] rounded-[10px] text-xs border border-(--accent-border-soft)" style={{ fontWeight: 550 }}>
                               <DocumentTextIcon className="w-4 h-4 text-amber-600" />
                               {file.name}
-                              <button onClick={() => setUploadedFiles(prev => prev.filter((_, i) => i !== idx))} className="ml-1.5 text-[#A15E03]/60 hover:text-ink-900 cursor-pointer">
+                              <button onClick={() => setUploadedFiles(prev => prev.filter((_, i) => i !== idx))} className="ml-1.5 text-(--accent-text-strong)/60 hover:text-ink-900 cursor-pointer">
                                 <XMarkIcon className="w-4 h-4" />
                               </button>
                             </div>
@@ -2373,20 +2428,20 @@ export default function DashboardClient({
                         className="w-full flex items-center gap-3 py-2 group cursor-pointer"
                       >
                         <motion.div animate={{ rotate: semOpen ? 90 : 0 }} transition={springTactile}>
-                          <ChevronRightIcon className={`w-4 h-4 transition-colors shrink-0 ${semOpen ? "text-[#C97706]" : "text-ink-300 group-hover:text-ink-600"}`} strokeWidth={2} />
+                          <ChevronRightIcon className={`w-4 h-4 transition-colors shrink-0 ${semOpen ? "text-(--accent-text)" : "text-ink-300 group-hover:text-ink-600"}`} strokeWidth={2} />
                         </motion.div>
                         <span className="caps-label group-hover:text-ink-600 transition-colors whitespace-nowrap">
                           {language === "german" ? "Semester" : "Semester"}
                         </span>
-                        <span className="font-display text-2xl font-medium leading-none text-ink-900 group-hover:text-[#A15E03] transition-all">
+                        <span className="font-display text-2xl font-medium leading-none text-ink-900 group-hover:text-(--accent-text-strong) transition-all">
                           {sem}
                         </span>
                         {isCurrentSemester && (
-                          <span className="text-[9.5px] uppercase tracking-[0.12em] px-2 py-0.5 rounded-full bg-[rgba(239,159,31,0.10)] border border-[rgba(239,159,31,0.22)] text-[#A15E03]" style={{ fontWeight: 700 }}>
+                          <span className="text-[9.5px] uppercase tracking-[0.12em] px-2 py-0.5 rounded-full bg-(--accent-wash-soft) border border-(--accent-border-soft) text-(--accent-text-strong)" style={{ fontWeight: 700 }}>
                             {language === "german" ? "Aktiv" : "Active"}
                           </span>
                         )}
-                        <div className="flex-1 h-px bg-[rgba(33,27,18,0.07)] mx-1" />
+                        <div className="flex-1 h-px bg-(--hairline) mx-1" />
                         <span className="text-[11px] text-ink-400 font-medium whitespace-nowrap">
                           {modules.size} {language === "german" ? "Module" : "modules"} · {totalLectures} {language === "german" ? "Vorlesungen" : "lectures"}
                         </span>
@@ -2422,7 +2477,7 @@ export default function DashboardClient({
                                       <motion.div animate={{ rotate: modOpen ? 90 : 0 }} transition={springTactile}>
                                         <ChevronRightIcon className="w-3.5 h-3.5 text-ink-300 group-hover:text-ink-600 transition-colors shrink-0" />
                                       </motion.div>
-                                      <FolderOpenIcon className="w-4 h-4 text-[#C4B7A0] shrink-0" strokeWidth={1.6} />
+                                      <FolderOpenIcon className="w-4 h-4 text-(--icon-folder) shrink-0" strokeWidth={1.6} />
                                       <span className="text-[15px] font-semibold text-ink-900 transition-colors flex-1 text-left truncate">
                                         {moduleName}
                                       </span>
@@ -2442,14 +2497,14 @@ export default function DashboardClient({
                                           exit="exit"
                                           style={{ overflow: "hidden" }}
                                         >
-                                          <div className="border-t border-[rgba(33,27,18,0.08)]">
+                                          <div className="border-t border-(--hairline-card)">
                                             {lectures.map((item, idx) => {
                                               const itemOpen = expandedLibraryItems.has(item.id);
                                               const isDue = isDueLocal(new Date(item.nextReviewDate), new Date());
                                               const hasStudyMaterials = !!(item.tutorPromptDocId || item.prePodcastPrompt || item.postPodcastPrompt || item.lastVideoPrompt1 || item.lastVideoPrompt2 || item.prePodcastUrl || item.postPodcastUrl);
 
                                               return (
-                                                <div key={item.id} className={`${idx > 0 ? "border-t border-[rgba(33,27,18,0.08)]" : ""}`}>
+                                                <div key={item.id} className={`${idx > 0 ? "border-t border-(--hairline-card)" : ""}`}>
                                                   {/* Collapsed lecture row */}
                                                   <button
                                                     onClick={() => setExpandedLibraryItems(prev => {
@@ -2478,8 +2533,8 @@ export default function DashboardClient({
                                                             l < item.currentLevel
                                                               ? "bg-amber-500"
                                                               : l === item.currentLevel
-                                                                ? "bg-[rgba(239,159,31,0.35)] shadow-[0_0_0_1.5px_rgba(239,159,31,0.4)]"
-                                                                : "bg-[rgba(33,27,18,0.10)]"
+                                                                ? "bg-(--accent-border) shadow-[0_0_0_1.5px_color-mix(in_srgb,var(--a-g2)_40%,transparent)]"
+                                                                : "bg-(--line-soft)"
                                                           }`}
                                                         />
                                                       ))}
@@ -2503,7 +2558,7 @@ export default function DashboardClient({
                                                         exit="exit"
                                                         style={{ overflow: "hidden" }}
                                                       >
-                                                        <div className="px-5 pb-5 pt-1 bg-[#FBF9F4] space-y-5">
+                                                        <div className="px-5 pb-5 pt-1 bg-(--paper-hover) space-y-5">
 
                                                           {/* Level progress detail */}
                                                           <div>
@@ -2517,19 +2572,19 @@ export default function DashboardClient({
                                                                     l < item.currentLevel
                                                                       ? "bg-amber-500"
                                                                       : l === item.currentLevel
-                                                                        ? "bg-transparent border-2 border-amber-500 shadow-[0_0_8px_rgba(239,159,31,0.3)]"
+                                                                        ? "bg-transparent border-2 border-amber-500 shadow-[0_0_8px_color-mix(in_srgb,var(--a-g2)_30%,transparent)]"
                                                                         : generated
-                                                                          ? "bg-transparent border-2 border-[rgba(33,27,18,0.13)]"
-                                                                          : "bg-transparent border-2 border-[rgba(33,27,18,0.08)]"
+                                                                          ? "bg-transparent border-2 border-(--line)"
+                                                                          : "bg-transparent border-2 border-(--hairline-card)"
                                                                   }`}>
                                                                     {l < item.currentLevel && (
-                                                                      <CheckIcon className="w-3 h-3 text-[#2A1D07]" strokeWidth={2.6} />
+                                                                      <CheckIcon className="w-3 h-3 text-(--accent-on)" strokeWidth={2.6} />
                                                                     )}
                                                                     {l === item.currentLevel && (
                                                                       <div className="w-1.5 h-1.5 rounded-full bg-amber-500" />
                                                                     )}
                                                                   </div>
-                                                                  <span className={`text-[9px] leading-none text-center ${l === item.currentLevel ? "text-[#A15E03] font-semibold" : "text-ink-400 font-medium"}`}>
+                                                                  <span className={`text-[9px] leading-none text-center ${l === item.currentLevel ? "text-(--accent-text-strong) font-semibold" : "text-ink-400 font-medium"}`}>
                                                                     {LIB_LEVEL_SHORT[l]}
                                                                   </span>
                                                                 </div>
@@ -2548,10 +2603,10 @@ export default function DashboardClient({
                                                                   key={l}
                                                                   className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border transition-all ${
                                                                     l < item.currentLevel
-                                                                      ? "bg-amber-400/[0.1] border-[rgba(239,159,31,0.22)] text-amber-600"
+                                                                      ? "bg-amber-400/[0.1] border-(--accent-border-soft) text-amber-600"
                                                                       : generated
-                                                                        ? "bg-paper-2 border-[rgba(33,27,18,0.13)] text-ink-600"
-                                                                        : "bg-transparent border-[rgba(33,27,18,0.08)] text-ink-300"
+                                                                        ? "bg-paper-2 border-(--line) text-ink-600"
+                                                                        : "bg-transparent border-(--hairline-card) text-ink-300"
                                                                   }`}
                                                                 >
                                                                   L{l+1} {l < item.currentLevel ? "✓" : generated ? "·" : "○"}
@@ -2694,10 +2749,10 @@ export default function DashboardClient({
                                                                 </p>
                                                                 <button
                                                                   onClick={() => openFeedbackItem(item)}
-                                                                  className="w-full flex items-center gap-2.5 text-left bg-paper-0 hover:bg-[#FBF9F4] rounded-xl border border-[rgba(33,27,18,0.08)] px-4 py-3 transition-colors cursor-pointer group/fb"
+                                                                  className="w-full flex items-center gap-2.5 text-left bg-paper-0 hover:bg-(--paper-hover) rounded-xl border border-(--hairline-card) px-4 py-3 transition-colors cursor-pointer group/fb"
                                                                 >
                                                                   {summary.decision && (
-                                                                    <span className={`text-[9px] font-bold uppercase tracking-[0.12em] px-2 py-0.5 rounded-full border shrink-0 ${summary.decision === "PASS" ? "bg-[rgba(94,125,88,0.14)] text-[#4A6845] border-[rgba(94,125,88,0.30)]" : "bg-[rgba(176,106,78,0.12)] text-[#96543C] border-[rgba(176,106,78,0.25)]"}`}>
+                                                                    <span className={`text-[9px] font-bold uppercase tracking-[0.12em] px-2 py-0.5 rounded-full border shrink-0 ${summary.decision === "PASS" ? "bg-(--grade-pass-wash) text-(--grade-pass-text) border-(--grade-pass-border)" : "bg-(--grade-fail-wash) text-(--grade-fail-text) border-(--grade-fail-border)"}`}>
                                                                       {summary.decision === "PASS" ? (language === "german" ? "Bestanden" : "Passed") : (language === "german" ? "Wiederholen" : "Repeat")}
                                                                     </span>
                                                                   )}
@@ -2712,7 +2767,7 @@ export default function DashboardClient({
                                                           })()}
 
                                                           {/* Meta row */}
-                                                          <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-xs text-ink-400 pt-1 border-t border-[rgba(33,27,18,0.08)]">
+                                                          <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-xs text-ink-400 pt-1 border-t border-(--hairline-card)">
                                                             <span className="flex items-center gap-1.5">
                                                               <CalendarDaysIcon className="w-3.5 h-3.5" strokeWidth={1.6} />
                                                               {language === "german" ? "Erstellt: " : "Created: "}
@@ -2721,7 +2776,7 @@ export default function DashboardClient({
                                                             <span className="flex items-center gap-1.5">
                                                               <ClockIcon className="w-3.5 h-3.5" strokeWidth={1.6} />
                                                               {language === "german" ? "Nächste Wiederholung — " : "Next review — "}
-                                                              <span className={isDue ? "text-[#A15E03]" : "text-ink-600"} style={isDue ? { fontWeight: 550 } : undefined}>
+                                                              <span className={isDue ? "text-(--accent-text-strong)" : "text-ink-600"} style={isDue ? { fontWeight: 550 } : undefined}>
                                                                 {isDue
                                                                   ? (language === "german" ? "jetzt fällig" : "due now")
                                                                   : new Date(item.nextReviewDate).toLocaleDateString()}
@@ -2805,7 +2860,7 @@ export default function DashboardClient({
                     <span className="text-ink-300">·</span>
                     <span className="caps-label whitespace-nowrap">Level {selectedReview.level + 1}</span>
                     {interactive.active && (
-                      <span className="inline-flex items-center gap-1.5 h-[34px] px-[14px] rounded-full bg-[rgba(239,159,31,0.12)] border border-[rgba(239,159,31,0.28)] text-[#A15E03] text-[12.5px] font-semibold">
+                      <span className="inline-flex items-center gap-1.5 h-[34px] px-[14px] rounded-full bg-(--accent-wash) border border-(--accent-border-soft) text-(--accent-text-strong) text-[12.5px] font-semibold">
                         <MicrophoneIcon className="w-3.5 h-3.5" strokeWidth={2} />
                         {language === "german" ? "Freihändig" : "Hands-free"}
                       </span>
@@ -2834,7 +2889,7 @@ export default function DashboardClient({
                         {...pressable}
                         onClick={() => setShowTutorPanel(prev => !prev)}
                         title={language === "german" ? "Live Tutor: kennt deine Vorlesung, das Quiz und deine Entwürfe" : "Live tutor: knows your lecture, the quiz, and your drafts"}
-                        className={`flex items-center gap-2 h-9 px-4 text-[13px] font-semibold cursor-pointer rounded-xl transition-colors ${showTutorPanel ? "bg-[rgba(239,159,31,0.10)] text-[#A15E03] border border-[rgba(239,159,31,0.35)]" : "btn-secondary"}`}
+                        className={`flex items-center gap-2 h-9 px-4 text-[13px] font-semibold cursor-pointer rounded-xl transition-colors ${showTutorPanel ? "bg-(--accent-wash-soft) text-(--accent-text-strong) border border-(--accent-border)" : "btn-secondary"}`}
                       >
                         <AcademicCapIcon className="w-4 h-4" strokeWidth={1.6} />
                         Tutor
@@ -2886,10 +2941,10 @@ export default function DashboardClient({
                     initial={{ opacity: 0, y: 16 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={springSoft}
-                    className="fixed bottom-[max(1.25rem,env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 z-[60] flex items-center gap-1.5 px-3 py-2 rounded-[18px] bg-paper-1 border border-[rgba(33,27,18,0.08)]"
+                    className="fixed bottom-[max(1.25rem,env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 z-[60] flex items-center gap-1.5 px-3 py-2 rounded-[18px] bg-paper-1 border border-(--hairline-card)"
                     style={{ boxShadow: "var(--shadow-e3)" }}
                   >
-                    <span className="text-[12px] font-bold text-[#A15E03] tnum px-1.5">{interactive.currentIndex + 1} / {interactive.total}</span>
+                    <span className="text-[12px] font-bold text-(--accent-text-strong) tnum px-1.5">{interactive.currentIndex + 1} / {interactive.total}</span>
                     <span className="text-[11px] text-ink-400 pr-1.5 min-w-[74px]">
                       {interactive.paused
                         ? (language === "german" ? "Pausiert" : "Paused")
@@ -2898,7 +2953,7 @@ export default function DashboardClient({
                         : interactive.phase === "listening" ? (language === "german" ? "Hört zu…" : "Listening…")
                         : ""}
                     </span>
-                    <div className="w-px h-6 bg-[rgba(33,27,18,0.08)]" />
+                    <div className="w-px h-6 bg-(--hairline-card)" />
                     <button onClick={interactive.previous} disabled={interactive.currentIndex <= 0} title={language === "german" ? "Vorherige Aufgabe" : "Previous task"} className="btn-ghost-icon w-10 h-10 flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer">
                       <BackwardIcon className="w-4 h-4" strokeWidth={1.6} />
                     </button>
@@ -2908,8 +2963,8 @@ export default function DashboardClient({
                     <button onClick={interactive.next} title={language === "german" ? "Nächste Aufgabe" : "Next task"} className="btn-ghost-icon w-10 h-10 flex items-center justify-center cursor-pointer">
                       <ForwardIcon className="w-4 h-4" strokeWidth={1.6} />
                     </button>
-                    <div className="w-px h-6 bg-[rgba(33,27,18,0.08)]" />
-                    <button onClick={interactive.stop} title={language === "german" ? "Beenden" : "Stop"} className="btn-ghost-icon w-10 h-10 flex items-center justify-center hover:!text-[#B06A4E] hover:!bg-[rgba(176,106,78,0.10)] cursor-pointer">
+                    <div className="w-px h-6 bg-(--hairline-card)" />
+                    <button onClick={interactive.stop} title={language === "german" ? "Beenden" : "Stop"} className="btn-ghost-icon w-10 h-10 flex items-center justify-center hover:!text-(--grade-fail-accent) hover:!bg-(--grade-fail-wash) cursor-pointer">
                       <StopIcon className="w-4 h-4" strokeWidth={1.6} />
                     </button>
                   </motion.div>,
@@ -2917,12 +2972,12 @@ export default function DashboardClient({
                 )}
 
                 {gradingError && !isGrading && (
-                  <div className="mb-6 p-6 rounded-[18px] bg-[rgba(176,106,78,0.07)] border border-[rgba(176,106,78,0.20)] text-sm flex flex-col gap-3">
-                    <div className="flex items-center gap-2 text-[#96543C] font-semibold">
+                  <div className="mb-6 p-6 rounded-[18px] bg-(--grade-fail-wash) border border-(--grade-fail-border) text-sm flex flex-col gap-3">
+                    <div className="flex items-center gap-2 text-(--grade-fail-text) font-semibold">
                       <ExclamationTriangleIcon className="w-5 h-5" strokeWidth={1.6} />
                       <span>{language === "german" ? "Die Bewertung wurde nicht abgeschlossen." : "Grading didn't complete."}</span>
                     </div>
-                    <pre className="text-xs font-mono bg-paper-0 p-4 rounded-xl border border-[rgba(33,27,18,0.07)] whitespace-pre-wrap overflow-x-auto max-h-40 overflow-y-auto leading-relaxed text-left text-[#96543C]/80 custom-scrollbar">
+                    <pre className="text-xs font-mono bg-paper-0 p-4 rounded-xl border border-(--hairline) whitespace-pre-wrap overflow-x-auto max-h-40 overflow-y-auto leading-relaxed text-left text-(--grade-fail-text)/80 custom-scrollbar">
                       {gradingError}
                     </pre>
                     <p className="text-xs text-ink-400 text-left leading-relaxed">
@@ -2935,7 +2990,7 @@ export default function DashboardClient({
 
                 {isGrading ? (
                   <div className="card-surface-elevated px-8 py-12 md:py-14 flex flex-col items-center justify-center text-center">
-                    <div className="w-16 h-16 rounded-[18px] bg-[rgba(239,159,31,0.10)] border border-[rgba(239,159,31,0.25)] flex items-center justify-center mb-6">
+                    <div className="w-16 h-16 rounded-[18px] bg-(--accent-wash-soft) border border-(--accent-border-soft) flex items-center justify-center mb-6">
                       <ArrowPathIcon className="w-7 h-7 text-amber-600 animate-spin" strokeWidth={1.6} />
                     </div>
                     <h3 className="font-display text-[27px] text-ink-900 mb-2" style={{ fontWeight: 470 }}>{language === "german" ? "Deine Antworten werden bewertet" : "Grading your answers"}</h3>
@@ -2962,17 +3017,17 @@ export default function DashboardClient({
                           initial={{ opacity: 0, x: -10 }}
                           animate={{ opacity: 1, x: 0 }}
                           transition={{ delay: i * 0.03, duration: 0.24, ease: EASE_OUT }}
-                          className={`flex items-center gap-3.5 text-sm transition-colors duration-500 ${gradingStep > step ? 'text-[#4A6845]' : gradingStep === step ? 'text-[#A15E03] font-semibold' : 'text-ink-400'}`}
+                          className={`flex items-center gap-3.5 text-sm transition-colors duration-500 ${gradingStep > step ? 'text-(--grade-pass-text)' : gradingStep === step ? 'text-(--accent-text-strong) font-semibold' : 'text-ink-400'}`}
                         >
                           <AnimatePresence mode="wait">
                             {gradingStep > step ? (
-                              <motion.span key="done" initial={{ scale: 0.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={springTactile} className="w-[22px] h-[22px] rounded-full bg-[rgba(94,125,88,0.16)] shrink-0 flex items-center justify-center">
-                                <CheckIcon className="w-3 h-3 text-[#5E7D58]" strokeWidth={2.4} />
+                              <motion.span key="done" initial={{ scale: 0.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={springTactile} className="w-[22px] h-[22px] rounded-full bg-(--grade-pass-wash) shrink-0 flex items-center justify-center">
+                                <CheckIcon className="w-3 h-3 text-(--grade-pass-accent)" strokeWidth={2.4} />
                               </motion.span>
                             ) : gradingStep === step ? (
                               <span key="active" className="ember-dot w-[22px] h-[22px] rounded-full border-2 border-amber-500 shrink-0 flex items-center justify-center"><span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span></span>
                             ) : (
-                              <div key="idle" className="w-[22px] h-[22px] rounded-full border border-[rgba(33,27,18,0.13)] shrink-0" />
+                              <div key="idle" className="w-[22px] h-[22px] rounded-full border border-(--line) shrink-0" />
                             )}
                           </AnimatePresence>
                           {language === "german" ? (
@@ -2998,7 +3053,7 @@ export default function DashboardClient({
                     <div className="card-surface-elevated p-7 md:p-8 relative overflow-hidden">
                       <div className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-6">
                         <div>
-                          <span className={`inline-flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-full ${gradingResult.isPass ? 'bg-[rgba(94,125,88,0.14)] text-[#4A6845]' : 'bg-[rgba(176,106,78,0.12)] text-[#96543C]'}`}>
+                          <span className={`inline-flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-full ${gradingResult.isPass ? 'bg-(--grade-pass-wash) text-(--grade-pass-text)' : 'bg-(--grade-fail-wash) text-(--grade-fail-text)'}`}>
                             {gradingResult.isPass
                               ? (language === "german" ? "Bestanden" : "Passed")
                               : (language === "german" ? "Wiederholen" : "Repeat")}
@@ -3032,13 +3087,13 @@ export default function DashboardClient({
                           className="amber-thread-h h-0.5 mt-7 origin-left"
                         />
                       ) : (
-                        <div className="h-px mt-7 bg-[rgba(33,27,18,0.07)]" />
+                        <div className="h-px mt-7 bg-(--hairline)" />
                       )}
                     </div>
 
                     <div className="card-surface-elevated overflow-hidden">
-                      <div className="border-b border-[rgba(33,27,18,0.06)] bg-[#FBF9F4] px-6 py-4 flex items-center gap-2.5">
-                        <DocumentTextIcon className={`w-4 h-4 ${gradingResult.isPass ? "text-amber-600" : "text-[#B06A4E]"}`} strokeWidth={1.6} />
+                      <div className="border-b border-(--hairline) bg-(--paper-hover) px-6 py-4 flex items-center gap-2.5">
+                        <DocumentTextIcon className={`w-4 h-4 ${gradingResult.isPass ? "text-amber-600" : "text-(--grade-fail-accent)"}`} strokeWidth={1.6} />
                         <h3 className="caps-label !text-ink-600">
                           {gradingResult.isPass
                             ? (language === "german" ? "Gutachter-Brief" : "Examiner's brief")
@@ -3085,7 +3140,7 @@ export default function DashboardClient({
                               transition={{ delay: Math.min(idx, 8) * 0.03, duration: DUR.base, ease: EASE_OUT }}
                               className={`card-surface-elevated p-[22px] md:px-[26px] transition-all duration-300 ${
                                 interactive.active && interactive.currentIndex === idx
-                                  ? "!border-[rgba(239,159,31,0.45)] ring-[3px] ring-[rgba(239,159,31,0.14)] shadow-[0_20px_48px_-20px_rgba(217,125,6,0.28)]"
+                                  ? "!border-(--accent-border-strong) ring-[3px] ring-(--accent-wash) shadow-[0_20px_48px_-20px_color-mix(in_srgb,var(--a-g3)_28%,transparent)]"
                                   : interactive.active
                                   ? "opacity-50"
                                   : ""
@@ -3100,9 +3155,9 @@ export default function DashboardClient({
                                   {interactive.paused ? (
                                     <span className="flex items-center gap-1.5 text-ink-400"><PauseIcon className="w-4 h-4" strokeWidth={1.6} />{language === "german" ? "Pausiert" : "Paused"}</span>
                                   ) : interactive.phase === "speaking" ? (
-                                    <span className="flex items-center gap-1.5 text-[#A15E03]"><SpeakerWaveIcon className="w-4 h-4" strokeWidth={1.6} />{language === "german" ? "Wird vorgelesen…" : "Reading aloud…"}</span>
+                                    <span className="flex items-center gap-1.5 text-(--accent-text-strong)"><SpeakerWaveIcon className="w-4 h-4" strokeWidth={1.6} />{language === "german" ? "Wird vorgelesen…" : "Reading aloud…"}</span>
                                   ) : interactive.phase === "listening" ? (
-                                    <span className="flex items-center gap-2 text-[#4A6845]">
+                                    <span className="flex items-center gap-2 text-(--grade-pass-text)">
                                       <span className="flex items-end gap-[2px] h-3.5" aria-hidden="true">
                                         <span className="eq-bar h-full" style={{ animationDelay: "0ms" }} />
                                         <span className="eq-bar h-full" style={{ animationDelay: "150ms" }} />
@@ -3113,7 +3168,7 @@ export default function DashboardClient({
                                       <span className="text-ink-400 font-medium">{language === "german" ? "· sag „nächste Aufgabe“ zum Weitergehen" : '· say "nächste Aufgabe" to move on'}</span>
                                     </span>
                                   ) : interactive.phase === "loading" ? (
-                                    <span className="flex items-center gap-1.5 text-ink-600"><span className="w-3.5 h-3.5 border-2 border-[rgba(239,159,31,0.35)] border-t-amber-500 rounded-full animate-spin" />{language === "german" ? "Audio lädt…" : "Loading audio…"}</span>
+                                    <span className="flex items-center gap-1.5 text-ink-600"><span className="w-3.5 h-3.5 border-2 border-(--accent-border) border-t-amber-500 rounded-full animate-spin" />{language === "german" ? "Audio lädt…" : "Loading audio…"}</span>
                                   ) : null}
                                 </div>
                               )}
@@ -3121,7 +3176,7 @@ export default function DashboardClient({
                                 {task.questionText}
                               </div>
 
-                              <div className="border-t border-[rgba(33,27,18,0.07)] pt-5">
+                              <div className="border-t border-(--hairline) pt-5">
                                 <span className="caps-label block mb-2">{language === "german" ? "Deine Antwort" : "Your answer"}</span>
                                 <AutoGrowTextarea
                                   value={individualAnswers[task.id] || ""}
@@ -3171,7 +3226,7 @@ export default function DashboardClient({
                       </div>
                     ) : (
                       <div className="card-surface-elevated p-5 md:p-7 flex flex-col">
-                        <div className="bg-paper-0 border border-[rgba(33,27,18,0.07)] rounded-[14px] p-6 font-sans whitespace-pre-wrap text-ink-900/80 text-sm leading-relaxed mb-6">
+                        <div className="bg-paper-0 border border-(--hairline) rounded-[14px] p-6 font-sans whitespace-pre-wrap text-ink-900/80 text-sm leading-relaxed mb-6">
                           {/* Server-computed, level-correct quiz text (slim payload) */}
                           {extractStudentQuiz(selectedReview.raw.currentQuizText || "")}
                         </div>
@@ -3222,13 +3277,13 @@ export default function DashboardClient({
               <motion.div
                 {...overlayMotion}
                 key="archive-overlay"
-                className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[rgba(33,27,18,0.32)] backdrop-blur-[3px]"
+                className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-(--overlay) backdrop-blur-[3px]"
               >
                 <motion.div
                   {...modalPanel}
-                  className="card-glass w-full max-w-lg overflow-hidden flex flex-col max-h-[85dvh] border border-[rgba(33,27,18,0.10)]"
+                  className="card-glass w-full max-w-lg overflow-hidden flex flex-col max-h-[85dvh] border border-(--line-soft)"
                 >
-                  <div className="p-6 border-b border-[rgba(33,27,18,0.08)] flex justify-between items-center">
+                  <div className="p-6 border-b border-(--hairline-card) flex justify-between items-center">
                     <h3 className="font-display text-xl font-medium text-ink-900">{language === "german" ? "Video-Archiv" : "Video Archive"}</h3>
                     <button
                       onClick={() => setArchiveModalData(null)}
@@ -3269,14 +3324,14 @@ export default function DashboardClient({
             <motion.div
               {...overlayMotion}
               key="feedback-overlay"
-              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[rgba(33,27,18,0.32)] backdrop-blur-[3px]"
+              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-(--overlay) backdrop-blur-[3px]"
             >
               <motion.div
                 {...modalPanel}
-                className="card-glass w-full max-w-4xl overflow-hidden flex flex-col max-h-[85dvh] border border-[rgba(33,27,18,0.10)]"
+                className="card-glass w-full max-w-4xl overflow-hidden flex flex-col max-h-[85dvh] border border-(--line-soft)"
               >
                 {/* Header */}
-                <div className="p-6 border-b border-[rgba(33,27,18,0.08)] flex justify-between items-center">
+                <div className="p-6 border-b border-(--hairline-card) flex justify-between items-center">
                   <div>
                     <h3 className="font-display text-xl font-medium text-ink-900">{activeFeedbackItem.subjectSub}</h3>
                     <p className="text-xs text-ink-600 mt-1">{activeFeedbackItem.subjectMain} — Level {activeFeedbackItem.currentLevel + 1}</p>
@@ -3290,7 +3345,7 @@ export default function DashboardClient({
                 </div>
 
                 {/* Header/Title */}
-                <div className="border-b border-[rgba(33,27,18,0.08)] bg-paper-0 px-6 py-3.5 flex items-center gap-2.5">
+                <div className="border-b border-(--hairline-card) bg-paper-0 px-6 py-3.5 flex items-center gap-2.5">
                   <DocumentTextIcon className="w-4 h-4 text-amber-600" />
                   <h3 className="caps-label !text-ink-600">{language === "german" ? "Feedback & Auswertung" : "Examiner's brief"}</h3>
                   <span className="flex-1" />
@@ -3317,7 +3372,7 @@ export default function DashboardClient({
                   <FeedbackBody text={feedbackTranslation && !showFeedbackOriginal ? feedbackTranslation : (activeFeedbackItem.lastFeedback ?? "")} />
 
                   {/* Review history: every graded attempt of this module (ReviewLog) */}
-                  <div className="mt-8 pt-6 border-t border-[rgba(33,27,18,0.08)]">
+                  <div className="mt-8 pt-6 border-t border-(--hairline-card)">
                     <h4 className="caps-label mb-4 flex items-center gap-2">
                       <ClockIcon className="w-3.5 h-3.5" strokeWidth={1.6} />
                       {language === "german" ? "Bewertungs-Verlauf" : "Review history"}
@@ -3347,10 +3402,10 @@ export default function DashboardClient({
                                 disabled={!entry.feedback}
                                 className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${entry.feedback ? "cursor-pointer hover:bg-paper-0" : "cursor-default"}`}
                               >
-                                <span className={`text-[9px] font-bold uppercase tracking-[0.12em] px-2 py-0.5 rounded-full border shrink-0 ${entry.passed ? "bg-[rgba(94,125,88,0.14)] text-[#4A6845] border-[rgba(94,125,88,0.30)]" : "bg-[rgba(176,106,78,0.12)] text-[#96543C] border-[rgba(176,106,78,0.25)]"}`}>
+                                <span className={`text-[9px] font-bold uppercase tracking-[0.12em] px-2 py-0.5 rounded-full border shrink-0 ${entry.passed ? "bg-(--grade-pass-wash) text-(--grade-pass-text) border-(--grade-pass-border)" : "bg-(--grade-fail-wash) text-(--grade-fail-text) border-(--grade-fail-border)"}`}>
                                   {entry.passed ? "PASS" : "REPEAT"}
                                 </span>
-                                <span className="text-[10px] font-semibold text-ink-600 bg-paper-2 px-2 py-0.5 rounded-full border border-[rgba(33,27,18,0.08)] shrink-0">
+                                <span className="text-[10px] font-semibold text-ink-600 bg-paper-2 px-2 py-0.5 rounded-full border border-(--hairline-card) shrink-0">
                                   Level {entry.level + 1}
                                 </span>
                                 <span className="text-xs text-ink-600 flex-1 truncate">
@@ -3377,7 +3432,7 @@ export default function DashboardClient({
                                     exit="exit"
                                     style={{ overflow: "hidden" }}
                                   >
-                                    <div className="px-4 pb-4 pt-2.5 border-t border-[rgba(33,27,18,0.08)]">
+                                    <div className="px-4 pb-4 pt-2.5 border-t border-(--hairline-card)">
                                       {(() => {
                                         const target = language === "german" ? "german" : "english";
                                         const trKey = `${entry.id}:${target}`;
@@ -3428,12 +3483,12 @@ export default function DashboardClient({
           {showCalendarModal && (
             <motion.div
               {...overlayMotion}
-              className="fixed inset-0 bg-[rgba(33,27,18,0.32)] backdrop-blur-[3px] z-50 flex items-center justify-center p-4"
+              className="fixed inset-0 bg-(--overlay) backdrop-blur-[3px] z-50 flex items-center justify-center p-4"
               onClick={() => setShowCalendarModal(false)}
             >
               <motion.div
                 {...modalPanel}
-                className="card-glass p-5 sm:p-6 md:p-7 max-w-[560px] w-full border border-[rgba(33,27,18,0.10)] max-h-[90dvh] overflow-y-auto custom-scrollbar"
+                className="card-glass p-5 sm:p-6 md:p-7 max-w-[560px] w-full border border-(--line-soft) max-h-[90dvh] overflow-y-auto custom-scrollbar"
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="flex items-center justify-between mb-2">
@@ -3482,7 +3537,7 @@ export default function DashboardClient({
                       }}
                       className="btn-secondary px-4 py-2.5 text-xs font-medium flex items-center gap-2 cursor-pointer shrink-0"
                     >
-                      {calendarUrlCopied ? <CheckIcon className="w-4 h-4 text-[#4A6845]" /> : <DocumentDuplicateIcon className="w-4 h-4" />}
+                      {calendarUrlCopied ? <CheckIcon className="w-4 h-4 text-(--grade-pass-text)" /> : <DocumentDuplicateIcon className="w-4 h-4" />}
                       {calendarUrlCopied
                         ? (language === "german" ? "Kopiert!" : "Copied!")
                         : (language === "german" ? "Kopieren" : "Copy")}
@@ -3502,7 +3557,7 @@ export default function DashboardClient({
                   </h3>
                   <a
                     href={`webcal://${typeof window !== 'undefined' ? window.location.host : 'localhost:3000'}/api/calendar/done${calTokenOnly}`}
-                    className="flex items-center justify-center gap-2 w-full py-2.5 bg-[rgba(94,125,88,0.14)] hover:bg-[rgba(94,125,88,0.14)] rounded-xl text-xs font-medium text-[#4A6845] transition-all border border-[rgba(94,125,88,0.30)]"
+                    className="flex items-center justify-center gap-2 w-full py-2.5 bg-(--grade-pass-wash) hover:bg-(--grade-pass-wash) rounded-xl text-xs font-medium text-(--grade-pass-text) transition-all border border-(--grade-pass-border)"
                   >
                     <CalendarDaysIcon className="w-4 h-4" />
                     {language === "german" ? "Verlaufshistorie abonnieren" : "Subscribe to Log History"}
@@ -3515,7 +3570,7 @@ export default function DashboardClient({
                 </div>
 
                 {/* One-time download fallback */}
-                <div className="pt-5 border-t border-[rgba(33,27,18,0.08)]">
+                <div className="pt-5 border-t border-(--hairline-card)">
                   <a
                     href={`/api/calendar${calTokenOnly}`}
                     download="srs-reviews.ics"
@@ -3538,12 +3593,12 @@ export default function DashboardClient({
           <motion.div
             key="settings-overlay"
             {...overlayMotion}
-            className="fixed inset-0 bg-[rgba(33,27,18,0.32)] flex items-center justify-center p-4 z-[60] backdrop-blur-[3px]"
+            className="fixed inset-0 bg-(--overlay) flex items-center justify-center p-4 z-[60] backdrop-blur-[3px]"
             onClick={() => setShowSettingsModal(false)}
           >
             <motion.div
               {...modalPanel}
-              className="card-glass p-5 sm:p-6 md:p-7 w-full max-w-[560px] border border-[rgba(33,27,18,0.10)] max-h-[90dvh] overflow-y-auto custom-scrollbar"
+              className="card-glass p-5 sm:p-6 md:p-7 w-full max-w-[560px] border border-(--line-soft) max-h-[90dvh] overflow-y-auto custom-scrollbar"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex justify-between items-start mb-7">
@@ -3564,9 +3619,111 @@ export default function DashboardClient({
               </div>
 
               <div className="space-y-7">
+                {/* ── Appearance — theme & accent (APPEARANCE.md · 7a) ── */}
+                <div>
+                  <p className="text-xs text-ink-600 mb-4">
+                    {language === "german" ? "Wie dein Lernraum beleuchtet ist — speichert sich von selbst." : "How your study space is lit — it saves itself."}
+                  </p>
+                  <h4 className="caps-label mb-2.5">Theme</h4>
+                  <div className="flex gap-2.5">
+                    {([
+                      { mode: "paper" as const, label: "Paper", sub: language === "german" ? "Warm & hell" : "Warm & light" },
+                      { mode: "ink" as const, label: "Ink", sub: language === "german" ? "Sanft um 23 Uhr" : "Kind at 11pm" },
+                      { mode: "auto" as const, label: "Auto", sub: language === "german" ? "Folgt deinem System" : "Follows your system" },
+                    ]).map(({ mode, label, sub }) => {
+                      const selected = appearance.mode === mode;
+                      const dot = ACCENT_PREVIEW_DOT[appearance.accent];
+                      return (
+                        <motion.button
+                          key={mode}
+                          whileHover={{ y: -1 }}
+                          whileTap={{ scale: 0.98 }}
+                          onClick={() => updateAppearance({ mode })}
+                          className="flex-1 min-w-0 text-left bg-paper-1 rounded-2xl p-[7px] pb-[11px] cursor-pointer shadow-(--shadow-e1)"
+                          style={{ border: `1.5px solid ${selected ? "var(--a-g2)" : "var(--hairline-card)"}`, transition: "border-color 300ms cubic-bezier(0.16,1,0.3,1), background-color 400ms cubic-bezier(0.16,1,0.3,1)" }}
+                        >
+                          {/* Mini previews DEPICT each theme — literal palette on purpose */}
+                          {mode === "paper" && (
+                            <div className="h-[62px] rounded-[11px] relative overflow-hidden" style={{ background: "#F6F3EC", border: "1px solid rgba(33,27,18,0.1)" }}>
+                              <div className="absolute rounded-t-lg" style={{ left: 12, top: 13, right: 30, bottom: -6, background: "#FFFEFB", border: "1px solid rgba(33,27,18,0.09)", padding: "9px 10px 0 10px" }}>
+                                <span className="block w-2 h-2 rounded-full" style={{ background: dot.paper, transition: "background-color 400ms cubic-bezier(0.16,1,0.3,1)" }} />
+                                <span className="block h-[3px] w-[72%] rounded-full mt-2" style={{ background: "#E4DCCB" }} />
+                                <span className="block h-[3px] w-[48%] rounded-full mt-[5px]" style={{ background: "#E4DCCB" }} />
+                              </div>
+                            </div>
+                          )}
+                          {mode === "ink" && (
+                            <div className="h-[62px] rounded-[11px] relative overflow-hidden" style={{ background: "#1B1713", border: "1px solid rgba(33,27,18,0.16)" }}>
+                              <div className="absolute rounded-t-lg" style={{ left: 12, top: 13, right: 30, bottom: -6, background: "#262019", border: "1px solid rgba(241,235,223,0.1)", padding: "9px 10px 0 10px" }}>
+                                <span className="block w-2 h-2 rounded-full" style={{ background: dot.ink, transition: "background-color 400ms cubic-bezier(0.16,1,0.3,1)" }} />
+                                <span className="block h-[3px] w-[72%] rounded-full mt-2" style={{ background: "#3E372D" }} />
+                                <span className="block h-[3px] w-[48%] rounded-full mt-[5px]" style={{ background: "#3E372D" }} />
+                              </div>
+                            </div>
+                          )}
+                          {mode === "auto" && (
+                            <div className="h-[62px] rounded-[11px] relative overflow-hidden flex" style={{ border: "1px solid rgba(33,27,18,0.12)" }}>
+                              <div className="flex-1" style={{ background: "#F6F3EC", padding: "13px 0 0 12px" }}>
+                                <span className="block w-2 h-2 rounded-full" style={{ background: dot.paper, transition: "background-color 400ms cubic-bezier(0.16,1,0.3,1)" }} />
+                                <span className="block h-[3px] w-[26px] rounded-full mt-2" style={{ background: "#E4DCCB" }} />
+                              </div>
+                              <div className="flex-1" style={{ background: "#1B1713", padding: "13px 12px 0 10px" }}>
+                                <span className="block h-[3px] w-[26px] rounded-full mt-4" style={{ background: "#3E372D" }} />
+                                <span className="block h-[3px] w-[18px] rounded-full mt-[5px]" style={{ background: "#3E372D" }} />
+                              </div>
+                            </div>
+                          )}
+                          <div className="flex items-center gap-1.5 mt-2.5 mx-[5px]">
+                            <span className="text-[13px] font-semibold text-ink-900">{label}</span>
+                            <CheckIcon className="w-3 h-3 text-(--accent-text) shrink-0" strokeWidth={2.4} style={{ opacity: selected ? 1 : 0, transition: "opacity 250ms cubic-bezier(0.16,1,0.3,1)" }} />
+                          </div>
+                          <div className="text-[11px] text-ink-400 mt-[3px] mx-[5px]">{sub}</div>
+                        </motion.button>
+                      );
+                    })}
+                  </div>
+
+                  <h4 className="caps-label mt-6 mb-3">{language === "german" ? "Akzent" : "Accent"}</h4>
+                  <div className="flex items-center gap-4">
+                    {APPEARANCE_ACCENTS.map((accent) => {
+                      const sw = ACCENT_SWATCH[accent];
+                      const [g1, g2, g3] = resolvedTheme === "ink" ? sw.ink : sw.paper;
+                      const on = resolvedTheme === "ink" ? sw.onInk : sw.onPaper;
+                      const selected = appearance.accent === accent;
+                      return (
+                        <motion.button
+                          key={accent}
+                          whileHover={{ scale: 1.09 }}
+                          whileTap={{ scale: 0.94 }}
+                          onClick={() => updateAppearance({ accent })}
+                          title={ACCENT_COPY[accent].name}
+                          className="w-10 h-10 rounded-full cursor-pointer flex items-center justify-center shrink-0"
+                          style={{
+                            background: `linear-gradient(165deg, ${g1} 0%, ${g2} 58%, ${g3} 100%)`,
+                            boxShadow: `${selected ? `0 0 0 3px var(--paper-1), 0 0 0 5.5px ${g2}` : "0 0 0 3px transparent, 0 0 0 5.5px transparent"}, inset 0 1px 0 rgba(255,255,255,${accent === "graphite" && resolvedTheme === "paper" ? 0.25 : 0.35})`,
+                            transition: "box-shadow 250ms cubic-bezier(0.16,1,0.3,1)",
+                          }}
+                        >
+                          <CheckIcon
+                            className="w-[15px] h-[15px]"
+                            strokeWidth={2.6}
+                            style={{ color: on, opacity: selected ? 1 : 0, transform: `scale(${selected ? 1 : 0.4})`, transition: "opacity 200ms cubic-bezier(0.16,1,0.3,1), transform 300ms cubic-bezier(0.34,1.56,0.64,1)" }}
+                          />
+                        </motion.button>
+                      );
+                    })}
+                  </div>
+                  <p className="text-[12.5px] leading-[1.5] text-ink-600 mt-3.5 min-h-5">
+                    <span className="text-ink-900" style={{ fontWeight: 650 }}>{ACCENT_COPY[appearance.accent].name}</span>{" "}
+                    {language === "german" ? ACCENT_COPY[appearance.accent].de : ACCENT_COPY[appearance.accent].en}
+                  </p>
+                  <p className="text-xs text-ink-400 mt-2">
+                    {language === "german" ? "Bestanden bleibt Salbei, Wiederholen bleibt Ton — Noten behalten ihre Farben in jedem Theme." : "Passed stays sage, repeat stays clay — grades keep their colours in every theme."}
+                  </p>
+                </div>
                 <div>
                   <h4 className="caps-label mb-3">{language === "german" ? "Aktuelles Semester" : "Current semester"}</h4>
-                  <div className="bg-paper-0 border border-[rgba(33,27,18,0.07)] rounded-[14px] px-4 py-4 flex items-center justify-between">
+                  <div className="bg-paper-0 border border-(--hairline) rounded-[14px] px-4 py-4 flex items-center justify-between">
                     <div>
                       <div className="font-display text-2xl font-medium text-ink-900">Semester {currentSemester}</div>
                       <div className="text-[13px] text-ink-600 mt-1">
@@ -3584,7 +3741,7 @@ export default function DashboardClient({
                       <div className="text-ink-400 text-sm italic py-2">{language === "german" ? "Noch keine Module definiert." : "No modules defined yet."}</div>
                     ) : (
                       modulePresets.map((preset, idx) => (
-                        <div key={idx} className="flex items-center justify-between h-11 bg-paper-0 border border-[rgba(33,27,18,0.07)] rounded-xl px-4">
+                        <div key={idx} className="flex items-center justify-between h-11 bg-paper-0 border border-(--hairline) rounded-xl px-4">
                           <span className="text-ink-900 text-sm">{preset}</span>
                           <button
                             onClick={() => {
@@ -3593,7 +3750,7 @@ export default function DashboardClient({
                                 if (subjectInput === preset) setSubjectInput(saved[0] || "");
                               });
                             }}
-                            className="text-ink-400 hover:text-[#96543C] transition-colors cursor-pointer"
+                            className="text-ink-400 hover:text-(--grade-fail-text) transition-colors cursor-pointer"
                           >
                             <XMarkIcon className="w-4 h-4" />
                           </button>
@@ -3635,7 +3792,7 @@ export default function DashboardClient({
                   </div>
                 </div>
 
-                <div className="pt-6 border-t border-[rgba(33,27,18,0.08)]">
+                <div className="pt-6 border-t border-(--hairline-card)">
                   <h4 className="caps-label mb-3">{language === "german" ? "Sprache" : "Language"}</h4>
                   <div className="segmented">
                     <button
@@ -3685,7 +3842,7 @@ export default function DashboardClient({
                   </div>
                 </div>
 
-                <div className="pt-6 border-t border-[rgba(33,27,18,0.08)]">
+                <div className="pt-6 border-t border-(--hairline-card)">
                   <h4 className="caps-label mb-3">{language === "german" ? "Interaktiver Modus · Diktat" : "Interactive mode · dictation"}</h4>
                   <p className="text-xs text-ink-600 mb-4 leading-relaxed">
                     {language === "german"
@@ -3717,7 +3874,7 @@ export default function DashboardClient({
                   </div>
                 </div>
 
-                <div className="pt-6 border-t border-[rgba(33,27,18,0.08)]">
+                <div className="pt-6 border-t border-(--hairline-card)">
                   <h4 className="caps-label mb-3">{language === "german" ? "KI-Verbindung" : "AI connection"}</h4>
                   <p className="text-xs text-ink-600 mb-4 leading-relaxed">
                     {language === "german"
@@ -3803,8 +3960,8 @@ export default function DashboardClient({
                   </div>
                 </div>
 
-                <div className="pt-6 border-t border-[rgba(176,106,78,0.22)]">
-                  <h4 className="caps-label !text-[#96543C] mb-2">{language === "german" ? "Semesterwechsel" : "Semester change"}</h4>
+                <div className="pt-6 border-t border-(--grade-fail-border)">
+                  <h4 className="caps-label !text-(--grade-fail-text) mb-2">{language === "german" ? "Semesterwechsel" : "Semester change"}</h4>
                   <p className="text-ink-600 text-xs mb-4 leading-relaxed">{language === "german" ? "Der Start eines neuen Semesters erhöht den Semesterzähler und löscht deine aktuellen Modul-Voreinstellungen." : "Starting a new semester will increment your semester counter and wipe your current module presets so you can start fresh."}</p>
                   <button
                     onClick={() => {
@@ -3818,7 +3975,7 @@ export default function DashboardClient({
                       runSemesterAction('new_semester');
                     }}
                     disabled={isSemesterActionBusy}
-                    className={`w-full py-3.5 text-[#96543C] border rounded-xl text-sm font-medium transition-colors flex items-center justify-center gap-2 mb-2 cursor-pointer disabled:opacity-50 disabled:cursor-wait ${confirmingNewSemester ? 'bg-[rgba(176,106,78,0.18)] border-[rgba(176,106,78,0.25)]' : 'bg-[rgba(176,106,78,0.08)] hover:bg-[rgba(176,106,78,0.16)] border-[rgba(176,106,78,0.25)] hover:border-[rgba(176,106,78,0.25)]'}`}
+                    className={`w-full py-3.5 text-(--grade-fail-text) border rounded-xl text-sm font-medium transition-colors flex items-center justify-center gap-2 mb-2 cursor-pointer disabled:opacity-50 disabled:cursor-wait ${confirmingNewSemester ? 'bg-(--grade-fail-wash-strong) border-(--grade-fail-border)' : 'bg-(--grade-fail-wash) hover:bg-(--grade-fail-wash-strong) border-(--grade-fail-border) hover:border-(--grade-fail-border)'}`}
                   >
                     {isSemesterActionBusy ? (
                       <ArrowPathIcon className="w-4 h-4 animate-spin" />
@@ -3841,7 +3998,7 @@ export default function DashboardClient({
                       runSemesterAction('reset_semester');
                     }}
                     disabled={isSemesterActionBusy}
-                    className={`w-full py-2.5 rounded-xl text-xs font-medium transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-wait ${confirmingResetSemester ? 'bg-[rgba(176,106,78,0.14)] text-[#96543C] border border-[rgba(176,106,78,0.25)]' : 'bg-transparent hover:bg-[rgba(176,106,78,0.08)] text-ink-600 hover:text-[#96543C] border border-transparent hover:border-[rgba(176,106,78,0.25)]'}`}
+                    className={`w-full py-2.5 rounded-xl text-xs font-medium transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-wait ${confirmingResetSemester ? 'bg-(--grade-fail-wash-strong) text-(--grade-fail-text) border border-(--grade-fail-border)' : 'bg-transparent hover:bg-(--grade-fail-wash) text-ink-600 hover:text-(--grade-fail-text) border border-transparent hover:border-(--grade-fail-border)'}`}
                   >
                     {confirmingResetSemester
                       ? (language === "german" ? "Wirklich auf Semester 1 zurücksetzen? Erneut klicken" : "Really reset to Semester 1? Click again")
@@ -3863,23 +4020,23 @@ export default function DashboardClient({
           <motion.div
             {...overlayMotion}
             key="prompts-list-backdrop"
-            className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-[rgba(33,27,18,0.32)] backdrop-blur-[3px]"
+            className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-(--overlay) backdrop-blur-[3px]"
             onClick={() => setPromptsModal(null)}
           >
             <motion.div
               {...modalPanel}
               key="prompts-list-modal"
               onClick={(e) => e.stopPropagation()}
-              className="card-glass border border-[rgba(33,27,18,0.10)] w-full max-w-md overflow-hidden"
+              className="card-glass border border-(--line-soft) w-full max-w-md overflow-hidden"
             >
-              <div className="flex items-start justify-between gap-4 px-6 py-5 border-b border-[rgba(33,27,18,0.07)]">
+              <div className="flex items-start justify-between gap-4 px-6 py-5 border-b border-(--hairline)">
                 <div className="min-w-0">
                   <p className="caps-label mb-1">Prompts</p>
                   <h3 className="text-[15px] font-semibold text-ink-900 truncate">{promptsModal.title}</h3>
                 </div>
                 <button
                   onClick={() => setPromptsModal(null)}
-                  className="w-8 h-8 flex items-center justify-center rounded-[10px] text-ink-400 hover:text-ink-900 hover:bg-[rgba(33,27,18,0.06)] transition-colors cursor-pointer shrink-0"
+                  className="w-8 h-8 flex items-center justify-center rounded-[10px] text-ink-400 hover:text-ink-900 hover:bg-(--hairline) transition-colors cursor-pointer shrink-0"
                 >
                   <XMarkIcon className="w-4 h-4" strokeWidth={1.8} />
                 </button>
@@ -3889,7 +4046,7 @@ export default function DashboardClient({
                   <button
                     key={p.label}
                     onClick={() => setPromptModal({ title: `${p.label} — ${promptsModal.title}`, content: p.content })}
-                    className="w-full flex items-center gap-3 bg-paper-0 hover:bg-[#FBF9F4] border border-[rgba(33,27,18,0.08)] rounded-xl px-4 py-3 text-left transition-colors cursor-pointer group/pr"
+                    className="w-full flex items-center gap-3 bg-paper-0 hover:bg-(--paper-hover) border border-(--hairline-card) rounded-xl px-4 py-3 text-left transition-colors cursor-pointer group/pr"
                   >
                     <DocumentTextIcon className="w-4 h-4 text-ink-400 shrink-0" strokeWidth={1.6} />
                     <span className="flex-1 text-[13px] font-medium text-ink-900">{p.label}</span>
@@ -3910,16 +4067,16 @@ export default function DashboardClient({
         {promptModal && (
           <motion.div
             {...overlayMotion}
-            className="fixed inset-0 z-[90] flex items-end sm:items-center justify-center p-4 bg-[rgba(33,27,18,0.32)] backdrop-blur-[3px]"
+            className="fixed inset-0 z-[90] flex items-end sm:items-center justify-center p-4 bg-(--overlay) backdrop-blur-[3px]"
             onClick={() => setPromptModal(null)}
           >
             <motion.div
               {...modalPanel}
               onClick={(e) => e.stopPropagation()}
-              className="card-glass border border-[rgba(33,27,18,0.10)] w-full max-w-2xl max-h-[80dvh] flex flex-col overflow-hidden"
+              className="card-glass border border-(--line-soft) w-full max-w-2xl max-h-[80dvh] flex flex-col overflow-hidden"
             >
               {/* Header */}
-              <div className="flex items-start justify-between gap-4 px-6 py-5 border-b border-[rgba(33,27,18,0.08)]">
+              <div className="flex items-start justify-between gap-4 px-6 py-5 border-b border-(--hairline-card)">
                 <div className="min-w-0">
                   <p className="eyebrow mb-1">{language === "german" ? "Prompt" : "Prompt"}</p>
                   <h3 className="font-display text-base font-medium text-ink-900 truncate">{promptModal.title}</h3>
@@ -3931,7 +4088,7 @@ export default function DashboardClient({
                         .then(() => addToast("success", language === "german" ? "Kopiert!" : "Copied!"))
                         .catch(() => addToast("error", language === "german" ? "Kopieren fehlgeschlagen." : "Copy failed."));
                     }}
-                    className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-amber-400/[0.1] hover:bg-[rgba(239,159,31,0.14)] border border-[rgba(239,159,31,0.22)] hover:border-[rgba(239,159,31,0.35)] text-amber-600 transition-all cursor-pointer"
+                    className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-amber-400/[0.1] hover:bg-(--accent-wash) border border-(--accent-border-soft) hover:border-(--accent-border) text-amber-600 transition-all cursor-pointer"
                   >
                     {language === "german" ? "Kopieren" : "Copy"}
                   </button>

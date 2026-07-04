@@ -26,11 +26,11 @@ export function CopyButton({ content }: { content: string }) {
   return (
     <button
       id="copy-tutor-prompt-btn"
-      className="group inline-flex items-center gap-2 rounded-xl border border-[rgba(33,27,18,0.13)] bg-paper-1 px-5 py-2.5 text-sm font-medium text-ink-600 shadow-sm transition hover:border-[rgba(239,159,31,0.35)] hover:bg-[rgba(239,159,31,0.08)] hover:text-[#A15E03] active:scale-[0.98]"
+      className="group inline-flex items-center gap-2 rounded-xl border border-(--line) bg-paper-1 px-5 py-2.5 text-sm font-medium text-ink-600 shadow-sm transition hover:border-(--accent-border) hover:bg-(--accent-wash-softer) hover:text-(--accent-text-strong) active:scale-[0.98]"
       onClick={handleCopy}
     >
       {copied ? (
-        <svg className="h-4 w-4 text-[#5E7D58]" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+        <svg className="h-4 w-4 text-(--grade-pass-accent)" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
         </svg>
       ) : (

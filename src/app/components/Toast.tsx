@@ -47,16 +47,16 @@ export function ToastStack({ toasts, onDismiss }: { toasts: ToastItem[]; onDismi
             layout
             {...toastMotion}
             role="status"
-            className={`pointer-events-auto w-full flex items-start gap-3 px-4 py-3.5 rounded-[18px] border bg-paper-1 shadow-[0_2px_6px_rgba(50,38,20,0.06),0_24px_56px_-24px_rgba(50,38,20,0.32)] text-sm leading-relaxed text-ink-900 ${
+            className={`pointer-events-auto w-full flex items-start gap-3 px-4 py-3.5 rounded-[18px] border bg-paper-1 shadow-(--shadow-e3) text-sm leading-relaxed text-ink-900 ${
               toast.variant === "success"
-                ? "border-[rgba(94,125,88,0.35)]"
-                : "border-[rgba(176,106,78,0.35)]"
+                ? "border-(--grade-pass-border)"
+                : "border-(--grade-fail-border)"
             }`}
           >
             {toast.variant === "success" ? (
-              <CheckCircleIcon className="w-5 h-5 shrink-0 text-[#5E7D58] mt-0.5" strokeWidth={1.6} />
+              <CheckCircleIcon className="w-5 h-5 shrink-0 text-(--grade-pass-accent) mt-0.5" strokeWidth={1.6} />
             ) : (
-              <ExclamationTriangleIcon className="w-5 h-5 shrink-0 text-[#B06A4E] mt-0.5" strokeWidth={1.6} />
+              <ExclamationTriangleIcon className="w-5 h-5 shrink-0 text-(--grade-fail-accent) mt-0.5" strokeWidth={1.6} />
             )}
             <span className="flex-1 break-words">{toast.message}</span>
             <button

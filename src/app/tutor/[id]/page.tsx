@@ -37,10 +37,10 @@ export default async function TutorPage({ params }: { params: Params }) {
   return (
     <main className="min-h-screen bg-transparent">
       {/* Header bar */}
-      <header className="sticky top-0 z-10 border-b border-[rgba(33,27,18,0.07)] bg-[#F6F3EC]/92 backdrop-blur-xl">
+      <header className="sticky top-0 z-10 border-b border-(--hairline) bg-(--paper-0)/92 backdrop-blur-xl">
         <div className="mx-auto flex max-w-3xl items-center gap-4 px-6 py-4">
           <div className="brand-tile flex h-10 w-10 shrink-0 items-center justify-center">
-            <span className="font-display italic font-semibold text-lg text-[#2A1D07] -translate-y-px">S</span>
+            <span className="font-display italic font-semibold text-lg text-(--accent-on) -translate-y-px">S</span>
           </div>
           <div className="min-w-0 flex-1">
             <h1 className="truncate font-display text-lg font-semibold text-ink-900">
@@ -52,7 +52,7 @@ export default async function TutorPage({ params }: { params: Params }) {
           </div>
           <Link
             href="/"
-            className="rounded-lg border border-[rgba(33,27,18,0.10)] bg-paper-2 px-4 py-2 text-sm font-medium text-ink-600 transition hover:bg-paper-2 hover:text-ink-900"
+            className="rounded-lg border border-(--line-soft) bg-paper-2 px-4 py-2 text-sm font-medium text-ink-600 transition hover:bg-paper-2 hover:text-ink-900"
           >
             ← Zurück
           </Link>
@@ -64,13 +64,13 @@ export default async function TutorPage({ params }: { params: Params }) {
         <div className="card-surface-elevated p-6 md:p-10">
           {/* Metadata badges */}
           <div className="mb-8 flex flex-wrap gap-2">
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-[rgba(239,159,31,0.22)] bg-[rgba(239,159,31,0.10)] px-4 py-1.5 text-xs font-semibold text-[#A15E03]">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-(--accent-border-soft) bg-(--accent-wash-soft) px-4 py-1.5 text-xs font-semibold text-(--accent-text-strong)">
               {item.subjectMain}
             </span>
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-[rgba(33,27,18,0.10)] bg-paper-2 px-4 py-1.5 text-xs font-medium text-ink-600">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-(--line-soft) bg-paper-2 px-4 py-1.5 text-xs font-medium text-ink-600">
               {item.subjectSub}
             </span>
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-[rgba(94,125,88,0.30)] bg-[rgba(94,125,88,0.14)] px-4 py-1.5 text-xs font-semibold text-[#4A6845]">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-(--grade-pass-border) bg-(--grade-pass-wash) px-4 py-1.5 text-xs font-semibold text-(--grade-pass-text)">
               Level {item.currentLevel + 1}
             </span>
           </div>

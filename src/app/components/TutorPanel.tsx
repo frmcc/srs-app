@@ -272,11 +272,11 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
           animate={{ x: 0, opacity: 1 }}
           exit={{ x: 24, opacity: 0 }}
           transition={{ duration: 0.24, ease: EASE_OUT }}
-          className="fixed inset-y-0 right-0 z-[70] w-full sm:w-[376px] bg-[#FAF7F0] border-l border-[rgba(33,27,18,0.08)] flex flex-col print:hidden shadow-[0_2px_6px_rgba(50,38,20,0.06),0_24px_56px_-24px_rgba(50,38,20,0.32)] xl:shadow-none"
+          className="fixed inset-y-0 right-0 z-[70] w-full sm:w-[376px] bg-(--paper-tutor) border-l border-(--hairline-card) flex flex-col print:hidden shadow-(--shadow-e3) xl:shadow-none"
           aria-label={de ? "Live Tutor Chat" : "Live tutor chat"}
         >
           {/* Header */}
-          <div className="flex items-start gap-3 px-5 pt-[max(1.1rem,env(safe-area-inset-top))] pb-4 border-b border-[rgba(33,27,18,0.07)] shrink-0">
+          <div className="flex items-start gap-3 px-5 pt-[max(1.1rem,env(safe-area-inset-top))] pb-4 border-b border-(--hairline) shrink-0">
             <div className="min-w-0 flex-1">
               <h3 className="text-[15px] text-ink-900 leading-tight font-sans" style={{ fontWeight: 650 }}>
                 Live Tutor
@@ -289,7 +289,7 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
               <button
                 onClick={clearThread}
                 title={de ? "Gespräch zurücksetzen" : "Reset conversation"}
-                className="btn-ghost-icon w-8 h-8 flex items-center justify-center hover:!text-[#B06A4E] hover:!bg-[rgba(176,106,78,0.10)] cursor-pointer shrink-0"
+                className="btn-ghost-icon w-8 h-8 flex items-center justify-center hover:!text-(--grade-fail-accent) hover:!bg-(--grade-fail-wash) cursor-pointer shrink-0"
               >
                 <TrashIcon className="w-4 h-4" strokeWidth={1.6} />
               </button>
@@ -307,7 +307,7 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
           <div ref={scrollRef} className="flex-1 overflow-y-auto custom-scrollbar px-5 py-5 space-y-5">
             {messages.length === 0 && (
               <div className="flex flex-col items-center text-center pt-10 px-2">
-                <div className="w-12 h-12 rounded-2xl bg-[rgba(239,159,31,0.10)] border border-[rgba(239,159,31,0.22)] flex items-center justify-center mb-4">
+                <div className="w-12 h-12 rounded-2xl bg-(--accent-wash-soft) border border-(--accent-border-soft) flex items-center justify-center mb-4">
                   <SparklesIcon className="w-6 h-6 text-amber-500" strokeWidth={1.6} />
                 </div>
                 <p className="text-ink-900 text-sm font-semibold mb-1.5">
@@ -325,7 +325,7 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
                       whileTap={{ scale: 0.985 }}
                       transition={springTactile}
                       onClick={() => send(s)}
-                      className="text-left text-xs text-ink-600 hover:text-ink-900 bg-paper-1 hover:bg-paper-2 border border-[rgba(33,27,18,0.08)] rounded-xl px-4 py-3 leading-relaxed transition-colors cursor-pointer"
+                      className="text-left text-xs text-ink-600 hover:text-ink-900 bg-paper-1 hover:bg-paper-2 border border-(--hairline-card) rounded-xl px-4 py-3 leading-relaxed transition-colors cursor-pointer"
                     >
                       {s}
                     </motion.button>
@@ -350,7 +350,7 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
                         onClick={() => speakMessage(msg)}
                         disabled={ttsLoadingId === msg.id}
                         title={speakingId === msg.id ? (de ? "Stopp" : "Stop") : (de ? "Vorlesen (Gemini-Stimme)" : "Read aloud (Gemini voice)")}
-                        className="w-6 h-6 rounded-lg flex items-center justify-center text-ink-400 hover:text-[#C97706] hover:bg-[rgba(239,159,31,0.10)] transition-colors cursor-pointer disabled:cursor-wait"
+                        className="w-6 h-6 rounded-lg flex items-center justify-center text-ink-400 hover:text-(--accent-text) hover:bg-(--accent-wash-soft) transition-colors cursor-pointer disabled:cursor-wait"
                       >
                         {ttsLoadingId === msg.id ? (
                           <ArrowPathIcon className="w-3.5 h-3.5 animate-spin" />
@@ -376,7 +376,7 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
           </div>
 
           {/* Composer */}
-          <div className="border-t border-[rgba(33,27,18,0.07)] px-4 pt-3 pb-[max(0.875rem,env(safe-area-inset-bottom))] shrink-0">
+          <div className="border-t border-(--hairline) px-4 pt-3 pb-[max(0.875rem,env(safe-area-inset-bottom))] shrink-0">
             <div className="flex items-end gap-2">
               <AutoGrowTextarea
                 value={input}
