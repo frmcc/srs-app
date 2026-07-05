@@ -10,6 +10,7 @@ import {
   ArrowTrendingUpIcon,
   ExclamationTriangleIcon,
 } from "@heroicons/react/24/outline";
+import { Tip } from "./Tooltip";
 
 /**
  * Statistik tab. All day-based aggregation (streak, heatmap, forecast) is done
@@ -396,11 +397,9 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
               >
                 <span className="h-3 text-[8px] text-ink-400 leading-3 whitespace-nowrap">{week.label ?? ""}</span>
                 {week.days.map((cell) => (
-                  <div
-                    key={cell.key}
-                    title={`${cell.date.toLocaleDateString(locale)}: ${cell.count} ${cell.count === 1 ? "Review" : "Reviews"}`}
-                    className={`w-[13px] h-[13px] rounded-[3px] ${heatColor(cell.count, cell.future)}`}
-                  />
+                  <Tip key={cell.key} label={`${cell.date.toLocaleDateString(locale)} — ${cell.count} ${cell.count === 1 ? "Review" : "Reviews"}`}>
+                    <div className={`heat-cell w-[13px] h-[13px] rounded-[3px] ${heatColor(cell.count, cell.future)}`} />
+                  </Tip>
                 ))}
               </motion.div>
             ))}
@@ -429,15 +428,14 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
             <div className="flex flex-col gap-4">
               {computed.modules.slice(0, 8).map((mod, i) => (
                 <div key={mod.name}>
-                  <div
-                    className="flex justify-between gap-3 text-[13px] mb-[7px]"
-                    title={`${mod.reviews} ${de ? "Reviews" : "reviews"}${mod.items > 0 ? ` · ${mod.items} ${de ? "Vorl." : "lect."} · Ø L${(mod.avgLevel + 1).toFixed(1)}` : ""}`}
-                  >
+                  <Tip label={`${mod.reviews} ${de ? "Reviews" : "reviews"}${mod.items > 0 ? ` · ${mod.items} ${de ? "Vorl." : "lect."} · Ø L${(mod.avgLevel + 1).toFixed(1)}` : ""}`}>
+                  <div className="flex justify-between gap-3 text-[13px] mb-[7px]">
                     <span className="text-ink-900 truncate" style={{ fontWeight: 550 }}>{mod.name}</span>
                     <span className="text-ink-600 tabular-nums whitespace-nowrap">
                       {mod.passRate === null ? "—" : `${mod.passRate}%`}
                     </span>
                   </div>
+                  </Tip>
                   <div className="h-[7px] rounded-full bg-paper-2 overflow-hidden">
                     {/* Fill scales via transform — box width stays constant */}
                     <div className="h-full" style={{ width: `${mod.passRate ?? 0}%` }}>
@@ -466,11 +464,8 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
           </h4>
           <div className="flex items-end gap-1.5 h-[150px] mt-5">
             {computed.forecast.map((day, i) => (
-              <div
-                key={i}
-                className="flex-1 flex flex-col items-center justify-end h-full min-w-0 gap-2"
-                title={`${day.date.toLocaleDateString(locale)}: ${day.count} Reviews`}
-              >
+              <Tip key={i} label={`${day.date.toLocaleDateString(locale)} — ${day.count} ${de ? "fällig" : "due"}`}>
+              <div className="flex-1 flex flex-col items-center justify-end h-full min-w-0 gap-2">
                 <span className="text-xs font-semibold tabular-nums text-ink-600">{day.count}</span>
                 {/* Fixed-height slot; the fill scales via transform (never height) */}
                 <div
@@ -497,6 +492,7 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
                     : day.date.toLocaleDateString(locale, { weekday: "short" }).replace(".", "")}
                 </span>
               </div>
+              </Tip>
             ))}
           </div>
           <p className="text-[11.5px] text-ink-400 mt-3.5">
@@ -514,7 +510,8 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
           </h4>
           <div className="flex items-end gap-3 sm:gap-3.5 h-[130px]">
             {computed.levelDist.map((count, level) => (
-              <div key={level} className="flex-1 flex flex-col items-center justify-end h-full gap-2" title={`Level ${level + 1} (${LEVEL_LABELS[level]}): ${count}`}>
+              <Tip key={level} label={`Level ${level + 1} (${LEVEL_LABELS[level]}) — ${count} ${de ? (count === 1 ? "Vorlesung" : "Vorlesungen") : (count === 1 ? "lecture" : "lectures")}`}>
+              <div className="flex-1 flex flex-col items-center justify-end h-full gap-2">
                 <span className="text-xs font-semibold tabular-nums text-ink-600">{count}</span>
                 {/* Fixed-height slot; the fill scales via transform (never height) */}
                 <div
@@ -540,6 +537,7 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
                 </div>
                 <span className="text-[10px] text-ink-400">{LEVEL_LABELS[level]}</span>
               </div>
+              </Tip>
             ))}
           </div>
           <p className="text-[11.5px] text-ink-400 mt-[18px]">

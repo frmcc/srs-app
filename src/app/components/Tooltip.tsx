@@ -1,64 +1,67 @@
 "use client";
 
-import {
-  cloneElement,
-  isValidElement,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type HTMLAttributes,
-  type MouseEvent,
-  type FocusEvent,
-  type ReactElement,
-} from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 /**
  * CRAFT.md §4 — the ink tooltip. Never native `title`.
  * Portal-based (overflow:hidden can't clip it), 400ms hover intent,
  * 140ms fade + 2px rise (CSS .tip-bubble), flips below near the top edge.
- * Keyboard focus shows it immediately; the label doubles as aria-label.
+ * Keyboard focus shows it immediately. The wrapper is `display: contents`,
+ * so it adds no box; events bubble through it from the real control, and the
+ * label is mirrored into aria-label on the control when it has none.
  */
 export function Tip({ label, children, side }: {
   label: string;
-  children: ReactElement<HTMLAttributes<HTMLElement>>;
+  children: ReactNode;
   side?: "top" | "bottom";
 }) {
   const [pos, setPos] = useState<{ x: number; y: number; below: boolean } | null>(null);
+  const wrapRef = useRef<HTMLSpanElement | null>(null);
   const timerRef = useRef<number | null>(null);
 
+  const anchorEl = useCallback(
+    () => (wrapRef.current?.firstElementChild as HTMLElement | null) ?? null,
+    []
+  );
   const clear = useCallback(() => {
     if (timerRef.current) window.clearTimeout(timerRef.current);
     timerRef.current = null;
   }, []);
   const hide = useCallback(() => { clear(); setPos(null); }, [clear]);
-  const show = useCallback((el: HTMLElement) => {
+  const show = useCallback(() => {
+    const el = anchorEl();
+    if (!el) return;
     const r = el.getBoundingClientRect();
     const below = side === "bottom" || (side !== "top" && r.top < 72);
     setPos({ x: r.left + r.width / 2, y: below ? r.bottom : r.top, below });
-  }, [side]);
-  const schedule = useCallback((el: HTMLElement) => {
+  }, [anchorEl, side]);
+  const schedule = useCallback(() => {
     clear();
-    timerRef.current = window.setTimeout(() => show(el), 400);
+    timerRef.current = window.setTimeout(show, 400);
   }, [clear, show]);
 
   useEffect(() => clear, [clear]);
 
-  if (!isValidElement(children)) return children;
-  const prev = children.props;
-  const merged = cloneElement(children, {
-    "aria-label": (prev as Record<string, unknown>)["aria-label"] as string | undefined ?? label,
-    onMouseEnter: (e: MouseEvent<HTMLElement>) => { prev.onMouseEnter?.(e); schedule(e.currentTarget); },
-    onMouseLeave: (e: MouseEvent<HTMLElement>) => { prev.onMouseLeave?.(e); hide(); },
-    onMouseDown: (e: MouseEvent<HTMLElement>) => { prev.onMouseDown?.(e); hide(); },
-    onFocus: (e: FocusEvent<HTMLElement>) => { prev.onFocus?.(e); show(e.currentTarget); },
-    onBlur: (e: FocusEvent<HTMLElement>) => { prev.onBlur?.(e); hide(); },
-  } as Partial<HTMLAttributes<HTMLElement>>);
+  // Mirror the label into aria-label when the control doesn't bring its own.
+  useEffect(() => {
+    const el = anchorEl();
+    if (el && !el.getAttribute("aria-label")) el.setAttribute("aria-label", label);
+  }, [anchorEl, label]);
 
   return (
     <>
-      {merged}
+      <span
+        ref={wrapRef}
+        style={{ display: "contents" }}
+        onMouseEnter={schedule}
+        onMouseLeave={hide}
+        onMouseDown={hide}
+        onFocus={show}
+        onBlur={hide}
+      >
+        {children}
+      </span>
       {pos && typeof document !== "undefined" && createPortal(
         <span
           role="tooltip"

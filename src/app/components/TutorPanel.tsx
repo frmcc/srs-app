@@ -349,10 +349,10 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
                   <div className="flex items-center gap-2 mb-1.5">
                     <span className="caps-label !text-[10.5px] !tracking-[0.12em]">Tutor</span>
                     {msg.text && (
+                      <Tip label={speakingId === msg.id ? (de ? "Stopp" : "Stop") : (de ? "Vorlesen (Gemini-Stimme)" : "Read aloud (Gemini voice)")}>
                       <button
                         onClick={() => speakMessage(msg)}
                         disabled={ttsLoadingId === msg.id}
-                        title={speakingId === msg.id ? (de ? "Stopp" : "Stop") : (de ? "Vorlesen (Gemini-Stimme)" : "Read aloud (Gemini voice)")}
                         className="w-6 h-6 rounded-lg flex items-center justify-center text-ink-400 hover:text-(--accent-text) hover:bg-(--accent-wash-soft) transition-colors cursor-pointer disabled:cursor-wait"
                       >
                         {ttsLoadingId === msg.id ? (
@@ -363,6 +363,7 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
                           <SpeakerWaveIcon className="w-3.5 h-3.5" strokeWidth={1.6} />
                         )}
                       </button>
+                      </Tip>
                     )}
                   </div>
                   <div className="text-[13.5px] leading-[1.62] text-ink-900/85 whitespace-pre-wrap break-words">
@@ -393,25 +394,26 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
                 placeholder={de ? "Frag deinen Tutor…" : "Ask your tutor…"}
                 className="input-dark flex-1 px-4 py-3 text-sm leading-relaxed resize-none overflow-hidden min-h-[2.9rem] max-h-40 !bg-paper-1"
               />
-              <motion.button
-                whileTap={{ scale: 0.94 }}
-                transition={springTactile}
-                onClick={() => send(input)}
-                disabled={streaming || !input.trim()}
-                title={de ? "Senden (Enter)" : "Send (Enter)"}
-                className="btn-primary w-11 h-11 !rounded-xl flex items-center justify-center shrink-0 cursor-pointer"
-              >
-                {streaming ? (
-                  <ArrowPathIcon className="w-4.5 h-4.5 animate-spin" />
-                ) : (
-                  <PaperAirplaneIcon className="w-4.5 h-4.5" strokeWidth={1.6} />
-                )}
-              </motion.button>
+              <Tip label={de ? "Senden — ↵" : "Send — ↵"}>
+                <motion.button
+                  whileTap={{ scale: 0.94 }}
+                  transition={springTactile}
+                  onClick={() => send(input)}
+                  disabled={streaming || !input.trim()}
+                  className="btn-primary w-11 h-11 !rounded-xl flex items-center justify-center shrink-0 cursor-pointer"
+                >
+                  {streaming ? (
+                    <ArrowPathIcon className="w-4.5 h-4.5 animate-spin" />
+                  ) : (
+                    <PaperAirplaneIcon className="w-4.5 h-4.5" strokeWidth={1.6} />
+                  )}
+                </motion.button>
+              </Tip>
             </div>
-            <p className="text-[11px] text-ink-400 mt-2 px-1">
-              {de
-                ? "Der Tutor sieht Quiz + Entwürfe. Enter = senden, Shift+Enter = neue Zeile."
-                : "The tutor sees quiz + drafts. Enter = send, Shift+Enter = new line."}
+            <p className="text-[11px] text-ink-400 mt-2 px-1 flex items-center gap-1.5 flex-wrap">
+              <span>{de ? "Der Tutor sieht Quiz + Entwürfe." : "The tutor sees quiz + drafts."}</span>
+              <span className="inline-flex items-center gap-1"><span className="kbd">↵</span> {de ? "senden" : "send"}</span>
+              <span className="inline-flex items-center gap-1"><span className="kbd">⇧</span><span className="kbd">↵</span> {de ? "neue Zeile" : "new line"}</span>
             </p>
           </div>
         </motion.aside>
