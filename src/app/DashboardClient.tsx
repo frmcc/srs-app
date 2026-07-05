@@ -55,6 +55,7 @@ import { useState, useEffect, useCallback, useRef, useMemo, useTransition, type 
 import { createPortal } from "react-dom";
 
 import { useToasts, ToastStack } from "./components/Toast";
+import { Tip } from "./components/Tooltip";
 import { getAppearance, setAppearance, APPEARANCE_ACCENTS, type AppearancePref, type AppearanceAccent } from "@/lib/appearance";
 import { useInteractiveQuiz, type DictationMode } from "./useInteractiveQuiz";
 import { AutoGrowTextarea } from "./components/AutoGrowTextarea";
@@ -789,6 +790,9 @@ export default function DashboardClient({
   // subsequent upcomingReviews update (focus-refetch, post-grade refresh, etc).
   const processedQuizIdRef = useRef(false);
 
+  // Library search field — focused by the global ⌘K shortcut (CRAFT.md §3).
+  const librarySearchRef = useRef<HTMLInputElement | null>(null);
+
   const fetchReviews = useCallback(async () => {
     if (fetchInFlightRef.current) return;
     fetchInFlightRef.current = true;
@@ -1035,6 +1039,9 @@ export default function DashboardClient({
     if (snoozingIds[id]) return;
     setSnoozeArmedId(null);
     setSnoozingIds(prev => ({ ...prev, [id]: true }));
+    // Remember the date we're moving away from so the undo toast can restore it.
+    const prevDate = rawItems.find(r => r.id === id)?.nextReviewDate ?? null;
+    const prevIso = prevDate instanceof Date ? prevDate.toISOString() : prevDate;
     try {
       const res = await fetch(`/api/reviews/${id}`, {
         method: "PATCH",
@@ -1047,9 +1054,17 @@ export default function DashboardClient({
       }
       const updated = await res.json();
       const newDate = new Date(updated.nextReviewDate).toLocaleDateString();
-      addToast("success", language === "german"
-        ? `Review verschoben auf ${newDate}.`
-        : `Review snoozed until ${newDate}.`);
+      // CRAFT.md §8 — forgiveness: an undo bar instead of a confirm dialog.
+      addToast("undo", language === "german" ? `Verschoben auf ${newDate}.` : `Snoozed until ${newDate}.`, prevIso ? {
+        action: {
+          label: language === "german" ? "Rückgängig" : "Undo",
+          onClick: () => {
+            fetch(`/api/reviews/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ restoreDate: prevIso }) })
+              .then(res => { if (!res.ok) throw new Error(); fetchReviews(); })
+              .catch(() => addToast("error", language === "german" ? "Rückgängig machen fehlgeschlagen." : "Failed to undo."));
+          },
+        },
+      } : undefined);
       fetchReviews();
     } catch (err) {
       console.error(err);
@@ -1200,7 +1215,7 @@ export default function DashboardClient({
   // "user typed something" apart from "prefilled headers only".
   const freeTemplateRef = useRef("");
 
-  const startQuiz = (review: ReviewCard) => {
+  const startQuiz = useCallback((review: ReviewCard) => {
     setSelectedReview(review);
 
     // The server already resolved the level-correct quiz text (incl. quiz-1
@@ -1266,7 +1281,7 @@ export default function DashboardClient({
     if (typeof window !== "undefined") {
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
-  };
+  }, [language, addToast]);
 
   useEffect(() => {
     if (processedQuizIdRef.current) return;
@@ -1396,7 +1411,7 @@ export default function DashboardClient({
     }
   };
 
-  const handleGrade = async () => {
+  const handleGrade = useCallback(async () => {
     if (!selectedReview || isGrading) return;
 
     let payloadAnswers = studentAnswers;
@@ -1487,7 +1502,66 @@ export default function DashboardClient({
       window.clearTimeout(timeoutId);
       setIsGrading(false); // never leave the grading spinner stuck
     }
-  };
+  }, [selectedReview, isGrading, studentAnswers, parsedTasks, individualAnswers, language, gradingModel, fetchReviews, addToast]);
+
+  // CRAFT.md §3 — global keyboard shortcuts (companion to the Escape effect
+  // above). Lives below startQuiz/handleGrade because const declarations
+  // aren't hoisted and both belong in the dependency array.
+  const interactiveActive = interactive.active;
+  const interactiveTogglePause = interactive.togglePause;
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // ⌘K / Ctrl+K — jump to the library search. Always available, even while typing.
+      if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) {
+        e.preventDefault();
+        setActiveTab("library");
+        window.setTimeout(() => librarySearchRef.current?.focus(), 80);
+        return;
+      }
+
+      const modalOpen = Boolean(promptModal || promptsModal || showCalendarModal || showSettingsModal || activeFeedbackItem || archiveModalData);
+
+      // ⌘Enter / Ctrl+Enter — submit the quiz. Must also work while typing in an answer box.
+      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+        if (modalOpen || activeTab !== "quiz" || isGrading || gradingResult) return;
+        const hasAnswer = parsedTasks.length > 0
+          ? parsedTasks.some(task => (individualAnswers[task.id] || "").trim().length > 0)
+          : studentAnswers.trim().length > 0;
+        if (!hasAnswer) return; // mirrors the submit button's disabled condition
+        e.preventDefault();
+        handleGrade();
+        return;
+      }
+
+      // Everything below stays quiet while a modal is open or the user is typing.
+      const el = document.activeElement;
+      const typing = el instanceof HTMLElement &&
+        (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable);
+      if (modalOpen || typing) return;
+
+      // Enter — start the first due review straight from the dashboard.
+      if (e.key === "Enter" && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+        if (activeTab !== "dashboard") return;
+        const firstDue = upcomingReviews.find(r => r.isDue);
+        if (!firstDue) return;
+        e.preventDefault();
+        startQuiz(firstDue);
+        return;
+      }
+
+      // Space — pause/resume the hands-free voice mode.
+      if (e.key === " " && interactiveActive) {
+        e.preventDefault();
+        interactiveTogglePause();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [
+    promptModal, promptsModal, showCalendarModal, showSettingsModal, activeFeedbackItem, archiveModalData,
+    activeTab, isGrading, gradingResult, parsedTasks, individualAnswers, studentAnswers, upcomingReviews,
+    interactiveActive, interactiveTogglePause, startQuiz, handleGrade,
+  ]);
 
   return (
     <MotionConfig reducedMotion="user">
@@ -1664,13 +1738,14 @@ export default function DashboardClient({
                   <p className="text-[11px] text-ink-400 truncate leading-snug">{userEmail}</p>
                 )}
               </div>
-              <button
-                onClick={() => signOut({ callbackUrl: "/login" })}
-                title={language === "german" ? "Abmelden" : "Sign out"}
-                className="w-7 h-7 flex items-center justify-center rounded-[9px] text-ink-400 hover:text-(--grade-fail-accent) hover:bg-(--grade-fail-wash) transition-all cursor-pointer shrink-0"
-              >
-                <ArrowRightOnRectangleIcon className="w-[15px] h-[15px]" strokeWidth={1.6} />
-              </button>
+              <Tip label={language === "german" ? "Abmelden" : "Sign out"}>
+                <button
+                  onClick={() => signOut({ callbackUrl: "/login" })}
+                  className="w-7 h-7 flex items-center justify-center rounded-[9px] text-ink-400 hover:text-(--grade-fail-accent) hover:bg-(--grade-fail-wash) transition-all cursor-pointer shrink-0"
+                >
+                  <ArrowRightOnRectangleIcon className="w-[15px] h-[15px]" strokeWidth={1.6} />
+                </button>
+              </Tip>
             </div>
           </div>
         </motion.aside>
@@ -1718,8 +1793,8 @@ export default function DashboardClient({
                               ? (de ? "Einen Moment …" : "One moment …")
                               : dueItems.length > 0
                               ? (de
-                                  ? `${dueItems.length} ${dueItems.length === 1 ? "Wiederholung ist" : "Wiederholungen sind"} bereit — etwa ${minutes} Minuten.`
-                                  : `${dueItems.length} ${dueItems.length === 1 ? "review is" : "reviews are"} ready — about ${minutes} minutes.`)
+                                  ? `${dueItems.length} ${dueItems.length === 1 ? "Wiederholung ist" : "Wiederholungen sind"} bereit — etwa ${minutes} Minuten.`
+                                  : `${dueItems.length} ${dueItems.length === 1 ? "review is" : "reviews are"} ready — about ${minutes} minutes.`)
                               : nextUp
                               ? (de ? `Heute ist nichts fällig. Die nächste Wiederholung kommt am ${fmtLong(nextUp)}.` : `Nothing due today. The next review lands ${fmtLong(nextUp)}.`)
                               : (de ? "Lade deine erste Vorlesung hoch — der Rest plant sich selbst." : "Upload your first lecture — the rest schedules itself.")}
@@ -1729,6 +1804,7 @@ export default function DashboardClient({
                            
                           <button onClick={() => startQuiz(dueItems[0])} className="btn-primary h-11 px-6 text-sm shrink-0 cursor-pointer">
                             {de ? "Jetzt wiederholen" : "Start reviewing"}
+                            <span className="kbd kbd-invert ml-1.5 hidden md:inline-flex">↵</span>
                           </button>
                         ) : scheduledItems.length > 0 ? (
                            
@@ -1841,10 +1917,12 @@ export default function DashboardClient({
                                       <div className="flex items-center gap-3 sm:gap-4">
                                         <div className="flex-1 min-w-0">
                                           <div className="caps-label truncate">{review.subject}</div>
-                                          <div className="text-base font-semibold tracking-[-0.011em] text-ink-900 mt-[5px] truncate">{review.topic}</div>
+                                          <Tip label={review.topic}>
+                                            <div className="text-base font-semibold tracking-[-0.011em] text-ink-900 mt-[5px] truncate">{review.topic}</div>
+                                          </Tip>
                                         </div>
                                         <span className="hidden sm:inline-block text-xs text-ink-600 border border-(--line-soft) rounded-full px-2.5 py-1 whitespace-nowrap tnum" style={{ fontWeight: 550 }}>
-                                          Level {review.level + 1} {de ? "von" : "of"} 7
+                                          Level&nbsp;{review.level + 1}&nbsp;{de ? "von" : "of"}&nbsp;7
                                         </span>
                                         {snoozeArmedId === review.id && !snoozingIds[review.id] ? (
                                           <motion.div
@@ -1855,23 +1933,23 @@ export default function DashboardClient({
                                             onClick={(e) => e.stopPropagation()}
                                           >
                                             {[1, 3, 7].map(days => (
+                                              <Tip key={days} label={de ? `Um ${days} Tag${days > 1 ? "e" : ""} verschieben` : `Snooze by ${days} day${days > 1 ? "s" : ""}`}>
                                               <button
-                                                key={days}
                                                  
                                                 onClick={(e) => handleSnooze(e, review.id, days)}
                                                 className="h-7 px-2.5 rounded-full border border-(--line) bg-paper-1 hover:bg-paper-2 text-[11px] font-semibold text-ink-600 whitespace-nowrap cursor-pointer transition-colors"
-                                                title={de ? `Um ${days} Tag${days > 1 ? "e" : ""} verschieben` : `Snooze by ${days} day${days > 1 ? "s" : ""}`}
                                               >
                                                 +{days}{de ? " T" : " d"}
                                               </button>
+                                              </Tip>
                                             ))}
                                           </motion.div>
                                         ) : (
+                                          <Tip label={de ? "Wiederholung verschieben" : "Snooze review"}>
                                           <button
                                             onClick={(e) => { e.stopPropagation(); if (!snoozingIds[review.id]) setSnoozeArmedId(review.id); }}
                                             disabled={!!snoozingIds[review.id]}
                                             className="btn-ghost-icon w-8 h-8 flex items-center justify-center shrink-0 cursor-pointer disabled:cursor-wait"
-                                            title={de ? "Wiederholung verschieben" : "Snooze review"}
                                           >
                                             {snoozingIds[review.id] ? (
                                               <ArrowPathIcon className="w-4 h-4 animate-spin" />
@@ -1879,6 +1957,7 @@ export default function DashboardClient({
                                               <ClockIcon className="w-4 h-4" strokeWidth={1.6} />
                                             )}
                                           </button>
+                                          </Tip>
                                         )}
                                         <ChevronRightIcon className="w-4 h-4 text-ink-300 shrink-0" strokeWidth={1.8} />
                                       </div>
@@ -1935,10 +2014,10 @@ export default function DashboardClient({
                                               {de ? "Wirklich löschen?" : "Really delete?"}
                                             </motion.button>
                                           ) : (
+                                            <Tip label={de ? "Modul löschen" : "Delete module"}>
                                             <button
                                               onClick={(e) => handleDeleteModule(e, review.id)}
                                               disabled={!!deletingIds[review.id]}
-                                              title={de ? "Modul löschen" : "Delete module"}
                                               className="btn-ghost-icon w-8 h-8 flex items-center justify-center opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:!text-(--grade-fail-accent) disabled:opacity-60 disabled:cursor-wait cursor-pointer transition-opacity"
                                             >
                                               {deletingIds[review.id] ? (
@@ -1947,6 +2026,7 @@ export default function DashboardClient({
                                                 <TrashIcon className="w-4 h-4" strokeWidth={1.6} />
                                               )}
                                             </button>
+                                            </Tip>
                                           )}
                                         </div>
 
@@ -2358,20 +2438,25 @@ export default function DashboardClient({
                   <div className="relative mb-6">
                     <MagnifyingGlassIcon className="w-4 h-4 text-ink-400 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
                     <input
+                      ref={librarySearchRef}
                       type="text"
                       value={librarySearch}
                       onChange={e => setLibrarySearch(e.target.value)}
                       placeholder={language === "german" ? "Modul oder Vorlesung suchen…" : "Search module or lecture…"}
                       className="input-dark w-full h-12 pl-11 pr-10 text-sm"
                     />
+                    {!librarySearching && (
+                      <span className="kbd absolute right-3 top-1/2 -translate-y-1/2 hidden md:inline-flex pointer-events-none">⌘K</span>
+                    )}
                     {librarySearching && (
-                      <button
-                        onClick={() => setLibrarySearch("")}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center rounded-full text-ink-400 hover:text-ink-900 hover:bg-paper-2 transition-colors cursor-pointer"
-                        title={language === "german" ? "Suche löschen" : "Clear search"}
-                      >
-                        <XMarkIcon className="w-4 h-4" />
-                      </button>
+                      <Tip label={language === "german" ? "Suche löschen" : "Clear search"}>
+                        <button
+                          onClick={() => setLibrarySearch("")}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center rounded-full text-ink-400 hover:text-ink-900 hover:bg-paper-2 transition-colors cursor-pointer"
+                        >
+                          <XMarkIcon className="w-4 h-4" />
+                        </button>
+                      </Tip>
                     )}
                   </div>
                 )}
@@ -2425,7 +2510,7 @@ export default function DashboardClient({
                           if (next.has(sem)) next.delete(sem); else next.add(sem);
                           return next;
                         })}
-                        className="w-full flex items-center gap-3 py-2 group cursor-pointer"
+                        className="w-full flex items-center gap-3 py-2 group cursor-pointer press-row"
                       >
                         <motion.div animate={{ rotate: semOpen ? 90 : 0 }} transition={springTactile}>
                           <ChevronRightIcon className={`w-4 h-4 transition-colors shrink-0 ${semOpen ? "text-(--accent-text)" : "text-ink-300 group-hover:text-ink-600"}`} strokeWidth={2} />
@@ -2472,7 +2557,7 @@ export default function DashboardClient({
                                         if (next.has(modKey)) next.delete(modKey); else next.add(modKey);
                                         return next;
                                       })}
-                                      className="w-full flex items-center gap-3 px-5 py-4 group cursor-pointer"
+                                      className="w-full flex items-center gap-3 px-5 py-4 group cursor-pointer press-row"
                                     >
                                       <motion.div animate={{ rotate: modOpen ? 90 : 0 }} transition={springTactile}>
                                         <ChevronRightIcon className="w-3.5 h-3.5 text-ink-300 group-hover:text-ink-600 transition-colors shrink-0" />
@@ -2512,12 +2597,14 @@ export default function DashboardClient({
                                                       if (next.has(item.id)) next.delete(item.id); else next.add(item.id);
                                                       return next;
                                                     })}
-                                                    className="w-full flex items-center gap-3 px-5 py-3.5 group cursor-pointer hover:bg-paper-0 transition-colors"
+                                                    className="w-full flex items-center gap-3 px-5 py-3.5 group cursor-pointer hover:bg-paper-0 transition-colors press-row"
                                                   >
                                                     <DocumentTextIcon className="w-3.5 h-3.5 text-ink-300 shrink-0 group-hover:text-ink-600 transition-colors" />
-                                                    <span className="text-sm text-ink-900/80 group-hover:text-ink-900 transition-colors flex-1 text-left leading-snug">
-                                                      {item.subjectSub}
-                                                    </span>
+                                                    <Tip label={item.subjectSub}>
+                                                      <span className="text-sm text-ink-900/80 group-hover:text-ink-900 transition-colors flex-1 text-left leading-snug">
+                                                        {item.subjectSub}
+                                                      </span>
+                                                    </Tip>
                                                     {isDue && (
                                                       <span className="hidden sm:inline text-[9px] font-bold uppercase tracking-[0.12em] px-2 py-0.5 rounded-full badge-due shrink-0">
                                                         {language === "german" ? "Fällig" : "Due"}
@@ -2526,9 +2613,8 @@ export default function DashboardClient({
                                                     {/* 7-dot level progress */}
                                                     <div className="hidden sm:flex items-center gap-0.5 shrink-0">
                                                       {item.generatedLevels.map((generated, l) => (
+                                                        <Tip key={l} label={`Level ${l+1} (${LIB_LEVEL_FULL[l]}): ${l < item.currentLevel ? (language === "german" ? "Bestanden" : "Passed") : l === item.currentLevel ? (language === "german" ? "Aktuell" : "Current") : generated ? (language === "german" ? "Generiert" : "Generated") : (language === "german" ? "Ausstehend" : "Pending")}`}>
                                                         <div
-                                                          key={l}
-                                                          title={`Level ${l+1} (${LIB_LEVEL_FULL[l]}): ${l < item.currentLevel ? (language === "german" ? "Bestanden" : "Passed") : l === item.currentLevel ? (language === "german" ? "Aktuell" : "Current") : generated ? (language === "german" ? "Generiert" : "Generated") : (language === "german" ? "Ausstehend" : "Pending")}`}
                                                           className={`w-[7px] h-[7px] rounded-full transition-all ${
                                                             l < item.currentLevel
                                                               ? "bg-amber-500"
@@ -2537,6 +2623,7 @@ export default function DashboardClient({
                                                                 : "bg-(--line-soft)"
                                                           }`}
                                                         />
+                                                        </Tip>
                                                       ))}
                                                     </div>
                                                     <span className="text-xs text-ink-400 font-medium shrink-0 w-8 text-right">
@@ -2876,7 +2963,7 @@ export default function DashboardClient({
                           return sum + (m ? parseInt(m[1], 10) : 0);
                         }, 0);
                         return (
-                          <p className="text-[13px] text-ink-400 mt-2">
+                          <p className="text-[13px] text-ink-400 mt-2 tnum">
                             {parsedTasks.length} {language === "german" ? (parsedTasks.length === 1 ? "Aufgabe" : "Aufgaben") : (parsedTasks.length === 1 ? "task" : "tasks")}
                             {totalPoints > 0 && <> · {totalPoints} {language === "german" ? "Punkte" : "points"}</>}
                             {" · "}{language === "german" ? "ohne Zeitlimit" : "untimed"}
@@ -2885,35 +2972,38 @@ export default function DashboardClient({
                       })()}
                     </div>
                     <div className="flex flex-wrap items-center gap-2 shrink-0">
+                      <Tip label={language === "german" ? "Live Tutor: kennt deine Vorlesung, das Quiz und deine Entwürfe" : "Live tutor: knows your lecture, the quiz, and your drafts"}>
                       <motion.button
                         {...pressable}
                         onClick={() => setShowTutorPanel(prev => !prev)}
-                        title={language === "german" ? "Live Tutor: kennt deine Vorlesung, das Quiz und deine Entwürfe" : "Live tutor: knows your lecture, the quiz, and your drafts"}
                         className={`flex items-center gap-2 h-9 px-4 text-[13px] font-semibold cursor-pointer rounded-xl transition-colors ${showTutorPanel ? "bg-(--accent-wash-soft) text-(--accent-text-strong) border border-(--accent-border)" : "btn-secondary"}`}
                       >
                         <AcademicCapIcon className="w-4 h-4" strokeWidth={1.6} />
                         Tutor
                       </motion.button>
+                      </Tip>
                       {parsedTasks.length > 0 && !interactive.active && (
+                        <Tip label={language === "german" ? "Interaktiver Modus: Fragen werden vorgelesen, Antworten diktiert" : "Interactive mode: questions read aloud, answers dictated"}>
                         <motion.button
                           {...pressable}
                           onClick={interactive.start}
-                          title={language === "german" ? "Interaktiver Modus: Fragen werden vorgelesen, Antworten diktiert" : "Interactive mode: questions read aloud, answers dictated"}
                           className="btn-secondary flex items-center gap-2 h-9 px-4 text-[13px] font-semibold cursor-pointer"
                         >
                           <MicrophoneIcon className="w-4 h-4" strokeWidth={1.6} />
                           {language === "german" ? "Interaktiv" : "Interactive"}
                         </motion.button>
+                        </Tip>
                       )}
                       {parsedTasks.length > 0 && (
+                        <Tip label={language === "german" ? "Als Druckbogen exportieren" : "Export as print sheet"}>
                         <motion.button
                           {...pressable}
                           onClick={exportQuizForPrint}
-                          title={language === "german" ? "Als Druckbogen exportieren" : "Export as print sheet"}
                           className="btn-secondary flex items-center justify-center w-9 h-9 cursor-pointer"
                         >
                           <PrinterIcon className="w-4 h-4" strokeWidth={1.6} />
                         </motion.button>
+                        </Tip>
                       )}
                     </div>
                   </div>
@@ -2954,19 +3044,27 @@ export default function DashboardClient({
                         : ""}
                     </span>
                     <div className="w-px h-6 bg-(--hairline-card)" />
-                    <button onClick={interactive.previous} disabled={interactive.currentIndex <= 0} title={language === "german" ? "Vorherige Aufgabe" : "Previous task"} className="btn-ghost-icon w-10 h-10 flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer">
-                      <BackwardIcon className="w-4 h-4" strokeWidth={1.6} />
-                    </button>
-                    <button onClick={interactive.togglePause} title={interactive.paused ? (language === "german" ? "Fortsetzen" : "Resume") : "Pause"} className="btn-primary w-12 h-12 flex items-center justify-center cursor-pointer !rounded-[14px]">
-                      {interactive.paused ? <PlayIcon className="w-5 h-5" strokeWidth={1.8} /> : <PauseIcon className="w-5 h-5" strokeWidth={1.8} />}
-                    </button>
-                    <button onClick={interactive.next} title={language === "german" ? "Nächste Aufgabe" : "Next task"} className="btn-ghost-icon w-10 h-10 flex items-center justify-center cursor-pointer">
-                      <ForwardIcon className="w-4 h-4" strokeWidth={1.6} />
-                    </button>
+                    <Tip label={language === "german" ? "Vorherige Aufgabe" : "Previous task"}>
+                      <button onClick={interactive.previous} disabled={interactive.currentIndex <= 0} className="btn-ghost-icon w-10 h-10 flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer">
+                        <BackwardIcon className="w-4 h-4" strokeWidth={1.6} />
+                      </button>
+                    </Tip>
+                    <Tip label={interactive.paused ? (language === "german" ? "Fortsetzen — Leertaste" : "Resume — Space") : (language === "german" ? "Pause — Leertaste" : "Pause — Space")}>
+                      <button onClick={interactive.togglePause} className="btn-primary w-12 h-12 flex items-center justify-center cursor-pointer !rounded-[14px]">
+                        {interactive.paused ? <PlayIcon className="w-5 h-5" strokeWidth={1.8} /> : <PauseIcon className="w-5 h-5" strokeWidth={1.8} />}
+                      </button>
+                    </Tip>
+                    <Tip label={language === "german" ? "Nächste Aufgabe" : "Next task"}>
+                      <button onClick={interactive.next} className="btn-ghost-icon w-10 h-10 flex items-center justify-center cursor-pointer">
+                        <ForwardIcon className="w-4 h-4" strokeWidth={1.6} />
+                      </button>
+                    </Tip>
                     <div className="w-px h-6 bg-(--hairline-card)" />
-                    <button onClick={interactive.stop} title={language === "german" ? "Beenden" : "Stop"} className="btn-ghost-icon w-10 h-10 flex items-center justify-center hover:!text-(--grade-fail-accent) hover:!bg-(--grade-fail-wash) cursor-pointer">
-                      <StopIcon className="w-4 h-4" strokeWidth={1.6} />
-                    </button>
+                    <Tip label={language === "german" ? "Beenden" : "Stop"}>
+                      <button onClick={interactive.stop} className="btn-ghost-icon w-10 h-10 flex items-center justify-center hover:!text-(--grade-fail-accent) hover:!bg-(--grade-fail-wash) cursor-pointer">
+                        <StopIcon className="w-4 h-4" strokeWidth={1.6} />
+                      </button>
+                    </Tip>
                   </motion.div>,
                   document.body
                 )}
@@ -3221,6 +3319,8 @@ export default function DashboardClient({
                             {language === "german"
                               ? "Die Bewertung dauert etwa eine Minute. Dein Entwurf ist auf diesem Gerät gespeichert."
                               : "Grading takes about a minute. Your draft is saved on this device."}
+                            <span className="hidden md:inline"> · </span>
+                            <span className="hidden md:inline-flex items-center gap-1 whitespace-nowrap"><span className="kbd">⌘</span><span className="kbd">↵</span> {language === "german" ? "zum Abschicken" : "to submit"}</span>
                           </p>
                         </div>
                       </div>
@@ -3262,6 +3362,8 @@ export default function DashboardClient({
                           {language === "german"
                             ? "Die Bewertung dauert etwa eine Minute. Dein Entwurf ist auf diesem Gerät gespeichert."
                             : "Grading takes about a minute. Your draft is saved on this device."}
+                          <span className="hidden md:inline"> · </span>
+                          <span className="hidden md:inline-flex items-center gap-1 whitespace-nowrap"><span className="kbd">⌘</span><span className="kbd">↵</span> {language === "german" ? "zum Abschicken" : "to submit"}</span>
                         </p>
                       </div>
                     )}
@@ -3285,12 +3387,14 @@ export default function DashboardClient({
                 >
                   <div className="p-6 border-b border-(--hairline-card) flex justify-between items-center">
                     <h3 className="font-display text-xl font-medium text-ink-900">{language === "german" ? "Video-Archiv" : "Video Archive"}</h3>
-                    <button
-                      onClick={() => setArchiveModalData(null)}
-                      className="w-8 h-8 rounded-full bg-paper-2 hover:bg-paper-2 flex items-center justify-center text-ink-600 hover:text-ink-900 transition-colors cursor-pointer"
-                    >
-                      <XMarkIcon className="w-4 h-4" />
-                    </button>
+                    <Tip label={language === "german" ? "Schließen — Esc" : "Close — Esc"}>
+                      <button
+                        onClick={() => setArchiveModalData(null)}
+                        className="w-8 h-8 rounded-full bg-paper-2 hover:bg-paper-2 flex items-center justify-center text-ink-600 hover:text-ink-900 transition-colors cursor-pointer"
+                      >
+                        <XMarkIcon className="w-4 h-4" />
+                      </button>
+                    </Tip>
                   </div>
                   <div className="p-6 space-y-3 overflow-y-auto custom-scrollbar">
                     {archiveModalData.map((item, idx) => (
@@ -3336,12 +3440,14 @@ export default function DashboardClient({
                     <h3 className="font-display text-xl font-medium text-ink-900">{activeFeedbackItem.subjectSub}</h3>
                     <p className="text-xs text-ink-600 mt-1">{activeFeedbackItem.subjectMain} — Level {activeFeedbackItem.currentLevel + 1}</p>
                   </div>
-                  <button
-                    onClick={() => setActiveFeedbackItem(null)}
-                    className="w-8 h-8 rounded-full bg-paper-2 hover:bg-paper-2 flex items-center justify-center text-ink-600 hover:text-ink-900 transition-colors cursor-pointer"
-                  >
-                    <XMarkIcon className="w-4 h-4" />
-                  </button>
+                  <Tip label={language === "german" ? "Schließen — Esc" : "Close — Esc"}>
+                    <button
+                      onClick={() => setActiveFeedbackItem(null)}
+                      className="w-8 h-8 rounded-full bg-paper-2 hover:bg-paper-2 flex items-center justify-center text-ink-600 hover:text-ink-900 transition-colors cursor-pointer"
+                    >
+                      <XMarkIcon className="w-4 h-4" />
+                    </button>
+                  </Tip>
                 </div>
 
                 {/* Header/Title */}
@@ -3400,7 +3506,7 @@ export default function DashboardClient({
                                   return next;
                                 })}
                                 disabled={!entry.feedback}
-                                className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${entry.feedback ? "cursor-pointer hover:bg-paper-0" : "cursor-default"}`}
+                                className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${entry.feedback ? "cursor-pointer hover:bg-paper-0" : "cursor-default"} press-row`}
                               >
                                 <span className={`text-[9px] font-bold uppercase tracking-[0.12em] px-2 py-0.5 rounded-full border shrink-0 ${entry.passed ? "bg-(--grade-pass-wash) text-(--grade-pass-text) border-(--grade-pass-border)" : "bg-(--grade-fail-wash) text-(--grade-fail-text) border-(--grade-fail-border)"}`}>
                                   {entry.passed ? "PASS" : "REPEAT"}
@@ -3495,9 +3601,11 @@ export default function DashboardClient({
                   <h2 className="font-display text-2xl text-ink-900 tracking-[-0.015em]" style={{ fontWeight: 480 }}>
                     {language === "german" ? "Kalender-Sync" : "Calendar sync"}
                   </h2>
-                  <button onClick={() => setShowCalendarModal(false)} className="text-ink-600 hover:text-ink-900 p-2 transition-colors cursor-pointer">
-                    <XMarkIcon className="w-5 h-5" />
-                  </button>
+                  <Tip label={language === "german" ? "Schließen — Esc" : "Close — Esc"}>
+                    <button onClick={() => setShowCalendarModal(false)} className="text-ink-600 hover:text-ink-900 p-2 transition-colors cursor-pointer">
+                      <XMarkIcon className="w-5 h-5" />
+                    </button>
+                  </Tip>
                 </div>
 
                 <p className="text-sm text-ink-600 mb-7 leading-relaxed">
@@ -3610,12 +3718,14 @@ export default function DashboardClient({
                     {language === "german" ? "Semester, Module, Sprache und Stimme." : "Semester, modules, language, and voice."}
                   </p>
                 </div>
-                <button
-                  onClick={() => setShowSettingsModal(false)}
-                  className="p-2 hover:bg-paper-2 rounded-full transition-colors text-ink-600 hover:text-ink-900 cursor-pointer"
-                >
-                  <XMarkIcon className="w-5 h-5" />
-                </button>
+                <Tip label={language === "german" ? "Schließen — Esc" : "Close — Esc"}>
+                  <button
+                    onClick={() => setShowSettingsModal(false)}
+                    className="p-2 hover:bg-paper-2 rounded-full transition-colors text-ink-600 hover:text-ink-900 cursor-pointer"
+                  >
+                    <XMarkIcon className="w-5 h-5" />
+                  </button>
+                </Tip>
               </div>
 
               <div className="space-y-7">
@@ -3691,12 +3801,11 @@ export default function DashboardClient({
                       const on = resolvedTheme === "ink" ? sw.onInk : sw.onPaper;
                       const selected = appearance.accent === accent;
                       return (
+                        <Tip key={accent} label={ACCENT_COPY[accent].name}>
                         <motion.button
-                          key={accent}
                           whileHover={{ scale: 1.09 }}
                           whileTap={{ scale: 0.94 }}
                           onClick={() => updateAppearance({ accent })}
-                          title={ACCENT_COPY[accent].name}
                           className="w-10 h-10 rounded-full cursor-pointer flex items-center justify-center shrink-0"
                           style={{
                             background: `linear-gradient(165deg, ${g1} 0%, ${g2} 58%, ${g3} 100%)`,
@@ -3710,6 +3819,7 @@ export default function DashboardClient({
                             style={{ color: on, opacity: selected ? 1 : 0, transform: `scale(${selected ? 1 : 0.4})`, transition: "opacity 200ms cubic-bezier(0.16,1,0.3,1), transform 300ms cubic-bezier(0.34,1.56,0.64,1)" }}
                           />
                         </motion.button>
+                        </Tip>
                       );
                     })}
                   </div>
@@ -4034,19 +4144,21 @@ export default function DashboardClient({
                   <p className="caps-label mb-1">Prompts</p>
                   <h3 className="text-[15px] font-semibold text-ink-900 truncate">{promptsModal.title}</h3>
                 </div>
-                <button
-                  onClick={() => setPromptsModal(null)}
-                  className="w-8 h-8 flex items-center justify-center rounded-[10px] text-ink-400 hover:text-ink-900 hover:bg-(--hairline) transition-colors cursor-pointer shrink-0"
-                >
-                  <XMarkIcon className="w-4 h-4" strokeWidth={1.8} />
-                </button>
+                <Tip label={language === "german" ? "Schließen — Esc" : "Close — Esc"}>
+                  <button
+                    onClick={() => setPromptsModal(null)}
+                    className="w-8 h-8 flex items-center justify-center rounded-[10px] text-ink-400 hover:text-ink-900 hover:bg-(--hairline) transition-colors cursor-pointer shrink-0"
+                  >
+                    <XMarkIcon className="w-4 h-4" strokeWidth={1.8} />
+                  </button>
+                </Tip>
               </div>
               <div className="p-4 flex flex-col gap-2">
                 {promptsModal.prompts.map((p) => (
                   <button
                     key={p.label}
                     onClick={() => setPromptModal({ title: `${p.label} — ${promptsModal.title}`, content: p.content })}
-                    className="w-full flex items-center gap-3 bg-paper-0 hover:bg-(--paper-hover) border border-(--hairline-card) rounded-xl px-4 py-3 text-left transition-colors cursor-pointer group/pr"
+                    className="w-full flex items-center gap-3 bg-paper-0 hover:bg-(--paper-hover) border border-(--hairline-card) rounded-xl px-4 py-3 text-left transition-colors cursor-pointer group/pr press-row"
                   >
                     <DocumentTextIcon className="w-4 h-4 text-ink-400 shrink-0" strokeWidth={1.6} />
                     <span className="flex-1 text-[13px] font-medium text-ink-900">{p.label}</span>
@@ -4092,12 +4204,14 @@ export default function DashboardClient({
                   >
                     {language === "german" ? "Kopieren" : "Copy"}
                   </button>
-                  <button
-                    onClick={() => setPromptModal(null)}
-                    className="w-8 h-8 flex items-center justify-center rounded-lg bg-paper-2 hover:bg-paper-2 text-ink-600 hover:text-ink-900 transition-all cursor-pointer"
-                  >
-                    <XMarkIcon className="w-4 h-4" />
-                  </button>
+                  <Tip label={language === "german" ? "Schließen — Esc" : "Close — Esc"}>
+                    <button
+                      onClick={() => setPromptModal(null)}
+                      className="w-8 h-8 flex items-center justify-center rounded-lg bg-paper-2 hover:bg-paper-2 text-ink-600 hover:text-ink-900 transition-all cursor-pointer"
+                    >
+                      <XMarkIcon className="w-4 h-4" />
+                    </button>
+                  </Tip>
                 </div>
               </div>
               {/* Body */}

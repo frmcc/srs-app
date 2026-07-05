@@ -34,11 +34,25 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params;
-    let body: { days?: number };
+    let body: { days?: number; restoreDate?: string };
     try {
       body = await req.json();
     } catch {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+
+    // Undo path (CRAFT.md §8): restore the exact pre-snooze due date.
+    if (body.restoreDate !== undefined) {
+      const restore = new Date(body.restoreDate);
+      if (isNaN(restore.getTime())) {
+        return NextResponse.json({ error: "restoreDate must be a valid date" }, { status: 400 });
+      }
+      const item = await prisma.sRSItem.update({
+        where: { id },
+        data: { nextReviewDate: restore },
+        select: { id: true, nextReviewDate: true, currentLevel: true },
+      });
+      return NextResponse.json(item);
     }
 
     const ALLOWED_DAYS = [1, 3, 7, 14];

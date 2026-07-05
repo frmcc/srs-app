@@ -14,6 +14,7 @@ import {
   XMarkIcon,
 } from "@heroicons/react/24/outline";
 import { AutoGrowTextarea } from "./AutoGrowTextarea";
+import { Tip } from "./Tooltip";
 
 /**
  * Live Tutor — the web twin of the iPad audio tutor, as a slide-over chat next
@@ -286,21 +287,23 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
               </p>
             </div>
             {messages.length > 0 && (
-              <button
-                onClick={clearThread}
-                title={de ? "Gespräch zurücksetzen" : "Reset conversation"}
-                className="btn-ghost-icon w-8 h-8 flex items-center justify-center hover:!text-(--grade-fail-accent) hover:!bg-(--grade-fail-wash) cursor-pointer shrink-0"
-              >
-                <TrashIcon className="w-4 h-4" strokeWidth={1.6} />
-              </button>
+              <Tip label={de ? "Gespräch zurücksetzen" : "Reset conversation"}>
+                <button
+                  onClick={clearThread}
+                  className="btn-ghost-icon w-8 h-8 flex items-center justify-center hover:!text-(--grade-fail-accent) hover:!bg-(--grade-fail-wash) cursor-pointer shrink-0"
+                >
+                  <TrashIcon className="w-4 h-4" strokeWidth={1.6} />
+                </button>
+              </Tip>
             )}
-            <button
-              onClick={onClose}
-              title={de ? "Schließen" : "Close"}
-              className="btn-ghost-icon w-8 h-8 flex items-center justify-center cursor-pointer shrink-0"
-            >
-              <XMarkIcon className="w-4 h-4" strokeWidth={1.6} />
-            </button>
+            <Tip label={de ? "Schließen — Esc" : "Close — Esc"}>
+              <button
+                onClick={onClose}
+                className="btn-ghost-icon w-8 h-8 flex items-center justify-center cursor-pointer shrink-0"
+              >
+                <XMarkIcon className="w-4 h-4" strokeWidth={1.6} />
+              </button>
+            </Tip>
           </div>
 
           {/* Messages */}
