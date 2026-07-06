@@ -49,6 +49,8 @@ export interface GradingResult {
   cleanFeedback: string;
   subject: string;
   interval: string;
+  /** Only set in comprehension mode: the assessor's mastery percentage (0–100). */
+  comprehensionScore?: number | null;
   /**
    * Deferred side effects (Drive doc uploads + NotebookLM video worker).
    * Web route passes this to after(); the shortcut route awaits it directly.
@@ -59,8 +61,17 @@ export interface GradingResult {
 
 type Part = Record<string, unknown>;
 
+/** Pull the assessor's mastery percentage out of the brief; pass/fail midpoint fallback. */
+function parseComprehensionScore(feedback: string, isPass: boolean): number {
+  const head = feedback.slice(0, 1500);
+  const labelled = head.match(/(?:Gesamtbeherrschung|Beherrschung|mastery|comprehension|Verständnis)[^\d%]{0,40}?(\d{1,3})\s*%/i);
+  const anyPct = head.match(/(\d{1,3})\s*%/);
+  const raw = labelled ? parseInt(labelled[1], 10) : anyPct ? parseInt(anyPct[1], 10) : isPass ? 75 : 45;
+  return Math.max(0, Math.min(100, raw));
+}
+
 /** Re-hydrate the lecture material for the graders (Drive download + text fallback for the proxy). */
-async function buildSourceMaterialParts(item: SRSItem, ai: GoogleGenAI): Promise<Part[]> {
+export async function buildSourceMaterialParts(item: SRSItem, ai: GoogleGenAI): Promise<Part[]> {
   const parts: Part[] = [];
   if (!item.sourceMaterialContent) return parts;
 
@@ -127,6 +138,13 @@ export async function runGradingPipeline(opts: {
   submission: GradingSubmission;
   language?: string;
   modelName?: string;
+  /**
+   * Comprehension mode ("Verständnis-Check"): identical examiner pipeline, but
+   * the quiz comes from comprehensionQuizText, the outcome is ONLY the score
+   * (+ pass/repeat color), and the SRS schedule/level/logs stay untouched.
+   * Each run overwrites the previous score.
+   */
+  comprehension?: boolean;
   onProgress?: (step: number, message: string) => void;
 }): Promise<GradingResult> {
   const { itemId, submission } = opts;
@@ -163,7 +181,20 @@ export async function runGradingPipeline(opts: {
 
   // ---- Context ------------------------------------------------------------
   const sourceMaterialParts = await buildSourceMaterialParts(srsItem, ai);
-  const quizQuestions = currentQuizText(srsItem);
+  let quizQuestions: string;
+  if (opts.comprehension) {
+    // Comprehension quizzes live in their own column (raw read: the column was
+    // added after the Prisma client was generated).
+    const compRows = await prisma.$queryRawUnsafe<{ comprehensionQuizText: string | null }[]>(
+      `SELECT comprehensionQuizText FROM SRSItem WHERE id = ?`, itemId
+    );
+    quizQuestions = compRows[0]?.comprehensionQuizText || "";
+    if (!quizQuestions.trim()) {
+      throw new Error("Kein Verständnis-Quiz gefunden — bitte zuerst eines erstellen.");
+    }
+  } else {
+    quizQuestions = currentQuizText(srsItem);
+  }
   // Older quizzes were stored without markers — falling back to the full text is intentional here.
   const studentQuizText = extractSectionOr(quizQuestions, "===STUDENT_QUIZ_START===", "===STUDENT_QUIZ_END===", quizQuestions);
 
@@ -171,7 +202,9 @@ export async function runGradingPipeline(opts: {
   const splitPoint = Math.max(1, Math.floor(totalTasks / 2));
   const startIdx2 = splitPoint + 1;
   const subject = `${srsItem.subjectMain} - ${srsItem.subjectSub}`;
-  const interval = intervalLabelFor(srsItem.currentLevel);
+  const interval = opts.comprehension
+    ? (language === "english" ? "Comprehension check" : "Verständnis-Check")
+    : intervalLabelFor(srsItem.currentLevel);
 
   // ---- Step 0: MATCH/MISMATCH gate ----------------------------------------
   progress(0, "Verifying submission (MATCH/MISMATCH check)...");
@@ -234,6 +267,46 @@ export async function runGradingPipeline(opts: {
     }, (msg) => progress(2, msg), "Chief Assessor (Retry)", useAiWrapper);
     chefFeedback = chefRetry.text || chefFeedback;
     isPass = parseAssessmentDecision(chefFeedback); // still unparseable ⇒ throws DecisionParseError
+  }
+
+  // ---- Comprehension mode: extract the score, save, stop -------------------
+  // The schedule, level, quiz slots, ledger and review log are deliberately
+  // never touched here — the check measures, it doesn't teach the planner.
+  if (opts.comprehension) {
+    progress(3, language === "english" ? "Extracting comprehension score..." : "Verständnis-Wert wird ermittelt...");
+
+    const summaryC = extractSection(chefFeedback, "===ASSESSMENT_SUMMARY_START===", "===ASSESSMENT_SUMMARY_END===");
+    const briefC = extractSection(chefFeedback, "===REMEDIATION_BRIEF_START===", "===REMEDIATION_BRIEF_END===");
+    let compFeedback = "";
+    if (summaryC) compFeedback += summaryC + "\n\n---\n\n";
+    if (briefC) compFeedback += briefC;
+    if (!compFeedback) compFeedback = chefFeedback;
+    const perTaskC1 = extractSection(res1.text, "===QUESTION_ASSESSMENTS_PART_1_START===", "===QUESTION_ASSESSMENTS_PART_1_END===");
+    const perTaskC2 = extractSection(res2.text, "===QUESTION_ASSESSMENTS_PART_2_START===", "===QUESTION_ASSESSMENTS_PART_2_END===");
+    const perTaskC = [perTaskC1, perTaskC2].filter(Boolean).join("\n\n");
+    if (perTaskC) {
+      const headingC = language === "english" ? "# Per-Task Assessment" : "# Bewertung pro Aufgabe";
+      compFeedback += `\n\n---\n\n${headingC}\n\n${perTaskC}`;
+    }
+
+    const comprehensionScore = parseComprehensionScore(compFeedback, isPass);
+
+    progress(4, language === "english" ? "Saving comprehension record..." : "Verständnis-Wert wird gespeichert...");
+    await prisma.$executeRawUnsafe(
+      `UPDATE SRSItem SET comprehensionScore = ?, comprehensionPassed = ?, comprehensionAt = ?, comprehensionFeedback = ? WHERE id = ?`,
+      comprehensionScore, isPass ? 1 : 0, new Date().toISOString(), compFeedback, itemId
+    );
+    const updatedItem = (await prisma.sRSItem.findUnique({ where: { id: itemId } }))!;
+
+    return {
+      updatedItem,
+      isPass,
+      cleanFeedback: compFeedback,
+      subject,
+      interval,
+      comprehensionScore,
+      postActions: async () => {},
+    };
   }
 
   // ---- Step 3: Follow-up material -------------------------------------------

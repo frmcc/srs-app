@@ -15,14 +15,14 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  let body: { itemId?: string; studentAnswers?: string; language?: string; modelName?: string };
+  let body: { itemId?: string; studentAnswers?: string; language?: string; modelName?: string; comprehension?: boolean };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const { itemId, studentAnswers, language, modelName } = body;
+  const { itemId, studentAnswers, language, modelName, comprehension } = body;
   if (!itemId) {
     return NextResponse.json({ error: "Item ID is required" }, { status: 400 });
   }
@@ -47,6 +47,7 @@ export async function POST(req: NextRequest) {
           submission: { text: studentAnswers },
           language,
           modelName,
+          comprehension: comprehension === true,
           onProgress: (step, message) => sendEvent("progress", { step, message }),
         });
 
@@ -54,6 +55,8 @@ export async function POST(req: NextRequest) {
           success: true,
           isPass: result.isPass,
           feedback: result.cleanFeedback,
+          // Only set in comprehension mode — the library rating updates from this.
+          comprehensionScore: result.comprehensionScore ?? null,
           srsItem: result.updatedItem,
         });
 

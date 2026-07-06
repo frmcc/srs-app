@@ -60,6 +60,22 @@ export interface ReviewListItem {
   hasSource: boolean;
   /** The quiz text for the item's CURRENT level (the only one the UI shows). */
   currentQuizText: string;
+  /** Failed attempts per level slot 0–6 (library shows "×N" markers). */
+  failCounts: number[];
+  /** Latest comprehension-check result (library weak-spot quiz); overwritten per run. */
+  comprehensionScore: number | null;
+  comprehensionPassed: boolean | null;
+  comprehensionAt: string | null;
+  comprehensionFeedback: string | null;
+}
+
+/** Row shape of the raw comprehension-column query (columns added post-client-generation). */
+interface ComprehensionRow {
+  id: string;
+  comprehensionScore: number | null;
+  comprehensionPassed: number | boolean | null;
+  comprehensionAt: string | null;
+  comprehensionFeedback: string | null;
 }
 
 /** Current items store {driveFileId,...} in sourceMaterialContent; legacy rows may not. */
@@ -78,6 +94,33 @@ export async function fetchReviewList(): Promise<ReviewListItem[]> {
     orderBy: { nextReviewDate: "asc" },
     select: LIST_SELECT,
   });
+
+  // Failed attempts per item+level (library "×N" markers). One grouped query.
+  const failRows = await prisma.reviewLog.groupBy({
+    by: ["itemId", "level"],
+    where: { passed: false, itemId: { not: null } },
+    _count: { _all: true },
+  });
+  const failMap = new Map<string, number[]>();
+  for (const f of failRows) {
+    if (!f.itemId) continue;
+    const arr = failMap.get(f.itemId) ?? [0, 0, 0, 0, 0, 0, 0];
+    const slot = Math.min(Math.max(f.level, 0), 6);
+    arr[slot] += f._count._all;
+    failMap.set(f.itemId, arr);
+  }
+
+  // Comprehension columns were added after the Prisma client was generated,
+  // so they're read raw until the next `prisma generate`. Overwritten per run.
+  let compMap = new Map<string, ComprehensionRow>();
+  try {
+    const compRows = await prisma.$queryRawUnsafe<ComprehensionRow[]>(
+      `SELECT id, comprehensionScore, comprehensionPassed, comprehensionAt, comprehensionFeedback FROM SRSItem WHERE comprehensionScore IS NOT NULL`
+    );
+    compMap = new Map(compRows.map((c) => [c.id, c]));
+  } catch (err) {
+    console.error("[review-query] comprehension columns unavailable:", err);
+  }
 
   return rows.map((row) => ({
     id: row.id,
@@ -102,5 +145,10 @@ export async function fetchReviewList(): Promise<ReviewListItem[]> {
     ] as [boolean, boolean, boolean, boolean, boolean, boolean, boolean],
     hasSource: hasDownloadableSource(row.sourceMaterialContent),
     currentQuizText: currentQuizText(row),
+    failCounts: failMap.get(row.id) ?? [0, 0, 0, 0, 0, 0, 0],
+    comprehensionScore: compMap.get(row.id)?.comprehensionScore ?? null,
+    comprehensionPassed: compMap.has(row.id) ? Boolean(compMap.get(row.id)?.comprehensionPassed) : null,
+    comprehensionAt: compMap.get(row.id)?.comprehensionAt ?? null,
+    comprehensionFeedback: compMap.get(row.id)?.comprehensionFeedback ?? null,
   }));
 }

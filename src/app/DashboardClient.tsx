@@ -30,6 +30,8 @@ import {
   Bars3Icon,
   AcademicCapIcon,
   ChevronDownIcon,
+  ChevronUpIcon,
+  MinusIcon,
   CloudArrowUpIcon,
   ExclamationTriangleIcon,
   PrinterIcon,
@@ -110,6 +112,13 @@ interface RawReviewItem {
   hasSource: boolean;
   /** Level-correct quiz text, computed server-side (incl. quiz-1 fallback and level>=6 rollover). */
   currentQuizText: string;
+  /** Failed attempts per level slot 0–6 (library "×N" attempt markers). Optional: grade responses ship raw rows without it. */
+  failCounts?: number[];
+  /** Latest Verständnis-Check result — overwritten per run, null until the first one. */
+  comprehensionScore?: number | null;
+  comprehensionPassed?: boolean | null;
+  comprehensionAt?: string | null;
+  comprehensionFeedback?: string | null;
 }
 
 /** Display wrapper around a RawReviewItem produced by formatItems(). */
@@ -130,6 +139,9 @@ interface GradingOutcome {
   feedback: string;
   nextReviewDate: string | null;
   currentLevel: number | null;
+  /** True when this run was a Verständnis-Check — the result screen shows the % instead of levels/dates. */
+  comprehension?: boolean;
+  comprehensionScore?: number | null;
 }
 
 /** One graded review from GET /api/reviews/[id]/history (ReviewLog row). */
@@ -177,6 +189,10 @@ interface NdjsonEvent {
     isPass?: boolean;
     feedback?: string;
     srsItem?: RawReviewItem;
+    /** /api/comprehension only: the freshly generated Verständnis-Check quiz. */
+    quizText?: string;
+    /** /api/grade in comprehension mode only: the run's mastery percentage. */
+    comprehensionScore?: number | null;
   };
 }
 
@@ -565,6 +581,15 @@ export default function DashboardClient({
   const [individualAnswers, setIndividualAnswers] = useState<Record<string, string>>({});
   const [isGrading, setIsGrading] = useState(false);
 
+  // ---- Verständnis-Check (library weak-spot quiz) ---------------------------
+  /** True while the OPEN quiz is a comprehension check — grading then runs with
+   *  `comprehension: true` and never touches schedule, levels or drafts. */
+  const [comprehensionMode, setComprehensionMode] = useState(false);
+  /** In-flight generation (one at a time); message mirrors the NDJSON progress. */
+  const [compGen, setCompGen] = useState<{ itemId: string; message: string } | null>(null);
+  /** Feedback viewer modal for the latest comprehension result of an item. */
+  const [compFeedback, setCompFeedback] = useState<RawReviewItem | null>(null);
+
   // Right-rail pass-rate card (last 30 days) — fetched lazily, non-blocking.
   const [passRate30, setPassRate30] = useState<{ passed: number; total: number } | null>(null);
   useEffect(() => {
@@ -683,6 +708,13 @@ export default function DashboardClient({
   const [expandedLibrarySemesters, setExpandedLibrarySemesters] = useState<Set<number>>(new Set());
   const [expandedLibraryModules, setExpandedLibraryModules] = useState<Set<string>>(new Set());
   const [expandedLibraryItems, setExpandedLibraryItems] = useState<Set<string>>(new Set());
+
+  // Library tab — module management (design 9a): Edit mode shows per-module
+  // remove buttons; deletion is two-step (arm → confirm) and removes ALL
+  // lectures of the module via the per-item DELETE endpoint.
+  const [libraryEditing, setLibraryEditing] = useState(false);
+  const [confirmingDeleteModuleKey, setConfirmingDeleteModuleKey] = useState<string | null>(null);
+  const [deletingModuleKeys, setDeletingModuleKeys] = useState<Record<string, boolean>>({});
 
   // Push notification state
   const [pushPermission, setPushPermission] = useState<string>("default");
@@ -1013,10 +1045,11 @@ export default function DashboardClient({
       if (showSettingsModal) { setShowSettingsModal(false); return; }
       if (activeFeedbackItem) { setActiveFeedbackItem(null); return; }
       if (archiveModalData) { setArchiveModalData(null); return; }
+      if (compFeedback) { setCompFeedback(null); return; }
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [promptModal, promptsModal, showCalendarModal, showSettingsModal, activeFeedbackItem, archiveModalData]);
+  }, [promptModal, promptsModal, showCalendarModal, showSettingsModal, activeFeedbackItem, archiveModalData, compFeedback]);
 
   // The inline "Wirklich löschen?" prompt resets itself if not confirmed.
   useEffect(() => {
@@ -1024,6 +1057,13 @@ export default function DashboardClient({
     const timeoutId = window.setTimeout(() => setConfirmingDeleteId(null), 4000);
     return () => window.clearTimeout(timeoutId);
   }, [confirmingDeleteId]);
+
+  // Armed module-delete confirm (library edit mode) resets itself the same way.
+  useEffect(() => {
+    if (!confirmingDeleteModuleKey) return;
+    const timeoutId = window.setTimeout(() => setConfirmingDeleteModuleKey(null), 4000);
+    return () => window.clearTimeout(timeoutId);
+  }, [confirmingDeleteModuleKey]);
 
   // Armed snooze pills reset themselves if no interval is picked.
   useEffect(() => {
@@ -1105,6 +1145,72 @@ export default function DashboardClient({
       setDeletingIds(prev => {
         const next = { ...prev };
         delete next[id];
+        return next;
+      });
+    }
+  };
+
+  // ── Library controls (design 9a) ───────────────────────────────────────────
+  /** Derived collapse-all control: if ANYTHING is open, close everything; else open every semester + module. */
+  const anyLibraryOpen = expandedLibrarySemesters.size > 0 || expandedLibraryModules.size > 0;
+  const toggleAllLibrary = () => {
+    if (anyLibraryOpen) {
+      setExpandedLibrarySemesters(new Set());
+      setExpandedLibraryModules(new Set());
+    } else {
+      const sems = new Set<number>();
+      const mods = new Set<string>();
+      for (const [sem, modules] of libraryBySemester.entries()) {
+        sems.add(sem);
+        for (const moduleName of modules.keys()) mods.add(`${sem}__${moduleName}`);
+      }
+      setExpandedLibrarySemesters(sems);
+      setExpandedLibraryModules(mods);
+    }
+  };
+
+  /** Edit-mode module delete: two-step confirm, then removes ALL lectures of the module. */
+  const handleDeleteLibraryModule = async (e: React.MouseEvent, modKey: string, lectures: RawReviewItem[]) => {
+    e.stopPropagation();
+    if (deletingModuleKeys[modKey]) return;
+    if (confirmingDeleteModuleKey !== modKey) {
+      setConfirmingDeleteModuleKey(modKey);
+      return;
+    }
+    setConfirmingDeleteModuleKey(null);
+    setDeletingModuleKeys(prev => ({ ...prev, [modKey]: true }));
+    try {
+      const results = await Promise.allSettled(
+        lectures.map(l => fetch(`/api/reviews/${l.id}`, { method: "DELETE" }))
+      );
+      // 404 = already gone on the server — remove it locally either way.
+      const okSet = new Set(
+        lectures
+          .filter((l, i) => {
+            const r = results[i];
+            return r.status === "fulfilled" && (r.value.ok || r.value.status === 404);
+          })
+          .map(l => l.id)
+      );
+      if (okSet.size > 0) {
+        setUpcomingReviews(prev => prev.filter(r => !okSet.has(r.id)));
+        setRawItems(prev => prev.filter(r => !okSet.has(r.id)));
+      }
+      const failedCount = lectures.length - okSet.size;
+      if (failedCount > 0) {
+        addToast("error", language === "german"
+          ? `${failedCount} von ${lectures.length} Vorlesungen konnten nicht gelöscht werden.`
+          : `${failedCount} of ${lectures.length} lectures could not be deleted.`);
+      } else {
+        addToast("success", language === "german" ? "Modul gelöscht." : "Module deleted.");
+      }
+    } catch (err) {
+      console.error(err);
+      addToast("error", language === "german" ? "Fehler beim Löschen des Moduls." : "Failed to delete the module.");
+    } finally {
+      setDeletingModuleKeys(prev => {
+        const next = { ...prev };
+        delete next[modKey];
         return next;
       });
     }
@@ -1215,12 +1321,18 @@ export default function DashboardClient({
   // "user typed something" apart from "prefilled headers only".
   const freeTemplateRef = useRef("");
 
-  const startQuiz = useCallback((review: ReviewCard) => {
+  const startQuiz = useCallback((review: ReviewCard, comprehensionQuizText?: string) => {
     setSelectedReview(review);
+
+    // Verständnis-Check: the freshly generated quiz is passed in directly (the
+    // list payload never carries comprehensionQuizText). Grading then runs with
+    // `comprehension: true` — schedule, levels and drafts stay untouched.
+    const isComprehension = typeof comprehensionQuizText === "string";
+    setComprehensionMode(isComprehension);
 
     // The server already resolved the level-correct quiz text (incl. quiz-1
     // fallback and the level>=6 quiz-7 rollover) into `currentQuizText`.
-    const quizText = review.raw.currentQuizText || "";
+    const quizText = isComprehension ? comprehensionQuizText : review.raw.currentQuizText || "";
 
     // Only display/process student questions
     const studentQuizOnly = extractStudentQuiz(quizText);
@@ -1251,7 +1363,9 @@ export default function DashboardClient({
     // Restore a saved draft (reload / phone lock must not eat typed answers).
     // Only ids that still exist in THIS quiz are merged — stale drafts from a
     // regenerated quiz text can't inject answers into the wrong task.
-    const draft = loadDraft(review.id, review.level);
+    // Comprehension checks NEVER touch drafts: every run is a fresh quiz, and a
+    // stale draft from the level quiz must not leak into (or get eaten by) it.
+    const draft = isComprehension ? null : loadDraft(review.id, review.level);
     let restored = false;
     let freeText = answerTemplate;
     if (draft) {
@@ -1306,6 +1420,9 @@ export default function DashboardClient({
   // Debounced draft autosave — a reload or phone lock must not eat 10 typed answers.
   useEffect(() => {
     if (activeTab !== "quiz" || !selectedReview || isGrading || gradingResult) return;
+    // Comprehension checks are draft-free (see startQuiz) — never let one
+    // overwrite or delete the saved draft of the REAL quiz at this level.
+    if (comprehensionMode) return;
     const { id, level } = selectedReview;
     const timeoutId = window.setTimeout(() => {
       const hasIndividualContent = Object.values(individualAnswers).some(v => v.trim().length > 0);
@@ -1320,7 +1437,7 @@ export default function DashboardClient({
       } catch { /* quota/private mode — drafts are best-effort */ }
     }, 400);
     return () => window.clearTimeout(timeoutId);
-  }, [individualAnswers, studentAnswers, activeTab, selectedReview, isGrading, gradingResult, parsedTasks.length]);
+  }, [individualAnswers, studentAnswers, activeTab, selectedReview, isGrading, gradingResult, parsedTasks.length, comprehensionMode]);
 
   const exportQuizForPrint = () => {
     if (!selectedReview || parsedTasks.length === 0) return;
@@ -1441,7 +1558,10 @@ export default function DashboardClient({
           itemId: selectedReview.id,
           studentAnswers: payloadAnswers,
           language: language,
-          modelName: gradingModel
+          modelName: gradingModel,
+          // Verständnis-Check: same pipeline, but the outcome is only the
+          // score — schedule, levels and logs stay untouched server-side.
+          ...(comprehensionMode ? { comprehension: true } : {}),
         }),
         signal: abortController.signal
       });
@@ -1457,17 +1577,25 @@ export default function DashboardClient({
           setGradingMsg(evt.data.message ?? "");
         } else if (evt.event === "done") {
           setGradingStep(5);
-          setGradingMsg(language === "german" ? "Bewertung abgeschlossen! Zeitplan aktualisiert." : "Grading finished! Scheduling updated.");
+          setGradingMsg(comprehensionMode
+            ? (language === "german" ? "Verständnis-Check abgeschlossen!" : "Comprehension check finished!")
+            : (language === "german" ? "Bewertung abgeschlossen! Zeitplan aktualisiert." : "Grading finished! Scheduling updated."));
           // Graded = answers consumed; the local draft is obsolete either way.
-          clearDraft(selectedReview.id, selectedReview.level);
+          // (Comprehension checks are draft-free — and must not delete the REAL
+          // level draft under the same key.)
+          if (!comprehensionMode) clearDraft(selectedReview.id, selectedReview.level);
           // `srsItem` is the FULL updated row — keep only what the result
           // screen needs and resync the slim list via refetch.
           const nrd = evt.data.srsItem?.nextReviewDate;
           setGradingResult({
             isPass: !!evt.data.isPass,
             feedback: evt.data.feedback ?? evt.data.srsItem?.lastFeedback ?? "",
-            nextReviewDate: nrd ? new Date(nrd).toISOString() : null,
+            // A comprehension run never moves the schedule — showing the (old)
+            // date on the result screen would read as "rescheduled", so drop it.
+            nextReviewDate: comprehensionMode ? null : nrd ? new Date(nrd).toISOString() : null,
             currentLevel: typeof evt.data.srsItem?.currentLevel === "number" ? evt.data.srsItem.currentLevel : null,
+            comprehension: comprehensionMode,
+            comprehensionScore: typeof evt.data.comprehensionScore === "number" ? evt.data.comprehensionScore : null,
           });
           fetchReviews();
         } else if (evt.event === "error") {
@@ -1502,7 +1630,69 @@ export default function DashboardClient({
       window.clearTimeout(timeoutId);
       setIsGrading(false); // never leave the grading spinner stuck
     }
-  }, [selectedReview, isGrading, studentAnswers, parsedTasks, individualAnswers, language, gradingModel, fetchReviews, addToast]);
+  }, [selectedReview, isGrading, studentAnswers, parsedTasks, individualAnswers, language, gradingModel, fetchReviews, addToast, comprehensionMode]);
+
+  /**
+   * Verständnis-Check button (library): stream the quiz generation, then drop
+   * straight into the quiz view with the fresh quiz. One generation at a time.
+   * Abandoning the quiz is harmless — the previous score stays until a new run
+   * is actually graded (overwrite-per-run happens server-side on grading).
+   */
+  const generateComprehension = useCallback(async (item: RawReviewItem) => {
+    if (compGen) return;
+    setCompGen({ itemId: item.id, message: language === "german" ? "Starte Verständnis-Check…" : "Starting comprehension check…" });
+
+    // Hard timeout so a hung connection can't leave the button spinning forever.
+    const abortController = new AbortController();
+    const timeoutId = window.setTimeout(() => abortController.abort(), STREAM_TIMEOUT_MS);
+
+    try {
+      const res = await fetch("/api/comprehension", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ itemId: item.id, language, modelName: gradingModel }),
+        signal: abortController.signal,
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || `Server returned status ${res.status}`);
+      }
+
+      let quizText = "";
+      let errMsg = "";
+      const sawTerminalEvent = await readNdjsonStream(res, (evt) => {
+        if (evt.event === "progress") {
+          setCompGen({ itemId: item.id, message: evt.data.message ?? "" });
+        } else if (evt.event === "done") {
+          quizText = evt.data.quizText ?? "";
+        } else if (evt.event === "error") {
+          errMsg = evt.data.message ?? "Unbekannter Fehler";
+        }
+      });
+      if (errMsg) throw new Error(errMsg);
+      if (!sawTerminalEvent || !quizText.trim()) {
+        throw new Error(language === "german"
+          ? "Verbindung unterbrochen — bitte erneut versuchen."
+          : "Connection lost — please try again.");
+      }
+
+      // Auto-open: reuse the whole quiz machinery with the fresh quiz text.
+      const card = upcomingReviews.find((r) => r.id === item.id) ?? formatItems([item])[0];
+      if (card) startQuiz(card, quizText);
+    } catch (e) {
+      console.error(e);
+      const message = e instanceof DOMException && e.name === "AbortError"
+        ? (language === "german" ? "Zeitüberschreitung — bitte erneut versuchen." : "Timeout — please try again.")
+        : e instanceof Error && e.message
+          ? e.message
+          : (language === "german" ? "Verbindung zum Server fehlgeschlagen." : "Failed to reach the server.");
+      addToast("error", `${language === "german" ? "Verständnis-Check" : "Comprehension check"}: ${message}`);
+    } finally {
+      window.clearTimeout(timeoutId);
+      setCompGen(null);
+    }
+  }, [compGen, language, gradingModel, upcomingReviews, startQuiz, addToast]);
 
   // CRAFT.md §3 — global keyboard shortcuts (companion to the Escape effect
   // above). Lives below startQuiz/handleGrade because const declarations
@@ -1519,7 +1709,7 @@ export default function DashboardClient({
         return;
       }
 
-      const modalOpen = Boolean(promptModal || promptsModal || showCalendarModal || showSettingsModal || activeFeedbackItem || archiveModalData);
+      const modalOpen = Boolean(promptModal || promptsModal || showCalendarModal || showSettingsModal || activeFeedbackItem || archiveModalData || compFeedback);
 
       // ⌘Enter / Ctrl+Enter — submit the quiz. Must also work while typing in an answer box.
       if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
@@ -1558,7 +1748,7 @@ export default function DashboardClient({
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [
-    promptModal, promptsModal, showCalendarModal, showSettingsModal, activeFeedbackItem, archiveModalData,
+    promptModal, promptsModal, showCalendarModal, showSettingsModal, activeFeedbackItem, archiveModalData, compFeedback,
     activeTab, isGrading, gradingResult, parsedTasks, individualAnswers, studentAnswers, upcomingReviews,
     interactiveActive, interactiveTogglePause, startQuiz, handleGrade,
   ]);
@@ -2441,7 +2631,11 @@ export default function DashboardClient({
                       ref={librarySearchRef}
                       type="text"
                       value={librarySearch}
-                      onChange={e => setLibrarySearch(e.target.value)}
+                      onChange={e => {
+                        setLibrarySearch(e.target.value);
+                        // Search force-expands every group — edit mode makes no sense there.
+                        if (e.target.value.trim()) { setLibraryEditing(false); setConfirmingDeleteModuleKey(null); }
+                      }}
                       placeholder={language === "german" ? "Modul oder Vorlesung suchen…" : "Search module or lecture…"}
                       className="input-dark w-full h-12 pl-11 pr-10 text-sm"
                     />
@@ -2458,6 +2652,32 @@ export default function DashboardClient({
                         </button>
                       </Tip>
                     )}
+                  </div>
+                )}
+
+                {/* ── Controls: Edit mode + Collapse/Expand all (design 9a).
+                    Hidden while searching — search force-expands every group. ── */}
+                {rawItems.length > 0 && !librarySearching && (
+                  <div className="flex items-center justify-end gap-1.5 mb-4 -mt-1">
+                    <button
+                      onClick={() => { setLibraryEditing(v => !v); setConfirmingDeleteModuleKey(null); }}
+                      className={`text-[12.5px] font-semibold px-2.5 py-1.5 rounded-[10px] transition-colors cursor-pointer press-row ${libraryEditing ? "text-ink-900 bg-paper-2" : "text-ink-600 hover:text-ink-900"}`}
+                    >
+                      {libraryEditing
+                        ? (language === "german" ? "Fertig" : "Done")
+                        : (language === "german" ? "Bearbeiten" : "Edit")}
+                    </button>
+                    <button
+                      onClick={toggleAllLibrary}
+                      className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-(--accent-text) hover:text-(--accent-text-strong) px-2.5 py-1.5 rounded-[10px] transition-colors cursor-pointer press-row"
+                    >
+                      <motion.span animate={{ rotate: anyLibraryOpen ? 0 : 180 }} transition={springTactile} className="inline-flex">
+                        <ChevronUpIcon className="w-[13px] h-[13px]" strokeWidth={2.2} />
+                      </motion.span>
+                      {anyLibraryOpen
+                        ? (language === "german" ? "Alle einklappen" : "Collapse all")
+                        : (language === "german" ? "Alle ausklappen" : "Expand all")}
+                    </button>
                   </div>
                 )}
 
@@ -2547,6 +2767,8 @@ export default function DashboardClient({
                               {Array.from(modules.entries()).map(([moduleName, lectures]) => {
                                 const modKey = `${sem}__${moduleName}`;
                                 const modOpen = librarySearching || expandedLibraryModules.has(modKey);
+                                const dueCount = lectures.reduce((n, l) => n + (isDueLocal(new Date(l.nextReviewDate), new Date()) ? 1 : 0), 0);
+                                const modDeleting = !!deletingModuleKeys[modKey];
 
                                 return (
                                   <div key={modKey} className="card-surface overflow-hidden">
@@ -2566,9 +2788,63 @@ export default function DashboardClient({
                                       <span className="text-[15px] font-semibold text-ink-900 transition-colors flex-1 text-left truncate">
                                         {moduleName}
                                       </span>
-                                      <span className="text-[11px] text-ink-400 font-medium shrink-0">
-                                        {lectures.length} {language === "german" ? (lectures.length === 1 ? "Vorlesung" : "Vorlesungen") : (lectures.length === 1 ? "lecture" : "lectures")}
-                                      </span>
+                                      {/* Due pill — only while collapsed & not editing (design 9a) */}
+                                      {!modOpen && !libraryEditing && dueCount > 0 && (
+                                        <span className="hidden sm:inline-flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-[0.12em] px-2 py-0.5 rounded-full badge-due shrink-0">
+                                          <span className="w-[5px] h-[5px] rounded-full bg-amber-500" />
+                                          {dueCount} {language === "german" ? "fällig" : "due"}
+                                        </span>
+                                      )}
+                                      {/* Meta (rating + count) hides in edit mode so the row reads as "removable" */}
+                                      {!libraryEditing && (
+                                        <>
+                                          {/* Knowledge rating: Ø of the rated lectures' comprehension %; nothing until the first check */}
+                                          {(() => {
+                                            const rated = lectures.filter((l) => typeof l.comprehensionScore === "number");
+                                            if (rated.length === 0) return null;
+                                            const avg = Math.round(rated.reduce((s, l) => s + (l.comprehensionScore as number), 0) / rated.length);
+                                            return (
+                                              <Tip label={language === "german"
+                                                ? `Wissens-Rating: Ø Verständnis aus ${rated.length} von ${lectures.length} Vorlesungen`
+                                                : `Knowledge rating: avg comprehension of ${rated.length} of ${lectures.length} lectures`}>
+                                                <span className="text-[11px] font-semibold text-ink-400 tnum shrink-0">Ø {avg} %</span>
+                                              </Tip>
+                                            );
+                                          })()}
+                                          <span className="text-[11px] text-ink-400 font-medium shrink-0">
+                                            {lectures.length} {language === "german" ? (lectures.length === 1 ? "Vorlesung" : "Vorlesungen") : (lectures.length === 1 ? "lecture" : "lectures")}
+                                          </span>
+                                        </>
+                                      )}
+                                      {/* Edit mode: circular remove → two-step confirm → busy spinner */}
+                                      {libraryEditing && (
+                                        modDeleting ? (
+                                          <span className="w-[30px] h-[30px] rounded-full flex items-center justify-center bg-(--grade-fail-wash) text-(--grade-fail-text) shrink-0">
+                                            <ArrowPathIcon className="w-3.5 h-3.5 animate-spin" strokeWidth={2} />
+                                          </span>
+                                        ) : confirmingDeleteModuleKey === modKey ? (
+                                          <span
+                                            role="button"
+                                            onClick={(e) => handleDeleteLibraryModule(e, modKey, lectures)}
+                                            className="inline-flex items-center h-[30px] px-3 rounded-full bg-(--grade-fail-wash) text-(--grade-fail-text) border border-(--grade-fail-border) text-xs font-semibold cursor-pointer shrink-0"
+                                          >
+                                            {language === "german"
+                                              ? `${lectures.length} ${lectures.length === 1 ? "Vorlesung" : "Vorlesungen"} löschen?`
+                                              : `Delete ${lectures.length} ${lectures.length === 1 ? "lecture" : "lectures"}?`}
+                                          </span>
+                                        ) : (
+                                          <Tip label={language === "german" ? "Modul entfernen" : "Remove module"}>
+                                            <span
+                                              role="button"
+                                              aria-label={language === "german" ? "Modul entfernen" : "Remove module"}
+                                              onClick={(e) => handleDeleteLibraryModule(e, modKey, lectures)}
+                                              className="w-[30px] h-[30px] rounded-full flex items-center justify-center bg-(--grade-fail-wash) hover:bg-(--grade-fail-border) text-(--grade-fail-text) transition-all cursor-pointer shrink-0 active:scale-90"
+                                            >
+                                              <MinusIcon className="w-[15px] h-[15px]" strokeWidth={2.2} />
+                                            </span>
+                                          </Tip>
+                                        )
+                                      )}
                                     </button>
 
                                     {/* Lecture rows */}
@@ -2605,6 +2881,16 @@ export default function DashboardClient({
                                                         {item.subjectSub}
                                                       </span>
                                                     </Tip>
+                                                    {/* Verständnis-Rating — green/red by the last check's PASS/REPEAT */}
+                                                    {typeof item.comprehensionScore === "number" && (
+                                                      <Tip label={language === "german"
+                                                        ? `Verständnis-Check: ${Math.round(item.comprehensionScore)} % (${item.comprehensionPassed ? "bestanden" : "wiederholen"})`
+                                                        : `Comprehension check: ${Math.round(item.comprehensionScore)} % (${item.comprehensionPassed ? "passed" : "repeat"})`}>
+                                                        <span className={`hidden sm:inline text-[11px] font-semibold tnum shrink-0 ${item.comprehensionPassed ? "text-(--grade-pass-text)" : "text-(--grade-fail-text)"}`}>
+                                                          {Math.round(item.comprehensionScore)} %
+                                                        </span>
+                                                      </Tip>
+                                                    )}
                                                     {isDue && (
                                                       <span className="hidden sm:inline text-[9px] font-bold uppercase tracking-[0.12em] px-2 py-0.5 rounded-full badge-due shrink-0">
                                                         {language === "german" ? "Fällig" : "Due"}
@@ -2629,6 +2915,16 @@ export default function DashboardClient({
                                                     <span className="text-xs text-ink-400 font-medium shrink-0 w-8 text-right">
                                                       L{item.currentLevel + 1}
                                                     </span>
+                                                    {/* Attempt marker: ×2 = second try at the current level (after 1 fail) */}
+                                                    {(() => {
+                                                      const fails = item.failCounts?.[Math.min(item.currentLevel, 6)] ?? 0;
+                                                      if (fails <= 0) return null;
+                                                      return (
+                                                        <Tip label={language === "german" ? `${fails + 1}. Versuch auf diesem Level` : `Attempt ${fails + 1} at this level`}>
+                                                          <span className="text-[10px] font-semibold text-(--grade-fail-text) tnum shrink-0">×{fails + 1}</span>
+                                                        </Tip>
+                                                      );
+                                                    })()}
                                                     <motion.div animate={{ rotate: itemOpen ? 180 : 0 }} transition={springTactile}>
                                                       <ChevronDownIcon className="w-3.5 h-3.5 text-ink-300 group-hover:text-ink-600 transition-colors shrink-0" />
                                                     </motion.div>
@@ -2674,6 +2970,13 @@ export default function DashboardClient({
                                                                   <span className={`text-[9px] leading-none text-center ${l === item.currentLevel ? "text-(--accent-text-strong) font-semibold" : "text-ink-400 font-medium"}`}>
                                                                     {LIB_LEVEL_SHORT[l]}
                                                                   </span>
+                                                                  {(item.failCounts?.[l] ?? 0) > 0 && (
+                                                                    <Tip label={language === "german"
+                                                                      ? `${item.failCounts![l]} Fehlversuch${item.failCounts![l] === 1 ? "" : "e"} auf diesem Level`
+                                                                      : `${item.failCounts![l]} failed attempt${item.failCounts![l] === 1 ? "" : "s"} at this level`}>
+                                                                      <span className="text-[8px] font-bold text-(--grade-fail-text) tnum leading-none">×{item.failCounts![l]}</span>
+                                                                    </Tip>
+                                                                  )}
                                                                 </div>
                                                               ))}
                                                             </div>
@@ -2704,6 +3007,56 @@ export default function DashboardClient({
                                                               {language === "german"
                                                                 ? `${item.generatedLevels.filter(Boolean).length} von 7 Quizzen generiert`
                                                                 : `${item.generatedLevels.filter(Boolean).length} of 7 quizzes generated`}
+                                                            </p>
+                                                          </div>
+
+                                                          {/* Verständnis-Check — on-demand weak-spot quiz; never touches the SRS schedule */}
+                                                          <div>
+                                                            <p className="caps-label mb-2">
+                                                              {language === "german" ? "Verständnis-Check" : "Comprehension check"}
+                                                            </p>
+                                                            <div className="flex flex-wrap items-center gap-2">
+                                                              <button
+                                                                onClick={(e) => { e.stopPropagation(); generateComprehension(item); }}
+                                                                disabled={!!compGen}
+                                                                className="chip chip-amber !cursor-pointer disabled:!cursor-wait disabled:opacity-60"
+                                                              >
+                                                                {compGen?.itemId === item.id ? (
+                                                                  <>
+                                                                    <ArrowPathIcon className="w-3.5 h-3.5 animate-spin" strokeWidth={1.6} />
+                                                                    <span className="max-w-[260px] truncate">{compGen.message}</span>
+                                                                  </>
+                                                                ) : (
+                                                                  <>
+                                                                    <SparklesIcon className="w-3.5 h-3.5" strokeWidth={1.6} />
+                                                                    {typeof item.comprehensionScore === "number"
+                                                                      ? (language === "german" ? "Neuen Check starten" : "Start new check")
+                                                                      : (language === "german" ? "Check starten" : "Start check")}
+                                                                  </>
+                                                                )}
+                                                              </button>
+                                                              {typeof item.comprehensionScore === "number" && (
+                                                                <button
+                                                                  onClick={(e) => { e.stopPropagation(); setCompFeedback(item); }}
+                                                                  className="flex items-center gap-2.5 bg-paper-0 hover:bg-(--paper-hover) rounded-xl border border-(--hairline-card) px-3 py-1.5 transition-colors cursor-pointer group/cf"
+                                                                >
+                                                                  <span className={`text-[9px] font-bold uppercase tracking-[0.12em] px-2 py-0.5 rounded-full border shrink-0 ${item.comprehensionPassed ? "bg-(--grade-pass-wash) text-(--grade-pass-text) border-(--grade-pass-border)" : "bg-(--grade-fail-wash) text-(--grade-fail-text) border-(--grade-fail-border)"}`}>
+                                                                    {item.comprehensionPassed ? (language === "german" ? "Bestanden" : "Passed") : (language === "german" ? "Wiederholen" : "Repeat")}
+                                                                  </span>
+                                                                  <span className={`text-xs font-semibold tnum shrink-0 ${item.comprehensionPassed ? "text-(--grade-pass-text)" : "text-(--grade-fail-text)"}`}>
+                                                                    {Math.round(item.comprehensionScore)} %
+                                                                  </span>
+                                                                  {item.comprehensionAt && (
+                                                                    <span className="text-[11px] text-ink-400 shrink-0">{new Date(item.comprehensionAt).toLocaleDateString()}</span>
+                                                                  )}
+                                                                  <ChevronRightIcon className="w-3.5 h-3.5 text-ink-300 group-hover/cf:text-ink-600 transition-colors shrink-0" strokeWidth={2} />
+                                                                </button>
+                                                              )}
+                                                            </div>
+                                                            <p className="text-[10px] text-ink-300 mt-2">
+                                                              {language === "german"
+                                                                ? "Misst dein tatsächliches Verständnis anhand deiner bisherigen Bewertungen — Zeitplan und Level bleiben unberührt. Jeder Lauf überschreibt das letzte Ergebnis."
+                                                                : "Measures your actual understanding from your assessment history — schedule and levels stay untouched. Each run overwrites the last result."}
                                                             </p>
                                                           </div>
 
@@ -2930,22 +3283,29 @@ export default function DashboardClient({
               >
                 <button
                   onClick={() => {
-                    setActiveTab("dashboard");
+                    setActiveTab(comprehensionMode ? "library" : "dashboard");
                     setSelectedReview(null);
                     setGradingResult(null);
+                    setComprehensionMode(false);
                   }}
                   className="flex items-center gap-2 text-[13px] text-ink-600 hover:text-ink-900 mb-8 transition-colors cursor-pointer group"
                   style={{ fontWeight: 550 }}
                 >
                   <ArrowLeftIcon className="w-4 h-4 transition-transform duration-200 group-hover:-translate-x-0.5" strokeWidth={1.8} />
-                  {language === "german" ? "Dashboard" : "Dashboard"}
+                  {comprehensionMode
+                    ? (language === "german" ? "Bibliothek" : "Library")
+                    : (language === "german" ? "Dashboard" : "Dashboard")}
                 </button>
 
                 <header className="mb-9">
                   <div className="flex items-center gap-2.5 mb-3.5">
                     <span className="caps-label truncate">{selectedReview.subject}</span>
                     <span className="text-ink-300">·</span>
-                    <span className="caps-label whitespace-nowrap">Level {selectedReview.level + 1}</span>
+                    <span className="caps-label whitespace-nowrap">
+                      {comprehensionMode
+                        ? (language === "german" ? "Verständnis-Check" : "Comprehension check")
+                        : <>Level {selectedReview.level + 1}</>}
+                    </span>
                     {interactive.active && (
                       <span className="inline-flex items-center gap-1.5 h-[34px] px-[14px] rounded-full bg-(--accent-wash) border border-(--accent-border-soft) text-(--accent-text-strong) text-[12.5px] font-semibold">
                         <MicrophoneIcon className="w-3.5 h-3.5" strokeWidth={2} />
@@ -3131,11 +3491,13 @@ export default function DashboardClient({
                           {language === "german" ? (
                             step === 1 ? "Gutachter 1 & 2 · lesen parallel" :
                             step === 2 ? "Chef-Gutachter · konsolidiert das Urteil" :
-                            step === 3 ? "Nächstes Level & Video vorbereiten" : "Deine Bewertung speichern"
+                            step === 3 ? (comprehensionMode ? "Verständnis-Wert ermitteln" : "Nächstes Level & Video vorbereiten")
+                                       : (comprehensionMode ? "Ergebnis speichern" : "Deine Bewertung speichern")
                           ) : (
                             step === 1 ? "Examiner 1 & 2 · read in parallel" :
                             step === 2 ? "Head examiner · consolidating the verdict" :
-                            step === 3 ? "Prepare the next level & video" : "Save your record"
+                            step === 3 ? (comprehensionMode ? "Extract the comprehension score" : "Prepare the next level & video")
+                                       : (comprehensionMode ? "Save the result" : "Save your record")
                           )}
                         </motion.div>
                       ))}
@@ -3157,7 +3519,16 @@ export default function DashboardClient({
                               : (language === "german" ? "Wiederholen" : "Repeat")}
                           </span>
                           <h2 className="font-display text-[34px] sm:text-[40px] text-ink-900 mt-4 tracking-[-0.02em] leading-[1.05]" style={{ fontWeight: 470 }}>
-                            {gradingResult.isPass
+                            {gradingResult.comprehension
+                              ? <>
+                                  <span className={`tnum ${gradingResult.isPass ? "text-(--grade-pass-text)" : "text-(--grade-fail-text)"}`}>
+                                    {gradingResult.comprehensionScore !== null && gradingResult.comprehensionScore !== undefined
+                                      ? `${Math.round(gradingResult.comprehensionScore)} %`
+                                      : "— %"}
+                                  </span>{" "}
+                                  <em className="italic">{language === "german" ? "Verständnis." : "comprehension."}</em>
+                                </>
+                              : gradingResult.isPass
                               ? (language === "german"
                                   ? <>Level {gradingResult.currentLevel !== null ? gradingResult.currentLevel + 1 : "—"}, <em className="italic">freigeschaltet.</em></>
                                   : <>Level {gradingResult.currentLevel !== null ? gradingResult.currentLevel + 1 : "—"}, <em className="italic">unlocked.</em></>)
@@ -3165,6 +3536,13 @@ export default function DashboardClient({
                                   ? <>Schauen wir es uns <em className="italic">noch einmal</em> an.</>
                                   : <>Let&apos;s see this one <em className="italic">again.</em></>)}
                           </h2>
+                          {gradingResult.comprehension && (
+                            <p className="text-ink-600 mt-3 text-sm">
+                              {language === "german"
+                                ? "In der Bibliothek aktualisiert — Zeitplan und Level bleiben unberührt."
+                                : "Updated in your library — schedule and levels stay untouched."}
+                            </p>
+                          )}
                           {gradingResult.nextReviewDate && (
                             <p className="text-ink-600 mt-3 text-sm">
                               {gradingResult.isPass
@@ -3206,13 +3584,16 @@ export default function DashboardClient({
                     <div className="flex flex-wrap items-center gap-2.5">
                       <button
                         onClick={() => {
-                          setActiveTab("dashboard");
+                          setActiveTab(gradingResult.comprehension ? "library" : "dashboard");
                           setSelectedReview(null);
                           setGradingResult(null);
+                          setComprehensionMode(false);
                         }}
                         className={`${gradingResult.isPass ? "btn-primary" : "btn-secondary"} h-11 px-6 text-sm cursor-pointer`}
                       >
-                        {language === "german" ? "Zurück zum Dashboard" : "Back to dashboard"}
+                        {gradingResult.comprehension
+                          ? (language === "german" ? "Zurück zur Bibliothek" : "Back to library")
+                          : (language === "german" ? "Zurück zum Dashboard" : "Back to dashboard")}
                       </button>
                       {!gradingResult.isPass && selectedReview.raw.prePodcastUrl?.startsWith("http") && (
                         <a href={selectedReview.raw.prePodcastUrl} target="_blank" rel="noopener noreferrer" className="btn-secondary h-11 px-5 text-sm inline-flex items-center gap-2">
@@ -4168,6 +4549,60 @@ export default function DashboardClient({
                 <p className="text-[11px] text-ink-400 px-1 pt-1.5">
                   {language === "german" ? "Zum Debuggen — öffnet den Prompt-Viewer." : "For debugging — opens the prompt viewer."}
                 </p>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+
+        {/* Verständnis-Check feedback viewer — latest run only (overwritten per run) */}
+        {compFeedback && (
+          <motion.div
+            {...overlayMotion}
+            key="comp-feedback-backdrop"
+            className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center p-4 bg-(--overlay) backdrop-blur-[3px]"
+            onClick={() => setCompFeedback(null)}
+          >
+            <motion.div
+              {...modalPanel}
+              key="comp-feedback-modal"
+              onClick={(e) => e.stopPropagation()}
+              className="card-glass border border-(--line-soft) w-full max-w-2xl max-h-[80dvh] flex flex-col overflow-hidden"
+            >
+              <div className="flex items-start justify-between gap-4 px-6 py-5 border-b border-(--hairline)">
+                <div className="min-w-0">
+                  <p className="caps-label mb-1">{language === "german" ? "Verständnis-Check" : "Comprehension check"}</p>
+                  <h3 className="text-[15px] font-semibold text-ink-900 truncate">{compFeedback.subjectSub}</h3>
+                  <div className="flex items-center gap-2.5 mt-2">
+                    <span className={`text-[9px] font-bold uppercase tracking-[0.12em] px-2 py-0.5 rounded-full border shrink-0 ${compFeedback.comprehensionPassed ? "bg-(--grade-pass-wash) text-(--grade-pass-text) border-(--grade-pass-border)" : "bg-(--grade-fail-wash) text-(--grade-fail-text) border-(--grade-fail-border)"}`}>
+                      {compFeedback.comprehensionPassed ? (language === "german" ? "Bestanden" : "Passed") : (language === "german" ? "Wiederholen" : "Repeat")}
+                    </span>
+                    {typeof compFeedback.comprehensionScore === "number" && (
+                      <span className={`text-xs font-semibold tnum ${compFeedback.comprehensionPassed ? "text-(--grade-pass-text)" : "text-(--grade-fail-text)"}`}>
+                        {Math.round(compFeedback.comprehensionScore)} %
+                      </span>
+                    )}
+                    {compFeedback.comprehensionAt && (
+                      <span className="text-[11px] text-ink-400">{new Date(compFeedback.comprehensionAt).toLocaleDateString()}</span>
+                    )}
+                  </div>
+                </div>
+                <Tip label={language === "german" ? "Schließen — Esc" : "Close — Esc"}>
+                  <button
+                    onClick={() => setCompFeedback(null)}
+                    className="w-8 h-8 flex items-center justify-center rounded-[10px] text-ink-400 hover:text-ink-900 hover:bg-(--hairline) transition-colors cursor-pointer shrink-0"
+                  >
+                    <XMarkIcon className="w-4 h-4" strokeWidth={1.8} />
+                  </button>
+                </Tip>
+              </div>
+              <div className="p-6 md:p-7 overflow-y-auto custom-scrollbar">
+                {compFeedback.comprehensionFeedback ? (
+                  <FeedbackBody text={compFeedback.comprehensionFeedback} size="sm" />
+                ) : (
+                  <p className="text-sm text-ink-400">
+                    {language === "german" ? "Kein Feedback gespeichert." : "No feedback stored."}
+                  </p>
+                )}
               </div>
             </motion.div>
           </motion.div>

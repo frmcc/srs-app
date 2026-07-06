@@ -59,6 +59,14 @@ model SRSItem {
   postPodcastUrl   String?
   videoUrl         String?
   
+  // Comprehension check (library "weak-spot quiz"): latest score only —
+  // each run overwrites. Kept OUT of the SRS schedule and review stats.
+  comprehensionScore    Float?
+  comprehensionPassed   Boolean?
+  comprehensionAt       DateTime?
+  comprehensionFeedback String?
+  comprehensionQuizText String?
+  
   // Relationship to User for future multi-tenant support
   userId           String?
   user             User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
