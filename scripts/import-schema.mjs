@@ -2,9 +2,13 @@ import { createClient } from "@libsql/client";
 import fs from "fs";
 
 const client = createClient({
-  url: "https://tutorsrspersonal-frmcc13.aws-eu-west-1.turso.io",
-  authToken: "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3ODExMDQyNDgsImlkIjoiMDE5ZWIyMTUtYzYwMS03MDE2LTgyOWYtZjJmNzIzNjk3MDAxIiwicmlkIjoiMDE3MzE1YTMtYWM5OC00MjEwLWJlMzAtZTQxNjdhN2Y3NDAwIn0.Mu7Xikwg1IO1F03UmRi-5fUKZiAttTQVnCaGURv7gJ5gc6wgHmA7OlM9Hh8X1qC8SSVMvmf2RDZMirjUrmUrAA",
+  url: process.env.TURSO_DATABASE_URL,
+  authToken: process.env.TURSO_AUTH_TOKEN,
 });
+if (!process.env.TURSO_DATABASE_URL) {
+  console.error("Set TURSO_DATABASE_URL (and TURSO_AUTH_TOKEN) in the environment.");
+  process.exit(1);
+}
 
 async function run() {
   try {

@@ -44,9 +44,17 @@ export function Tip({ label, children, side }: {
   useEffect(() => clear, [clear]);
 
   // Mirror the label into aria-label when the control doesn't bring its own.
+  // Track ownership so we KEEP it in sync when the label changes (toggle buttons
+  // like speak/stop or pause/resume swap their tooltip text) without clobbering
+  // an aria-label the control set itself.
+  const ownsAriaRef = useRef(false);
   useEffect(() => {
     const el = anchorEl();
-    if (el && !el.getAttribute("aria-label")) el.setAttribute("aria-label", label);
+    if (!el) return;
+    if (!el.getAttribute("aria-label") || ownsAriaRef.current) {
+      el.setAttribute("aria-label", label);
+      ownsAriaRef.current = true;
+    }
   }, [anchorEl, label]);
 
   return (

@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
   // fire-and-forget success for a notebook that doesn't exist.
   const item = await prisma.sRSItem.findUnique({
     where: { id: itemId },
-    select: { id: true, prePodcastUrl: true, postPodcastUrl: true, sourceMaterialContent: true },
+    select: { id: true, subjectMain: true, prePodcastUrl: true, postPodcastUrl: true, sourceMaterialContent: true },
   });
   if (!item) {
     return NextResponse.json({ error: "SRS item not found" }, { status: 404 });
@@ -33,6 +33,26 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Kein NotebookLM-Notebook für dieses Item vorhanden." }, { status: 400 });
   }
 
+  // In-flight guard: concurrent generations drive the SAME NotebookLM session and
+  // the second askChat silently drops. Reject a second request while one is still
+  // running for this item+type (recorded as a BackgroundJob).
+  const jobType = `podcast_${podcastType}`;
+  const RECENT_MS = 15 * 60 * 1000;
+  const inFlight = await prisma.backgroundJob.findFirst({
+    where: {
+      itemId,
+      type: jobType,
+      status: { in: ["pending", "processing"] },
+      createdAt: { gte: new Date(Date.now() - RECENT_MS) },
+    },
+  });
+  if (inFlight) {
+    return NextResponse.json({ error: "Für dieses Item läuft bereits eine Podcast-Generierung." }, { status: 409 });
+  }
+  const job = await prisma.backgroundJob.create({
+    data: { type: jobType, status: "processing", subjectMain: item.subjectMain, itemId },
+  });
+
   after(async () => {
     try {
       let source: { text?: string; files?: { name?: string; base64?: string; mimeType: string; path?: string }[] } = {};
@@ -42,8 +62,13 @@ export async function POST(req: NextRequest) {
         /* legacy plain-text column — worker falls back to Drive */
       }
       await generatePodcastWorker(itemId, podcastType, notebookId, source.text, source.files);
+      await prisma.backgroundJob.update({ where: { id: job.id }, data: { status: "done", completedAt: new Date() } });
     } catch (err) {
       console.error("[Background Worker Error]", err);
+      await prisma.backgroundJob.update({
+        where: { id: job.id },
+        data: { status: "error", error: String(err), completedAt: new Date() },
+      }).catch(() => {});
     }
   });
 

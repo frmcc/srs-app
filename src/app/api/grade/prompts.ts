@@ -174,7 +174,7 @@ WICHTIG: Schreibe die einzelnen Aufgabenbewertungen NICHT noch einmal auf! Das S
 AUSGABE EXAKT IN DIESER STRUKTUR:
 
 ===ASSESSMENT_DECISION_START===
-[PASS oder REPEAT]
+[Trage hier NUR dein Urteil ein — genau ein Wort, entweder PASS oder REPEAT, niemals beide]
 ===ASSESSMENT_DECISION_END===
 
 ===ASSESSMENT_SUMMARY_START===

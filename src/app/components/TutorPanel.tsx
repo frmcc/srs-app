@@ -88,12 +88,16 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
   const ttsUrlCacheRef = useRef<Map<string, string>>(new Map());
 
   const abortRef = useRef<AbortController | null>(null);
-  const idRef = useRef(1);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const mountedRef = useRef(false);
+  // Tracks the CURRENTLY displayed module so an in-flight stream can tell whether
+  // the user has since switched away (and must not persist into the wrong thread).
+  const itemIdRef = useRef(itemId);
 
-  // Switch module → load that module's thread.
+  // Switch module → abort any in-flight stream, then load that module's thread.
   useEffect(() => {
+    abortRef.current?.abort();
+    itemIdRef.current = itemId;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- swap persisted thread when the module changes
     setMessages(loadHistory(itemId));
     setInput("");
@@ -116,6 +120,16 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
     const el = scrollRef.current;
     if (el && open) el.scrollTop = el.scrollHeight;
   }, [messages, open, streaming]);
+
+  // Esc closes the panel (the close button advertises "— Esc").
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
 
   const stopSpeaking = useCallback(() => {
     audioRef.current?.pause();
@@ -173,8 +187,12 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
     const text = rawText.trim();
     if (!text || streaming) return;
 
-    const userMsg: TutorMessage = { id: `u${idRef.current++}`, role: "user", text };
-    const modelMsg: TutorMessage = { id: `m${idRef.current++}`, role: "model", text: "" };
+    // Collision-proof ids. A per-mount counter restarted at 1 each mount and
+    // collided with persisted ids (u1/m2…) from a previous mount, so a streamed
+    // reply could overwrite an OLD message and duplicate React keys.
+    const userMsg: TutorMessage = { id: `u-${crypto.randomUUID()}`, role: "user", text };
+    const modelMsg: TutorMessage = { id: `m-${crypto.randomUUID()}`, role: "model", text: "" };
+    const streamItemId = itemId; // the module this exchange belongs to
     const historyForApi = [...messages, userMsg].map((m) => ({ role: m.role, text: m.text }));
 
     setMessages((prev) => [...prev, userMsg, modelMsg]);
@@ -223,14 +241,19 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
       abortRef.current = null;
       if (mountedRef.current) {
         setStreaming(false);
-        setMessages((prev) => {
-          const finalText = acc.trim();
-          const next = finalText
-            ? prev.map((m) => (m.id === modelMsg.id ? { ...m, text: finalText } : m))
-            : prev.filter((m) => m.id !== modelMsg.id); // aborted before any content
-          saveHistory(itemId, next);
-          return next;
-        });
+        // If the user switched modules while this streamed, `prev` now holds the
+        // OTHER module's messages — persisting here would overwrite that thread.
+        // Only commit/persist when we're still on the module this exchange began.
+        if (itemIdRef.current === streamItemId) {
+          setMessages((prev) => {
+            const finalText = acc.trim();
+            const next = finalText
+              ? prev.map((m) => (m.id === modelMsg.id ? { ...m, text: finalText } : m))
+              : prev.filter((m) => m.id !== modelMsg.id); // aborted before any content
+            saveHistory(streamItemId, next);
+            return next;
+          });
+        }
       }
     }
   }, [messages, streaming, itemId, de, buildDrafts]);

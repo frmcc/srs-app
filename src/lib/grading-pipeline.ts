@@ -61,12 +61,18 @@ export interface GradingResult {
 
 type Part = Record<string, unknown>;
 
-/** Pull the assessor's mastery percentage out of the brief; pass/fail midpoint fallback. */
+/**
+ * Pull the assessor's overall mastery percentage out of the summary. Pass ONLY
+ * the summary/brief text here — NOT the appended per-task block, whose
+ * "Beherrschung dieser Aufgabe: N %" lines would otherwise be grabbed as the
+ * overall score. The no-match fallback for a PASS is the prompt's own ≥80%
+ * threshold (a passing check must not render as a failing-looking 75%).
+ */
 function parseComprehensionScore(feedback: string, isPass: boolean): number {
   const head = feedback.slice(0, 1500);
   const labelled = head.match(/(?:Gesamtbeherrschung|Beherrschung|mastery|comprehension|Verständnis)[^\d%]{0,40}?(\d{1,3})\s*%/i);
   const anyPct = head.match(/(\d{1,3})\s*%/);
-  const raw = labelled ? parseInt(labelled[1], 10) : anyPct ? parseInt(anyPct[1], 10) : isPass ? 75 : 45;
+  const raw = labelled ? parseInt(labelled[1], 10) : anyPct ? parseInt(anyPct[1], 10) : isPass ? 80 : 45;
   return Math.max(0, Math.min(100, raw));
 }
 
@@ -159,7 +165,10 @@ export async function runGradingPipeline(opts: {
   const useAiWrapper = (appConfig?.wrapperMode || "all") === "all";
 
   const language = opts.language || appConfig?.language || "german";
-  const languageInstruction = `\n\nCRITICAL: You must generate ALL text, output, and responses strictly in ${language.toUpperCase()}. This applies to every section of the generated content.`;
+  const languageInstruction = `\n\nCRITICAL: You must generate ALL text, output, and responses strictly in ${language.toUpperCase()}. This applies to every section of the generated content.`
+    // Pin the task-heading token so the task counter/split stays reliable across
+    // languages (the counter keys on "Aufgabe N"/"Task N" at the start of a line).
+    + `\n\nWhenever the output contains numbered tasks or questions, label each one at the very start of its own line as "${language === "english" ? "Task" : "Aufgabe"} N:" (N = the task number). Do not use a different word for the task headings.`;
 
   // ---- Submission parts (the student's actual answers) -------------------
   const answerParts: Part[] = [];
@@ -181,14 +190,17 @@ export async function runGradingPipeline(opts: {
 
   // ---- Context ------------------------------------------------------------
   const sourceMaterialParts = await buildSourceMaterialParts(srsItem, ai);
+  // An item that CLAIMS to have source material but produced zero usable parts
+  // (Drive download failed, 0-byte file, missing legacy file) must NOT be graded
+  // — the examiners would reconstruct expected answers from nothing and persist
+  // an arbitrary verdict. Abort so the user can retry; nothing has been written.
+  if (srsItem.sourceMaterialContent && sourceMaterialParts.length === 0) {
+    throw new Error("Vorlesungsmaterial konnte nicht geladen werden — Bewertung abgebrochen. Bitte erneut versuchen.");
+  }
+
   let quizQuestions: string;
   if (opts.comprehension) {
-    // Comprehension quizzes live in their own column (raw read: the column was
-    // added after the Prisma client was generated).
-    const compRows = await prisma.$queryRawUnsafe<{ comprehensionQuizText: string | null }[]>(
-      `SELECT comprehensionQuizText FROM SRSItem WHERE id = ?`, itemId
-    );
-    quizQuestions = compRows[0]?.comprehensionQuizText || "";
+    quizQuestions = srsItem.comprehensionQuizText || "";
     if (!quizQuestions.trim()) {
       throw new Error("Kein Verständnis-Quiz gefunden — bitte zuerst eines erstellen.");
     }
@@ -198,7 +210,10 @@ export async function runGradingPipeline(opts: {
   // Older quizzes were stored without markers — falling back to the full text is intentional here.
   const studentQuizText = extractSectionOr(quizQuestions, "===STUDENT_QUIZ_START===", "===STUDENT_QUIZ_END===", quizQuestions);
 
-  const totalTasks = countTasks(studentQuizText);
+  // Real count via the language-agnostic counter; if it genuinely finds no task
+  // headings, treat the sheet as a single unit (grader 1 covers it, grader 2
+  // no-ops) rather than fabricating 10 phantom tasks the graders would "fail".
+  const totalTasks = countTasks(studentQuizText, 0) || 1;
   const splitPoint = Math.max(1, Math.floor(totalTasks / 2));
   const startIdx2 = splitPoint + 1;
   const subject = `${srsItem.subjectMain} - ${srsItem.subjectSub}`;
@@ -210,7 +225,10 @@ export async function runGradingPipeline(opts: {
   progress(0, "Verifying submission (MATCH/MISMATCH check)...");
   const mismatchCheckRes = await generateContentWithRetry(ai, modelName, {
     contents: [{ role: "user", parts: answerParts as never }],
-    config: { systemInstruction: formatPrompt(GRADE_PROMPTS.mismatch_check, { QUIZ_QUESTIONS: studentQuizText }) + languageInstruction },
+    // Deliberately NO languageInstruction here: this step must emit the control
+    // token MATCH/MISMATCH verbatim. Forcing German makes a compliant model
+    // answer "ÜBEREINSTIMMUNG", which the parser can't read → the gate fails open.
+    config: { systemInstruction: formatPrompt(GRADE_PROMPTS.mismatch_check, { QUIZ_QUESTIONS: studentQuizText }) },
   }, (msg) => progress(0, msg), "Submission Check", useAiWrapper);
 
   const verdict = parseMismatchVerdict(mismatchCheckRes.text);
@@ -235,6 +253,13 @@ export async function runGradingPipeline(opts: {
       config: { systemInstruction: formatPrompt(GRADE_PROMPTS.co_pruefer_2, { TOTAL_TASKS: totalTasks, START_INDEX: startIdx2, SUBJECT: subject, INTERVAL: interval }) + languageInstruction },
     }, (msg) => progress(1, msg), "Co-Prüfer 2", useAiWrapper),
   ]);
+
+  // Guard: if BOTH graders returned nothing (safety-blocked / empty candidates),
+  // the Chief would "consolidate" two empty reports and invent a verdict on zero
+  // evidence, which then gets persisted. Abort instead — nothing is written yet.
+  if (!(res1.text || "").trim() && !(res2.text || "").trim()) {
+    throw new Error("Die Bewertung durch die Co-Prüfer war leer (evtl. blockiert). Bitte Bewertung erneut starten.");
+  }
 
   // ---- Step 2: Chief Assessor ----------------------------------------------
   progress(2, "Chief Assessor: Consolidating final decision & generating brief...");
@@ -263,7 +288,9 @@ export async function runGradingPipeline(opts: {
       contents: [{ role: "user", parts: chefUserParts as never }],
       config: { systemInstruction: formatPrompt(GRADE_PROMPTS.chef_pruefer, { SUBJECT: subject, INTERVAL: interval })
         + languageInstruction
-        + "\n\nWICHTIG: Gib am Ende zwingend einen klaren Entscheidungsblock aus:\n===ASSESSMENT_DECISION_START===\nPASS oder REPEAT\n===ASSESSMENT_DECISION_END===" },
+        // Do NOT print both words together as an example — a model that echoes
+        // the template would produce an ambiguous block. Ask for exactly one.
+        + "\n\nWICHTIG: Beende deine Antwort mit einem Entscheidungsblock, der AUSSCHLIESSLICH dein Urteil enthält — entweder das Wort PASS oder das Wort REPEAT, niemals beide:\n===ASSESSMENT_DECISION_START===\n<hier NUR dein Urteil>\n===ASSESSMENT_DECISION_END===" },
     }, (msg) => progress(2, msg), "Chief Assessor (Retry)", useAiWrapper);
     chefFeedback = chefRetry.text || chefFeedback;
     isPass = parseAssessmentDecision(chefFeedback); // still unparseable ⇒ throws DecisionParseError
@@ -283,20 +310,27 @@ export async function runGradingPipeline(opts: {
     if (!compFeedback) compFeedback = chefFeedback;
     const perTaskC1 = extractSection(res1.text, "===QUESTION_ASSESSMENTS_PART_1_START===", "===QUESTION_ASSESSMENTS_PART_1_END===");
     const perTaskC2 = extractSection(res2.text, "===QUESTION_ASSESSMENTS_PART_2_START===", "===QUESTION_ASSESSMENTS_PART_2_END===");
+    // Score the OVERALL mastery from the summary only, before the per-task block
+    // is appended (per-task "Beherrschung dieser Aufgabe: N %" must not be read
+    // as the overall score).
+    const comprehensionScore = parseComprehensionScore(compFeedback, isPass);
+
     const perTaskC = [perTaskC1, perTaskC2].filter(Boolean).join("\n\n");
     if (perTaskC) {
       const headingC = language === "english" ? "# Per-Task Assessment" : "# Bewertung pro Aufgabe";
       compFeedback += `\n\n---\n\n${headingC}\n\n${perTaskC}`;
     }
 
-    const comprehensionScore = parseComprehensionScore(compFeedback, isPass);
-
     progress(4, language === "english" ? "Saving comprehension record..." : "Verständnis-Wert wird gespeichert...");
-    await prisma.$executeRawUnsafe(
-      `UPDATE SRSItem SET comprehensionScore = ?, comprehensionPassed = ?, comprehensionAt = ?, comprehensionFeedback = ? WHERE id = ?`,
-      comprehensionScore, isPass ? 1 : 0, new Date().toISOString(), compFeedback, itemId
-    );
-    const updatedItem = (await prisma.sRSItem.findUnique({ where: { id: itemId } }))!;
+    const updatedItem = await prisma.sRSItem.update({
+      where: { id: itemId },
+      data: {
+        comprehensionScore,
+        comprehensionPassed: isPass,
+        comprehensionAt: new Date(),
+        comprehensionFeedback: compFeedback,
+      },
+    });
 
     return {
       updatedItem,
@@ -382,7 +416,13 @@ export async function runGradingPipeline(opts: {
     const [lmResult, nextQuizRes] = await Promise.all([lmPromptCall, nextQuizCall]);
     lmRes = lmResult;
     nextQuizText = nextQuizRes.text || "";
-    newLedgerText = extractSection(nextQuizText, "===COVERAGE_LEDGER_START===", "===COVERAGE_LEDGER_END===");
+    // Only the standard-stage prompts (quiz_tag_3/7/21/60) emit a coverage
+    // ledger. mastery_quiz does not, so skip extraction there — attempting it
+    // just logs a spurious "failed to extract marker" every mastery run and
+    // leaves the ledger frozen (which is the intended behaviour at mastery).
+    if (generationStage <= 4) {
+      newLedgerText = extractSection(nextQuizText, "===COVERAGE_LEDGER_START===", "===COVERAGE_LEDGER_END===");
+    }
   } else {
     // REPEAT: remedial quiz attacking the diagnosed misconceptions
     const remedialQuizParts: Part[] = [...sourceMaterialParts];
@@ -431,15 +471,18 @@ export async function runGradingPipeline(opts: {
     cleanFeedback += `\n\n---\n\n${heading}\n\n${perTaskFeedback}`;
   }
 
-  // A PASS must never advance the student over an EMPTY quiz slot. If it did,
-  // currentQuizText() silently falls back to Quiz 1, the schedule has already
-  // jumped to the long interval, and the regression stays invisible until the
-  // next (possibly 60/180/365-day) review. Nothing has been written yet, so
-  // throwing here is fully reversible — the item stays at its current level and
-  // the user just re-runs grading. (REPEAT is unaffected: it keeps the current
-  // level, and the `if (nextQuizText)` guard below already protects its slot.)
-  if (isPass && !nextQuizText.trim()) {
-    throw new Error("Das nächste Quiz wurde leer generiert — es wurde nichts gespeichert. Bitte starte die Bewertung erneut.");
+  // The follow-up quiz must be a REAL quiz (non-empty AND actually containing
+  // tasks), for BOTH outcomes:
+  //  - PASS over an empty/refusal quiz would advance the level while
+  //    currentQuizText() silently falls back to Quiz 1, invisible for weeks; a
+  //    non-empty refusal ("Ich kann kein Quiz erstellen…") would also slip past
+  //    a mere emptiness check and then wedge the module behind the MISMATCH gate.
+  //  - REPEAT over an empty remedial quiz would reschedule the student onto the
+  //    exact quiz they just failed, with no signal that generation failed.
+  // Nothing is persisted yet, so throwing is fully reversible — the user re-runs.
+  const nextQuizBody = extractSectionOr(nextQuizText, "===STUDENT_QUIZ_START===", "===STUDENT_QUIZ_END===", nextQuizText);
+  if (!nextQuizBody.trim() || countTasks(nextQuizBody, 0) === 0) {
+    throw new Error("Das nächste Quiz wurde leer oder ungültig generiert — es wurde nichts gespeichert. Bitte starte die Bewertung erneut.");
   }
 
   // ---- Step 4: persist (with optimistic lock) ---------------------------------
@@ -459,18 +502,22 @@ export async function runGradingPipeline(opts: {
     if (newLedgerText) updatePayload.coverageLedger = newLedgerText;
   }
   if (nextQuizText) updatePayload[targetQuizField] = nextQuizText;
+  // Bump the version so the optimistic lock below catches ANY concurrent grading
+  // of this item — including REPEAT-vs-REPEAT, which leaves currentLevel unchanged.
+  updatePayload.version = { increment: 1 };
 
-  // Optimistic lock: only update if nobody else graded this item in the meantime.
-  const updated = await prisma.sRSItem.updateMany({
-    where: { id: itemId, currentLevel: srsItem.currentLevel },
-    data: updatePayload,
-  });
-  if (updated.count === 0) throw new ConcurrentGradingError();
+  // Atomic: the optimistic-locked item update and the review-log insert either
+  // both commit or neither does. Previously the log insert was a swallowed
+  // best-effort call, so a failure (or an instance reclaim) could advance the
+  // level with no log row — permanently under-counting stats/fail-history.
+  const updatedItem = await prisma.$transaction(async (tx) => {
+    const updated = await tx.sRSItem.updateMany({
+      where: { id: itemId, version: srsItem.version },
+      data: updatePayload,
+    });
+    if (updated.count === 0) throw new ConcurrentGradingError();
 
-  const updatedItem = (await prisma.sRSItem.findUnique({ where: { id: itemId } }))!;
-
-  try {
-    await prisma.reviewLog.create({
+    await tx.reviewLog.create({
       data: {
         subjectMain: srsItem.subjectMain,
         subjectSub: srsItem.subjectSub,
@@ -483,9 +530,9 @@ export async function runGradingPipeline(opts: {
         userId: srsItem.userId,
       },
     });
-  } catch (logError) {
-    console.error("[grading] Failed to create review log:", logError);
-  }
+
+    return (await tx.sRSItem.findUnique({ where: { id: itemId } }))!;
+  });
 
   sendPushNotification({
     title: `${isPass ? "✅" : "🔄"} Bewertung fertig: ${isPass ? "PASS" : "REPEAT"}`,

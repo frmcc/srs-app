@@ -20,12 +20,15 @@ export default async function LoginPage({
 
   const { error, callbackUrl, next } = await searchParams;
 
-  // Only allow same-site relative targets (open-redirect guard).
-  // `next` is accepted for backwards compatibility with old bookmarked
-  // /login?next=… URLs from the previous password login.
+  // Only allow same-site relative targets (open-redirect guard). Must start with
+  // a single "/" and contain no backslashes — "/\evil.com" and "//evil.com" are
+  // both browser-normalised to another origin, so reject them.
   const rawTarget = callbackUrl || next;
   const safeCallbackUrl =
-    rawTarget && rawTarget.startsWith("/") && !rawTarget.startsWith("//")
+    rawTarget &&
+    rawTarget.startsWith("/") &&
+    !rawTarget.startsWith("//") &&
+    !rawTarget.includes("\\")
       ? rawTarget
       : "/";
 

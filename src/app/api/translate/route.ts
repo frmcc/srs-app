@@ -37,21 +37,34 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "No feedback stored for this entry." }, { status: 404 });
   }
 
-  const targetName = target === "german" ? "German" : "English";
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-  const res = await generateContentWithRetry(ai, "gemini-3.1-flash-lite", {
-    contents: [{ role: "user", parts: [{ text: feedback }] }],
-    config: {
-      systemInstruction:
-        `Translate the following study-feedback brief into ${targetName}. ` +
-        `Preserve the exact structure: headings, bullet points, line breaks, PASS/REPEAT keywords and numbers stay as they are. ` +
-        `If the text is already entirely in ${targetName}, return it unchanged. Output ONLY the translated text — no preamble.`,
-    },
-  }, () => {}, "Feedback Translation", false);
+  if (!process.env.GEMINI_API_KEY) {
+    console.error("[translate] GEMINI_API_KEY is not configured");
+    return NextResponse.json({ error: "Translation is not available." }, { status: 503 });
+  }
 
-  const translated = (res.text ?? "").trim();
-  if (!translated) {
+  const targetName = target === "german" ? "German" : "English";
+  // The model call and its failure modes must be caught: without this, a thrown
+  // error (network, upstream failure) became an unhandled 500 with a generic body
+  // instead of the intended graceful 502.
+  try {
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    const res = await generateContentWithRetry(ai, "gemini-3.1-flash-lite", {
+      contents: [{ role: "user", parts: [{ text: feedback }] }],
+      config: {
+        systemInstruction:
+          `Translate the following study-feedback brief into ${targetName}. ` +
+          `Preserve the exact structure: headings, bullet points, line breaks, PASS/REPEAT keywords and numbers stay as they are. ` +
+          `If the text is already entirely in ${targetName}, return it unchanged. Output ONLY the translated text — no preamble.`,
+      },
+    }, () => {}, "Feedback Translation", false);
+
+    const translated = (res.text ?? "").trim();
+    if (!translated) {
+      return NextResponse.json({ error: "Translation failed." }, { status: 502 });
+    }
+    return NextResponse.json({ translated });
+  } catch (e) {
+    console.error("[translate] generation failed:", e);
     return NextResponse.json({ error: "Translation failed." }, { status: 502 });
   }
-  return NextResponse.json({ translated });
 }

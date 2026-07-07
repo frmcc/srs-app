@@ -152,6 +152,10 @@ export function useInteractiveQuiz({ tasks, language = "German", dictationMode =
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const ttsCacheRef = useRef<Map<number, Promise<string>>>(new Map());
   const blobUrlsRef = useRef<string[]>([]);
+  // In-flight TTS fetch controllers, so cleanup()/stop() can abort them —
+  // otherwise a fetch resolving AFTER cleanup pushes a blob URL into the emptied
+  // array and leaks it (and wastes a paid TTS call).
+  const ttsControllersRef = useRef<Set<AbortController>>(new Set());
   // Keep the active utterance referenced — Chrome garbage-collects it mid-speech otherwise.
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
@@ -186,6 +190,7 @@ export function useInteractiveQuiz({ tasks, language = "German", dictationMode =
   const recGotResultRef = useRef(false);
 
   // Mutually-recursive orchestration stored in refs (kept in sync below).
+  const advanceLockRef = useRef(false);
   const advanceRef = useRef<() => void>(() => {});
   const playRef = useRef<(i: number) => void>(() => {});
   const listenRef = useRef<(i: number) => void>(() => {});
@@ -214,6 +219,7 @@ export function useInteractiveQuiz({ tasks, language = "German", dictationMode =
     if (cached) return cached;
     const p: Promise<string> = (async () => {
       const ctrl = new AbortController();
+      ttsControllersRef.current.add(ctrl);
       const timeout = setTimeout(() => ctrl.abort(), 25000); // never hang the "loading" state on a slow/stuck TTS
       try {
         const res = await fetch("/api/tts", {
@@ -235,6 +241,7 @@ export function useInteractiveQuiz({ tasks, language = "German", dictationMode =
         return url;
       } finally {
         clearTimeout(timeout);
+        ttsControllersRef.current.delete(ctrl);
       }
     })();
     // A FAILED request must not poison the cache: evict it so replays and
@@ -494,6 +501,11 @@ export function useInteractiveQuiz({ tasks, language = "German", dictationMode =
       teardownRecognition();
       if (recorderRef.current && !pollTimerRef.current) {
         pollTimerRef.current = setInterval(() => transcribeRef.current(i), 2500);
+      } else if (!recorderRef.current) {
+        // No recognition AND no recorder (e.g. the mic prompt was denied): nothing
+        // can capture input. Surface an error instead of hanging forever on the
+        // "listening" phase with no engine running.
+        setError("Mikrofon nicht verfügbar — bitte Zugriff erlauben, oder nutze den „Nächste“-Button.");
       }
     },
     [teardownRecognition],
@@ -698,6 +710,10 @@ export function useInteractiveQuiz({ tasks, language = "German", dictationMode =
   const cleanup = useCallback(() => {
     stopListening();
     cancelSynthesis();
+    // Abort in-flight TTS fetches so their .then doesn't push a blob URL into the
+    // now-cleared array (leak) after the session ended.
+    ttsControllersRef.current.forEach((c) => c.abort());
+    ttsControllersRef.current.clear();
     if (micPromiseRef.current) {
       micPromiseRef.current.then((s) => s?.getTracks().forEach((t) => t.stop())).catch(() => {});
       micPromiseRef.current = null;
@@ -732,6 +748,13 @@ export function useInteractiveQuiz({ tasks, language = "German", dictationMode =
   }, [cleanup, setPhase]);
 
   const advance = useCallback(() => {
+    // Re-entrancy guard: the Forward button isn't disabled, and a voice trigger
+    // ("nächste Aufgabe") can fire alongside a click — without this, two calls
+    // in one tick would step the index by 2 and silently SKIP a question.
+    if (advanceLockRef.current) return;
+    advanceLockRef.current = true;
+    setTimeout(() => { advanceLockRef.current = false; }, 250);
+
     // Fire the one-shot AI transcription for the task we're leaving (hybrid /
     // gemini). Non-blocking: the jump to the next question happens immediately.
     maybeFinalizeCurrent();

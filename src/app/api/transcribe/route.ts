@@ -19,14 +19,27 @@ export async function POST(req: NextRequest) {
   } catch {
     return Response.json({ text: "", error: "Invalid body" }, { status: 400 });
   }
-  
+
   if (buf.length === 0) {
     return Response.json({ text: "" });
   }
+  // The Speech v2 sync API caps inline audio at ~10 MB / ~1 min; reject oversized
+  // clips up front instead of buffering + round-tripping them to be rejected.
+  if (buf.length > 10 * 1024 * 1024) {
+    return Response.json({ text: "", error: "Audio too large" }, { status: 413 });
+  }
 
   try {
-    // We dynamically get the project ID that the SpeechClient resolves from its environment.
-    const projectId = await speechClient.getProjectId().catch(() => "auto-drive-494409");
+    // Resolve the GCP project from the environment/ADC. Do NOT bake a specific
+    // project id in as a fallback — a wrong one silently mis-routes recognition.
+    const projectId =
+      process.env.GOOGLE_CLOUD_PROJECT ||
+      process.env.GCLOUD_PROJECT ||
+      (await speechClient.getProjectId().catch(() => ""));
+    if (!projectId) {
+      console.error("[transcribe] could not resolve GCP project id");
+      return Response.json({ text: "", error: "Transcription unavailable" }, { status: 503 });
+    }
 
     const [response] = await speechClient.recognize({
       // We use the europe-west4 location because the "chirp" model is not available in global

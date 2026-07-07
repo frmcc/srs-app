@@ -28,6 +28,11 @@ export const metadata: Metadata = {
     statusBarStyle: "black-translucent",
     title: "SRS Quiz",
   },
+  // iOS ignores manifest icons; supply an apple-touch-icon so "Add to Home
+  // Screen" uses the app icon instead of a page screenshot. (public/icon-192.png)
+  icons: {
+    apple: "/icon-192.png",
+  },
 };
 
 // Mobile + iPad: real device width, allow pinch-zoom (a11y), and extend under
@@ -51,8 +56,10 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <head>
-        <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta name="theme-color" content="#F6F3EC" />
+        {/* NB: do NOT hand-write <meta name="theme-color"> or
+            "apple-mobile-web-app-capable" here — they are emitted by the
+            Metadata/Viewport exports above; duplicating them produced two tags
+            and the appearance script below could update the wrong one. */}
         {/* Appearance no-flash script — sets data-theme/data-accent BEFORE first
             paint from localStorage, resolves "auto" live via matchMedia, and
             exposes window.__srsAppearance for the Settings UI (APPEARANCE.md). */}

@@ -10,14 +10,21 @@ export function escapeICS(text: string): string {
     .replace(/\\/g, "\\\\")
     .replace(/;/g, "\\;")
     .replace(/,/g, "\\,")
-    .replace(/\n/g, "\\n");
+    // Collapse ALL newline forms (incl. a bare \r) to the literal "\n" escape.
+    // A raw carriage return left in a property value splits the line mid-value
+    // and makes strict parsers (Apple Calendar) reject the whole feed.
+    .replace(/\r\n|\r|\n/g, "\\n");
 }
 
-/** All-day date: YYYYMMDD (local time). */
+/**
+ * All-day date: YYYYMMDD in UTC. The server runs in UTC and nextReviewDate is
+ * computed in UTC, so formatting with local components would shift dates near
+ * midnight by a day. Use UTC components to match.
+ */
 export function formatICSDate(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
+  const y = date.getUTCFullYear();
+  const m = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(date.getUTCDate()).padStart(2, "0");
   return `${y}${m}${d}`;
 }
 

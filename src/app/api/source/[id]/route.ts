@@ -54,6 +54,6 @@ export async function GET(
     });
   } catch (err) {
     console.error("[source] Failed to serve source PDF:", err);
-    return new Response(err instanceof Error ? err.message : "Internal Server Error", { status: 500 });
+    return new Response("Internal Server Error", { status: 500 });
   }
 }

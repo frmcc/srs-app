@@ -306,6 +306,15 @@ function parseFeedbackSummary(feedback: string): { decision: "PASS" | "REPEAT" |
   return { decision, mastery, snippet };
 }
 
+/** Small stable content hash (djb2) for cache keys — keying on text LENGTH
+ *  collided two different briefs of equal length onto the same cached
+ *  translation. */
+function hashText(text: string): string {
+  let h = 5381;
+  for (let i = 0; i < text.length; i++) h = ((h << 5) + h + text.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+}
+
 /** Crude language sniff for feedback briefs — decides whether to auto-translate. */
 function detectFeedbackLanguage(text: string): "german" | "english" | "unknown" {
   const sample = text.slice(0, 1200);
@@ -505,9 +514,15 @@ export default function DashboardClient({
   const [rawItems, setRawItems] = useState<RawReviewItem[]>(initialItems ?? []);
   /** True only on first mount when we have no SSR items — shows skeleton cards while the first API fetch runs. */
   const [isLoadingReviews, setIsLoadingReviews] = useState(initialItems.length === 0);
+  /** True when the last /api/reviews fetch FAILED — distinct from "empty library". */
+  const [reviewsError, setReviewsError] = useState(false);
   /** Cards whose study-materials section is expanded. */
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState("dashboard");
+  // Mirror of activeTab for reading the CURRENT tab inside async callbacks/timers
+  // without capturing a stale value.
+  const activeTabRef = useRef(activeTab);
+  useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationModel, setGenerationModel] = useState("gemini-3.5-flash");
   const [gradingModel, setGradingModel] = useState("gemini-3.5-flash");
@@ -685,12 +700,17 @@ export default function DashboardClient({
   /** Per-history-entry translations, keyed `${logId}:${targetLang}`. */
   const [historyTranslations, setHistoryTranslations] = useState<Record<string, string>>({});
   const [historyTranslating, setHistoryTranslating] = useState<Record<string, boolean>>({});
+  // Guards for the auto-translate effect kept in REFS (not the effect deps).
+  // Previously the effect depended on the very state it wrote, so setting the
+  // "translating" flag re-fired the effect, which cancelled its own in-flight
+  // request — the flag then stayed true forever and the entry spun endlessly.
+  const historyInFlightRef = useRef<Set<string>>(new Set());
+  const historyDoneRef = useRef<Set<string>>(new Set());
   const [showCalendarModal, setShowCalendarModal] = useState(false);
   const [calendarUrlCopied, setCalendarUrlCopied] = useState(false);
   const [archiveModalData, setArchiveModalData] = useState<{level: number, url: string, date?: string}[] | null>(null);
 
   // Podcast State
-  const [generatingPodcasts, setGeneratingPodcasts] = useState<Record<string, boolean>>({});
 
   // Prompt viewer modal (podcast prompts + video scripts)
   const [promptModal, setPromptModal] = useState<{ title: string; content: string } | null>(null);
@@ -777,11 +797,14 @@ export default function DashboardClient({
       }
 
       const subJson = sub.toJSON();
-      await fetch("/api/push/subscribe", {
+      const res = await fetch("/api/push/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ endpoint: subJson.endpoint, keys: subJson.keys }),
       });
+      // Only claim success if the SERVER stored the subscription — otherwise the
+      // bell would show "on" while no push row exists and nothing ever arrives.
+      if (!res.ok) throw new Error(`subscribe failed: HTTP ${res.status}`);
       setPushSubscribed(true);
       addToast("success", language === "german" ? "Mitteilungen aktiviert." : "Notifications enabled.");
     } catch (err) {
@@ -798,11 +821,12 @@ export default function DashboardClient({
         if (sub) {
           const endpoint = sub.endpoint;
           await sub.unsubscribe();
-          await fetch("/api/push/subscribe", {
+          const res = await fetch("/api/push/subscribe", {
             method: "DELETE",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ endpoint }),
           });
+          if (!res.ok) throw new Error(`unsubscribe failed: HTTP ${res.status}`);
         }
         setPushSubscribed(false);
         addToast("success", language === "german" ? "Mitteilungen deaktiviert." : "Notifications disabled.");
@@ -817,6 +841,13 @@ export default function DashboardClient({
 
   // Guards against overlapping refetches (mount + focus + interval can race).
   const fetchInFlightRef = useRef(false);
+  // If a refetch is requested while one is in flight, remember it and run once
+  // more when the current one settles — dropping it silently could leave stale
+  // SRS state after a grade/generate resync.
+  const fetchDirtyRef = useRef(false);
+  // Ids deleted optimistically; filtered out of any refetch result until the
+  // list no longer contains them, so an in-flight GET can't resurrect a card.
+  const deletedIdsRef = useRef<Set<string>>(new Set());
 
   // Ensures the ?quizId= deep-link is consumed exactly once — not on every
   // subsequent upcomingReviews update (focus-refetch, post-grade refresh, etc).
@@ -826,29 +857,53 @@ export default function DashboardClient({
   const librarySearchRef = useRef<HTMLInputElement | null>(null);
 
   const fetchReviews = useCallback(async () => {
-    if (fetchInFlightRef.current) return;
+    if (fetchInFlightRef.current) {
+      // Coalesce: mark dirty so we run exactly once more after the current one.
+      fetchDirtyRef.current = true;
+      return;
+    }
     fetchInFlightRef.current = true;
     try {
       const res = await fetch('/api/reviews');
       if (!res.ok) throw new Error(`Server returned status ${res.status}`);
       const data = await res.json();
       if (Array.isArray(data)) {
+        // Drop any items we just deleted optimistically (an in-flight GET that
+        // started before the DELETE could otherwise re-add them). Once the
+        // server stops returning an id, forget it.
+        const deleted = deletedIdsRef.current;
+        const filtered = deleted.size ? data.filter((it: { id: string }) => !deleted.has(it.id)) : data;
+        for (const id of Array.from(deleted)) {
+          if (!data.some((it: { id: string }) => it.id === id)) deleted.delete(id);
+        }
         startTransition(() => {
-          setUpcomingReviews(formatItems(data));
-          setRawItems(data);
+          setUpcomingReviews(formatItems(filtered));
+          setRawItems(filtered);
+          setReviewsError(false);
         });
       }
     } catch (err) {
-      // Background resync — stay quiet, the next focus/interval retries.
+      // Distinguish a fetch failure from a genuinely empty library so the UI can
+      // show a retry affordance instead of the "upload your first lecture" state.
       console.error("Failed to refresh reviews:", err);
+      setReviewsError(true);
     } finally {
       fetchInFlightRef.current = false;
       setIsLoadingReviews(false);
+      if (fetchDirtyRef.current) {
+        fetchDirtyRef.current = false;
+        // Re-run the queued refetch on the next tick.
+        setTimeout(() => { void fetchReviewsRef.current?.(); }, 0);
+      }
     }
   }, [startTransition]);
+  // Stable handle so the coalesced re-run above can call the latest fetchReviews.
+  const fetchReviewsRef = useRef<null | (() => Promise<void>)>(null);
+  useEffect(() => { fetchReviewsRef.current = fetchReviews; }, [fetchReviews]);
 
   // Always refetch on mount and whenever the tab regains focus/visibility.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- kicks off the async list load
     fetchReviews();
     const onFocus = () => fetchReviews();
     const onVisibilityChange = () => {
@@ -912,7 +967,10 @@ export default function DashboardClient({
 
   // While any podcast is still rendering server-side ("Wird generiert"), poll
   // every 60s (only while the tab is visible) so links appear without a reload.
-  const isPendingUrl = (url: string | null) => !url || !url.startsWith("http");
+  // NOTE: a NULL url means "no notebook was ever created" — it will never become
+  // an http link, so it must NOT count as pending (that drove a permanent poll).
+  // Only a non-null, not-yet-http placeholder counts as pending.
+  const isPendingUrl = (url: string | null) => !!url && !url.startsWith("http");
   const hasPendingPodcast = upcomingReviews.some(
     r => isPendingUrl(r.raw.prePodcastUrl) || isPendingUrl(r.raw.postPodcastUrl)
   );
@@ -945,6 +1003,24 @@ export default function DashboardClient({
     return () => { cancelled = true; };
   }, [activeFeedbackItem]);
 
+  // Keep the OPEN feedback / comprehension modals pointed at the LIVE item.
+  // They capture a RawReviewItem object reference; a background refetch replaces
+  // rawItems with fresh objects, so without this the modal would keep rendering
+  // stale lastFeedback / comprehension numbers until reopened.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- returns the SAME ref when unchanged, so no cascade/loop
+    setActiveFeedbackItem((cur) => {
+      if (!cur) return cur;
+      const live = rawItems.find((r) => r.id === cur.id);
+      return live && live !== cur ? live : cur;
+    });
+    setCompFeedback((cur) => {
+      if (!cur) return cur;
+      const live = rawItems.find((r) => r.id === cur.id);
+      return live && live !== cur ? live : cur;
+    });
+  }, [rawItems]);
+
   /** Opens the feedback brief with fresh translation state. */
   const openFeedbackItem = useCallback((item: RawReviewItem) => {
     setFeedbackTranslation(null);
@@ -968,7 +1044,7 @@ export default function DashboardClient({
         if (!cancelled) { setFeedbackTranslation(null); setFeedbackTranslating(false); }
         return;
       }
-      const cacheKey = `srs-fb-tr:${item.id}:${target}:${fb.length}`;
+      const cacheKey = `srs-fb-tr:${item.id}:${target}:${hashText(fb)}`;
       try {
         const cached = localStorage.getItem(cacheKey);
         if (cached) { if (!cancelled) setFeedbackTranslation(cached); return; }
@@ -1004,17 +1080,20 @@ export default function DashboardClient({
         if (cancelled) return;
         if (!expandedHistoryIds.has(entry.id) || !entry.feedback) continue;
         const trKey = `${entry.id}:${target}`;
-        if (historyTranslations[trKey] !== undefined || historyTranslating[trKey]) continue;
+        // Guards live in refs so this loop never re-triggers its own effect.
+        if (historyDoneRef.current.has(trKey) || historyInFlightRef.current.has(trKey)) continue;
         const detected = detectFeedbackLanguage(entry.feedback);
         if (detected === "unknown" || detected === target) continue;
-        const cacheKey = `srs-fb-tr:log:${entry.id}:${target}:${entry.feedback.length}`;
+        const cacheKey = `srs-fb-tr:log:${entry.id}:${target}:${hashText(entry.feedback)}`;
         let cached: string | null = null;
         try { cached = localStorage.getItem(cacheKey); } catch { /* private mode */ }
         if (cached) {
           const hit = cached;
+          historyDoneRef.current.add(trKey);
           setHistoryTranslations(prev => ({ ...prev, [trKey]: hit }));
           continue;
         }
+        historyInFlightRef.current.add(trKey);
         setHistoryTranslating(prev => ({ ...prev, [trKey]: true }));
         try {
           const res = await fetch("/api/translate", {
@@ -1023,17 +1102,23 @@ export default function DashboardClient({
             body: JSON.stringify({ logId: entry.id, target }),
           });
           const data = await res.json();
-          if (!cancelled && data.translated) {
+          if (data.translated) {
+            historyDoneRef.current.add(trKey);
             setHistoryTranslations(prev => ({ ...prev, [trKey]: data.translated }));
             try { localStorage.setItem(cacheKey, data.translated); } catch { /* quota */ }
           }
         } catch { /* quiet — the original stays readable */ }
-        finally { if (!cancelled) setHistoryTranslating(prev => ({ ...prev, [trKey]: false })); }
+        finally {
+          // Always clear the in-flight guard + spinner, even if the effect was
+          // superseded — otherwise the entry could never retry.
+          historyInFlightRef.current.delete(trKey);
+          setHistoryTranslating(prev => ({ ...prev, [trKey]: false }));
+        }
       }
     };
     run();
     return () => { cancelled = true; };
-  }, [expandedHistoryIds, feedbackHistory, language, historyTranslations, historyTranslating]);
+  }, [expandedHistoryIds, feedbackHistory, language]);
 
   // Global Escape key — closes whichever modal is currently on top.
   useEffect(() => {
@@ -1132,6 +1217,8 @@ export default function DashboardClient({
       const res = await fetch(`/api/reviews/${id}`, { method: "DELETE" });
       if (res.ok || res.status === 404) {
         // 404 = already gone on the server — remove it locally either way.
+        // Record the id so an in-flight background refetch can't re-add the card.
+        deletedIdsRef.current.add(id);
         setUpcomingReviews(prev => prev.filter(r => r.id !== id));
         setRawItems(prev => prev.filter(r => r.id !== id));
         addToast("success", language === "german" ? "Modul gelöscht." : "Module deleted.");
@@ -1193,6 +1280,8 @@ export default function DashboardClient({
           .map(l => l.id)
       );
       if (okSet.size > 0) {
+        // Record ids so an in-flight background refetch can't re-add the cards.
+        okSet.forEach((id) => deletedIdsRef.current.add(id));
         setUpcomingReviews(prev => prev.filter(r => !okSet.has(r.id)));
         setRawItems(prev => prev.filter(r => !okSet.has(r.id)));
       }
@@ -1216,35 +1305,6 @@ export default function DashboardClient({
     }
   };
 
-  const handleGeneratePodcast = async (e: React.MouseEvent, reviewId: string, podcastType: "pre" | "post") => {
-    e.stopPropagation();
-    const stateKey = `${reviewId}-${podcastType}`;
-    if (generatingPodcasts[stateKey]) return;
-    setGeneratingPodcasts(prev => ({ ...prev, [stateKey]: true }));
-    try {
-      const res = await fetch("/api/podcast/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ itemId: reviewId, podcastType })
-      });
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || "Failed to start generation");
-      }
-      addToast("success", language === "german"
-        ? "Podcast-Generierung gestartet (ca. 3–5 Minuten). Der Link erscheint automatisch in der Liste."
-        : "Podcast generation started (about 3-5 minutes). The link will appear in the list automatically.");
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to start generation";
-      addToast("error", `${language === "german" ? "Fehler" : "Error"}: ${msg}`);
-    } finally {
-      // Always re-enable the button. On success the 60s poll swaps it for the
-      // audio link once the URL lands; the short delay keeps the "Gestartet…"
-      // confirmation visible. Previously this only reset on error, so a
-      // successful start left the button stuck on "Gestartet…" until reload.
-      setTimeout(() => setGeneratingPodcasts(prev => ({ ...prev, [stateKey]: false })), 5000);
-    }
-  };
 
   /** Persist module presets; shared by add/remove handlers in the settings modal. */
   const savePresets = (newPresets: string[], onSuccess?: (saved: string[]) => void) => {
@@ -1398,22 +1458,29 @@ export default function DashboardClient({
   }, [language, addToast]);
 
   useEffect(() => {
-    if (processedQuizIdRef.current) return;
-    if (upcomingReviews.length > 0 && typeof window !== "undefined") {
-      const params = new URLSearchParams(window.location.search);
-      const quizId = params.get("quizId");
-      if (quizId) {
-        const review = upcomingReviews.find(r => r.id === quizId);
-        if (review) {
-          processedQuizIdRef.current = true;
-          window.history.replaceState({}, document.title, window.location.pathname);
-          // eslint-disable-next-line react-hooks/set-state-in-effect -- runs once (guarded by processedQuizIdRef); opens the ?quizId= deep link
-          startQuiz(review);
-        }
-      } else {
-        processedQuizIdRef.current = true;
-      }
+    if (processedQuizIdRef.current || typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const quizId = params.get("quizId");
+    // No deep link → nothing to consume.
+    if (!quizId) {
+      processedQuizIdRef.current = true;
+      return;
     }
+    // Wait until the list has loaded before deciding (an empty list can't match).
+    if (upcomingReviews.length === 0) return;
+
+    // Consume the deep link EXACTLY ONCE now — whether or not the item is found.
+    // Leaving it armed let a later background refetch (that finally brings the
+    // item into the list) call startQuiz mid-other-quiz. Strip only quizId,
+    // preserving any other query params.
+    processedQuizIdRef.current = true;
+    params.delete("quizId");
+    const qs = params.toString();
+    window.history.replaceState({}, document.title, window.location.pathname + (qs ? `?${qs}` : ""));
+
+    const review = upcomingReviews.find(r => r.id === quizId);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- runs once (guarded by processedQuizIdRef); opens the ?quizId= deep link
+    if (review) startQuiz(review);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot deep-link opener: intentionally keyed only on upcomingReviews; the open is guarded by processedQuizIdRef
   }, [upcomingReviews]);
 
@@ -1489,11 +1556,14 @@ export default function DashboardClient({
           fetchReviews();
           setTimeout(() => {
             setIsGenerating(false);
-            setActiveTab("dashboard");
             setTopicInput("");
             setSubjectInput(modulePresets[0] ?? "");
             setTextInput("");
             setUploadedFiles([]);
+            // Only auto-navigate if the user is still on the upload flow — don't
+            // yank them back to the dashboard if they've moved on (e.g. ⌘K into
+            // the library) during the 3s success screen.
+            if (activeTabRef.current === "upload") setActiveTab("dashboard");
           }, 3000);
         } else if (evt.event === "error") {
           const msg = evt.data.message ?? "Unbekannter Fehler";
@@ -1540,6 +1610,12 @@ export default function DashboardClient({
     }
 
     if (!payloadAnswers.trim()) return;
+
+    // Stop any live interactive (hands-free) session before grading — otherwise
+    // the mic stays hot through the grading + result screens and, in gemini/
+    // degraded mode, keeps streaming audio to /api/transcribe. stopInteractive is
+    // idempotent, so calling it when idle is a no-op.
+    stopInteractive();
 
     setIsGrading(true);
     setGradingStep(0);
@@ -1630,7 +1706,7 @@ export default function DashboardClient({
       window.clearTimeout(timeoutId);
       setIsGrading(false); // never leave the grading spinner stuck
     }
-  }, [selectedReview, isGrading, studentAnswers, parsedTasks, individualAnswers, language, gradingModel, fetchReviews, addToast, comprehensionMode]);
+  }, [selectedReview, isGrading, studentAnswers, parsedTasks, individualAnswers, language, gradingModel, fetchReviews, addToast, comprehensionMode, stopInteractive]);
 
   /**
    * Verständnis-Check button (library): stream the quiz generation, then drop
@@ -2244,34 +2320,32 @@ export default function DashboardClient({
                                                     <SpeakerWaveIcon className="w-[13px] h-[13px]" strokeWidth={1.6} />
                                                     {de ? "Audio · vorher" : "Audio · before"}
                                                   </a>
-                                                ) : (
-                                                  <button
-                                                    onClick={(e) => handleGeneratePodcast(e, review.id, "pre")}
-                                                    disabled={!!generatingPodcasts[`${review.id}-pre`]}
-                                                    className="chip chip-dashed !cursor-pointer hover:!text-ink-600 disabled:!cursor-wait"
-                                                  >
+                                                ) : review.raw.prePodcastUrl ? (
+                                                  <span className="chip chip-dashed">
                                                     <SpeakerWaveIcon className="w-[13px] h-[13px]" strokeWidth={1.6} />
-                                                    {generatingPodcasts[`${review.id}-pre`]
-                                                      ? (de ? "Audio · vorher — gestartet…" : "Audio · before — started…")
-                                                      : (de ? "Audio · vorher — erstellen" : "Audio · before — generate")}
-                                                  </button>
+                                                    {de ? "Audio · vorher — wird erstellt" : "Audio · before — generating"}
+                                                  </span>
+                                                ) : (
+                                                  <span className="chip chip-dashed">
+                                                    <SpeakerWaveIcon className="w-[13px] h-[13px]" strokeWidth={1.6} />
+                                                    {de ? "Audio · vorher — keins" : "Audio · before — none"}
+                                                  </span>
                                                 )}
                                                 {review.raw.postPodcastUrl && review.raw.postPodcastUrl.startsWith("http") ? (
                                                   <a href={review.raw.postPodcastUrl} target="_blank" rel="noopener noreferrer" className="chip">
                                                     <SpeakerWaveIcon className="w-[13px] h-[13px]" strokeWidth={1.6} />
                                                     {de ? "Audio · nachher" : "Audio · after"}
                                                   </a>
-                                                ) : (
-                                                  <button
-                                                    onClick={(e) => handleGeneratePodcast(e, review.id, "post")}
-                                                    disabled={!!generatingPodcasts[`${review.id}-post`]}
-                                                    className="chip chip-dashed !cursor-pointer hover:!text-ink-600 disabled:!cursor-wait"
-                                                  >
+                                                ) : review.raw.postPodcastUrl ? (
+                                                  <span className="chip chip-dashed">
                                                     <SpeakerWaveIcon className="w-[13px] h-[13px]" strokeWidth={1.6} />
-                                                    {generatingPodcasts[`${review.id}-post`]
-                                                      ? (de ? "Audio · nachher — gestartet…" : "Audio · after — started…")
-                                                      : (de ? "Audio · nachher — erstellen" : "Audio · after — generate")}
-                                                  </button>
+                                                    {de ? "Audio · nachher — wird erstellt" : "Audio · after — generating"}
+                                                  </span>
+                                                ) : (
+                                                  <span className="chip chip-dashed">
+                                                    <SpeakerWaveIcon className="w-[13px] h-[13px]" strokeWidth={1.6} />
+                                                    {de ? "Audio · nachher — keins" : "Audio · after — none"}
+                                                  </span>
                                                 )}
                                                 {!isWaitingForNewVideo && latestVideoUrl && latestVideoUrl.startsWith("http") ? (
                                                   <a href={latestVideoUrl} target="_blank" rel="noopener noreferrer" className="chip">
@@ -2691,8 +2765,31 @@ export default function DashboardClient({
                   </div>
                 )}
 
+                {/* ── Fetch-error state (distinct from empty) ─────────────── */}
+                {rawItems.length === 0 && !isLoadingReviews && reviewsError && (
+                  <div className="card-surface p-12 md:p-16 flex flex-col items-center text-center">
+                    <div className="w-[52px] h-[52px] rounded-2xl bg-paper-2 flex items-center justify-center mb-6">
+                      <BookOpenIcon className="w-6 h-6 text-ink-400" strokeWidth={1.6} />
+                    </div>
+                    <h3 className="font-display text-[22px] text-ink-900 mb-2.5" style={{ fontWeight: 480 }}>
+                      {language === "german" ? "Konnte nicht geladen werden" : "Couldn't load your library"}
+                    </h3>
+                    <p className="text-ink-600 text-sm leading-relaxed max-w-sm">
+                      {language === "german"
+                        ? "Beim Laden ist etwas schiefgelaufen. Prüfe deine Verbindung und versuche es erneut."
+                        : "Something went wrong loading your data. Check your connection and try again."}
+                    </p>
+                    <button
+                      onClick={() => { setIsLoadingReviews(true); fetchReviews(); }}
+                      className="btn-primary h-11 px-6 text-sm mt-7 cursor-pointer"
+                    >
+                      {language === "german" ? "Erneut versuchen" : "Try again"}
+                    </button>
+                  </div>
+                )}
+
                 {/* ── Empty state ─────────────────────────────────────────── */}
-                {rawItems.length === 0 && !isLoadingReviews && (
+                {rawItems.length === 0 && !isLoadingReviews && !reviewsError && (
                   <div className="card-surface p-12 md:p-16 flex flex-col items-center text-center">
                     <div className="w-[52px] h-[52px] rounded-2xl bg-paper-2 flex items-center justify-center mb-6">
                       <BookOpenIcon className="w-6 h-6 text-ink-400" strokeWidth={1.6} />
@@ -3105,17 +3202,11 @@ export default function DashboardClient({
                                                                     <SpeakerWaveIcon className="w-3.5 h-3.5" strokeWidth={1.6} />
                                                                     {language === "german" ? "Audio · vorher" : "Audio · before"}
                                                                   </a>
-                                                                ) : item.prePodcastPrompt ? (
-                                                                  <button
-                                                                    onClick={(e) => { e.stopPropagation(); handleGeneratePodcast(e, item.id, "pre"); }}
-                                                                    disabled={!!generatingPodcasts[`${item.id}-pre`]}
-                                                                    className="chip chip-dashed !cursor-pointer hover:!text-ink-600 disabled:!cursor-wait"
-                                                                  >
+                                                                ) : item.prePodcastUrl ? (
+                                                                  <span className="chip chip-dashed">
                                                                     <SpeakerWaveIcon className="w-3.5 h-3.5" strokeWidth={1.6} />
-                                                                    {generatingPodcasts[`${item.id}-pre`]
-                                                                      ? (language === "german" ? "Audio · vorher — gestartet…" : "Audio · before — started…")
-                                                                      : (language === "german" ? "Audio · vorher — erstellen" : "Audio · before — generate")}
-                                                                  </button>
+                                                                    {language === "german" ? "Audio · vorher — wird erstellt" : "Audio · before — generating"}
+                                                                  </span>
                                                                 ) : null}
                                                                 {item.postPodcastUrl && item.postPodcastUrl.startsWith("http") ? (
                                                                   <a
@@ -3127,17 +3218,11 @@ export default function DashboardClient({
                                                                     <SpeakerWaveIcon className="w-3.5 h-3.5" strokeWidth={1.6} />
                                                                     {language === "german" ? "Audio · nachher" : "Audio · after"}
                                                                   </a>
-                                                                ) : item.postPodcastPrompt ? (
-                                                                  <button
-                                                                    onClick={(e) => { e.stopPropagation(); handleGeneratePodcast(e, item.id, "post"); }}
-                                                                    disabled={!!generatingPodcasts[`${item.id}-post`]}
-                                                                    className="chip chip-dashed !cursor-pointer hover:!text-ink-600 disabled:!cursor-wait"
-                                                                  >
+                                                                ) : item.postPodcastUrl ? (
+                                                                  <span className="chip chip-dashed">
                                                                     <SpeakerWaveIcon className="w-3.5 h-3.5" strokeWidth={1.6} />
-                                                                    {generatingPodcasts[`${item.id}-post`]
-                                                                      ? (language === "german" ? "Audio · nachher — gestartet…" : "Audio · after — started…")
-                                                                      : (language === "german" ? "Audio · nachher — erstellen" : "Audio · after — generate")}
-                                                                  </button>
+                                                                    {language === "german" ? "Audio · nachher — wird erstellt" : "Audio · after — generating"}
+                                                                  </span>
                                                                 ) : null}
                                                                 {(() => {
                                                                   const vurl = latestVideoUrlOf(item.videoUrl);

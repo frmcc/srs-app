@@ -5,7 +5,7 @@ import { sendPushNotification } from "@/lib/push";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
-import { createHash } from "crypto";
+import { createHash, randomUUID } from "crypto";
 
 export const maxDuration = 300; // 5 minutes max for background processing
 
@@ -43,36 +43,48 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No content or files provided" }, { status: 400 });
     }
 
-    // Idempotency against double-tapped Shortcuts / retries: a DETERMINISTIC job
-    // id from the submission's content (course, topic, text, each file's
-    // name+size) inside a 60-second bucket. An identical resubmit within the same
-    // minute collapses onto the same id — caught here, or via the unique-PK guard
-    // on create() below if two race — instead of creating a duplicate module.
-    // Keys on CONTENT, so two different lectures hash differently and are never
-    // merged; an intentional re-upload a minute later lands in a fresh bucket.
+    // Idempotency against double-tapped Shortcuts / retries. The id is derived
+    // from a CONTENT hash (course, topic, text, each file's name+size) so two
+    // different lectures never merge. To catch double-taps that straddle a clock
+    // boundary — the old fixed 60-second bucket missed those and created a
+    // duplicate module — we look up ANY recent job with the same content hash in
+    // a 5-minute SLIDING window, not just an exact-bucket match. A genuine
+    // re-upload later (outside the window) still creates a fresh job.
     const fileSig = files.map((f) => `${f.name}:${f.size}`).join("|");
-    const bucket = Math.floor(Date.now() / 60_000);
-    const idemJobId =
-      "qg_" +
-      createHash("sha256")
-        .update([subjectMain, subjectSub, textContent, fileSig, bucket].join(" "))
-        .digest("hex")
-        .slice(0, 40);
-    const existingJob = await prisma.backgroundJob.findUnique({ where: { id: idemJobId }, select: { id: true } });
-    if (existingJob) {
+    const contentHash = createHash("sha256")
+      .update([subjectMain, subjectSub, textContent, fileSig].join(" "))
+      .digest("hex")
+      .slice(0, 40);
+    const DEDUP_WINDOW_MS = 5 * 60 * 1000;
+    const recentDuplicate = await prisma.backgroundJob.findFirst({
+      where: {
+        id: { startsWith: `qg_${contentHash}` },
+        createdAt: { gte: new Date(Date.now() - DEDUP_WINDOW_MS) },
+        status: { in: ["pending", "processing", "done"] },
+      },
+      orderBy: { createdAt: "desc" },
+      select: { id: true },
+    });
+    if (recentDuplicate) {
       return NextResponse.json({
         success: true,
-        jobId: existingJob.id,
+        jobId: recentDuplicate.id,
         deduplicated: true,
         message: `Generierung für "${subjectMain}" läuft bereits — du erhältst eine Benachrichtigung, sobald sie fertig ist.`,
       });
     }
+    // Deterministic PK still includes a minute bucket so two requests in the SAME
+    // instant collide on create() (P2002 guard below) rather than both inserting.
+    const idemJobId = `qg_${contentHash}_${Math.floor(Date.now() / 60_000)}`;
 
     const uploadsDir = path.join(os.tmpdir(), "srs-uploads");
     await fs.mkdir(uploadsDir, { recursive: true });
     for (const file of files) {
       if (file.size === 0) continue;
-      const uniqueFileName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
+      // Random suffix so two same-named files (or two same-instant requests)
+      // never collide on one path — a shared path let a dedup-loser's cleanup
+      // delete a file the winner's worker still needed.
+      const uniqueFileName = `${Date.now()}-${randomUUID()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
       const localFilePath = path.join(uploadsDir, uniqueFileName);
       await fs.writeFile(localFilePath, Buffer.from(await file.arrayBuffer()));
       // No base64 copy — the generator reads from disk; keeping a second copy

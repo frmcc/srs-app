@@ -30,9 +30,14 @@ export async function sendPushNotification(payload: {
         );
       } catch (err: unknown) {
         const error = err as Error & { statusCode?: number };
-        // Remove expired/invalid subscriptions
+        // Remove expired/invalid subscriptions — but match on the STALE KEYS we
+        // actually failed against, not just the row id. If the browser
+        // re-subscribed on the same endpoint in the meantime (upsert keeps the
+        // id, fresh keys), a delete-by-id would clobber the now-valid row.
         if (error.statusCode === 404 || error.statusCode === 410) {
-          await prisma.pushSubscription.delete({ where: { id: sub.id } });
+          await prisma.pushSubscription.deleteMany({
+            where: { endpoint: sub.endpoint, p256dh: sub.p256dh, auth: sub.auth },
+          }).catch(() => {});
         }
         throw error;
       }

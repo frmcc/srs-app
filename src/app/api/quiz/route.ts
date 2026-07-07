@@ -4,6 +4,16 @@ import { runQuizGeneration } from "@/lib/quiz-generator";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
+import { randomUUID } from "crypto";
+
+/** Models a client may request; anything else falls back to the generator default. */
+const ALLOWED_MODELS = new Set([
+  "gemini-3.5-flash",
+  "gemini-3.1-flash-lite",
+  "gemini-3-pro",
+  "gemini-2.5-flash",
+  "gemini-2.5-pro",
+]);
 
 /**
  * Web quiz generation endpoint. Thin wrapper over runQuizGeneration:
@@ -31,6 +41,8 @@ export async function POST(req: NextRequest) {
   const subjectSub = (formData.get("subjectSub") as string) || "Module";
   const textContent = (formData.get("content") as string) || "";
   const files = formData.getAll("files") as File[];
+  const rawModel = formData.get("modelName") as string | null;
+  const modelName = rawModel && ALLOWED_MODELS.has(rawModel) ? rawModel : undefined;
 
   if (!subjectMain) {
     return NextResponse.json({ error: "Bitte fülle alle Pflichtfelder aus." }, { status: 400 });
@@ -47,7 +59,7 @@ export async function POST(req: NextRequest) {
   const filePaths: { name: string; path: string; mimeType: string }[] = [];
   for (const file of files) {
     if (file.size === 0) continue;
-    const uniqueFileName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
+    const uniqueFileName = `${Date.now()}-${randomUUID()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
     const localFilePath = path.join(uploadsDir, uniqueFileName);
     await fs.writeFile(localFilePath, Buffer.from(await file.arrayBuffer()));
     filePaths.push({ name: file.name, path: localFilePath, mimeType: file.type || "application/octet-stream" });
@@ -70,7 +82,7 @@ export async function POST(req: NextRequest) {
           subjectSub,
           textContent,
           filePaths,
-          modelName: formData.get("modelName") as string | undefined,
+          modelName,
           onProgress: (step, message) => sendEvent("progress", { step, message }),
           // Fire `done` the moment the item exists — podcast uploads keep
           // running inside the generator without blocking the UI.

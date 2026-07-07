@@ -30,6 +30,10 @@ model SRSItem {
   
   currentLevel     Int      @default(0) // Column E
   nextReviewDate   DateTime // Column F
+  // Monotonic optimistic-lock counter, bumped on every grading write. Guards
+  // concurrent gradings of the SAME item regardless of PASS/REPEAT (currentLevel
+  // alone can't — a REPEAT doesn't change it).
+  version          Int      @default(0)
   
   quiz1DocId       String?  // Column G
   quiz2DocId       String?  // Column H
@@ -73,6 +77,9 @@ model SRSItem {
 
   @@index([nextReviewDate])
   @@index([subjectMain])
+  // Legacy tutor deep-links resolve items by this column; without an index it
+  // is a full-table scan over the heaviest (LLM-text) rows in the DB.
+  @@index([tutorPromptDocId])
 }
 
 model PushSubscription {
