@@ -30,6 +30,10 @@ export async function GET() {
           passed: true,
           level: true,
           subjectMain: true,
+          // For the client-side semester filter: logs are attributed to a
+          // semester via itemId → item lookup, falling back to subject match.
+          subjectSub: true,
+          itemId: true,
         },
       }),
       prisma.reviewLog.count({ where: { subjectMain: { not: "Freies Lernen" } } }),

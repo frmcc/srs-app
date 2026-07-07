@@ -27,6 +27,8 @@ interface StatsLog {
   passed: boolean;
   level: number;
   subjectMain: string;
+  subjectSub: string;
+  itemId: string | null;
 }
 
 interface StatsResponse {
@@ -35,9 +37,11 @@ interface StatsResponse {
 }
 
 export interface StatsItemSlim {
+  id: string;
   nextReviewDate: string | Date;
   currentLevel: number;
   subjectMain: string;
+  subjectSub: string;
   semester: number;
 }
 
@@ -65,9 +69,7 @@ function addDays(d: Date, days: number): Date {
  */
 function AnimatedNumber({ value }: { value: number }) {
   const reduceMotion = useReducedMotion();
-  // With reduced motion the value is simply shown — no count-up, no setState in
-  // the effect (values are mount-stable: the panel renders after data arrives).
-  const [display, setDisplay] = useState(reduceMotion ? value : 0);
+  const [display, setDisplay] = useState(0);
 
   useEffect(() => {
     if (reduceMotion) return;
@@ -79,16 +81,21 @@ function AnimatedNumber({ value }: { value: number }) {
     return () => controls.stop();
   }, [value, reduceMotion]);
 
-  return <>{display}</>;
+  // With reduced motion the live value is rendered directly — no count-up, and
+  // no stale frozen state when the semester filter changes the value in place
+  // (the old `useState(value)` snapshot never updated after mount).
+  return <>{reduceMotion ? value : display}</>;
 }
 
 export default function StatsPanel({ items, language }: { items: StatsItemSlim[]; language: string }) {
   const de = language === "german";
-  const locale = de ? "de-DE" : "en-US";
+  const locale = de ? "de-DE" : "en-GB"; // app-wide date locales (see DashboardClient)
 
   const [data, setData] = useState<StatsResponse | null>(null);
   const [error, setError] = useState(false);
   const [loading, setLoading] = useState(true);
+  /** Semester filter — "all" (default) or a semester number present in `items`. */
+  const [semesterFilter, setSemesterFilter] = useState<number | "all">("all");
 
   useEffect(() => {
     let cancelled = false;
@@ -115,9 +122,47 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
     };
   }, []);
 
+  // ---- Semester filter ------------------------------------------------------
+  // Semesters offered by the selector: those present on active items.
+  const semesters = useMemo(
+    () => Array.from(new Set(items.map((it) => it.semester))).sort((a, b) => a - b),
+    [items],
+  );
+
+  /**
+   * Filtered data sources. Items carry `semester` directly; ReviewLog rows do
+   * NOT, so each log is attributed to a semester via its itemId → item lookup.
+   * For logs whose item was deleted (itemId is a soft reference) we fall back
+   * to a subjectMain+subjectSub match against active items (first match wins
+   * if a module name ever repeats across semesters). Logs that can't be
+   * attributed either way only appear under "All semesters" — guessing a
+   * semester would corrupt per-semester pass rates.
+   */
+  const filtered = useMemo(() => {
+    const logs = data?.logs ?? [];
+    if (semesterFilter === "all") return { logs, items };
+
+    const byId = new Map<string, number>();
+    const bySubject = new Map<string, number>();
+    for (const it of items) {
+      byId.set(it.id, it.semester);
+      const key = `${it.subjectMain}\u0000${it.subjectSub}`;
+      if (!bySubject.has(key)) bySubject.set(key, it.semester);
+    }
+    return {
+      logs: logs.filter((log) => {
+        const sem =
+          (log.itemId !== null ? byId.get(log.itemId) : undefined) ??
+          bySubject.get(`${log.subjectMain}\u0000${log.subjectSub}`);
+        return sem === semesterFilter;
+      }),
+      items: items.filter((it) => it.semester === semesterFilter),
+    };
+  }, [data, items, semesterFilter]);
+
   // ---- Aggregations (all local-time) ---------------------------------------
   const computed = useMemo(() => {
-    const logs = data?.logs ?? [];
+    const { logs, items } = filtered;
     const today = startOfLocalDay(new Date());
 
     // Reviews per local day
@@ -219,7 +264,7 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
     const maxLevel = Math.max(1, ...levelDist);
 
     return { streak, weeks, recent, recentPassed, modules, forecast, levelDist, dueToday, maxForecast, maxLevel };
-  }, [data, items, locale]);
+  }, [filtered, locale]);
 
   /* Heatmap ramp per Stats.dc.html: zero = var(--chart-zero), then amber-500 washes
      0.28 → 0.5 → 0.72 → solid var(--a-g2). No glow — quiet until touched. */
@@ -233,7 +278,10 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
   };
 
   const passRate30 = computed.recent > 0 ? Math.round((computed.recentPassed / computed.recent) * 100) : null;
-  const totalReviews = data?.totals.total ?? 0;
+  // All-time totals only exist unfiltered (server-side count). With a semester
+  // selected we count the filtered logs instead — they span the last 12 months,
+  // so the card's sub-label switches to say exactly that.
+  const totalReviews = semesterFilter === "all" ? (data?.totals.total ?? 0) : filtered.logs.length;
 
   // ---- Loading skeleton (mirrors the final layout, so nothing jumps) --------
   if (loading) {
@@ -331,12 +379,47 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
       icon: <CheckCircleIcon className="w-4 h-4 text-ink-400" strokeWidth={1.7} />,
       label: de ? "Reviews gesamt" : "Total reviews",
       value: totalReviews,
-      sub: de ? "seit Beginn" : "all time",
+      sub:
+        semesterFilter === "all"
+          ? de ? "seit Beginn" : "all time"
+          : de ? "letzte 12 Monate" : "last 12 months",
     },
   ];
 
   return (
     <motion.div variants={staggerContainer} initial="initial" animate="animate" className="flex flex-col gap-4">
+      {/* ── Semester filter ── (only shown once a second semester exists) */}
+      {semesters.length > 1 && (
+        <motion.div
+          variants={riseChild}
+          role="group"
+          aria-label={de ? "Statistiken nach Semester filtern" : "Filter statistics by semester"}
+          className="flex items-center gap-2 overflow-x-auto custom-scrollbar -mb-1 pb-1"
+        >
+          <span className="caps-label shrink-0 mr-1 hidden sm:inline">{de ? "Zeitraum" : "Period"}</span>
+          <button
+            type="button"
+            onClick={() => setSemesterFilter("all")}
+            aria-pressed={semesterFilter === "all"}
+            className={`chip shrink-0 cursor-pointer ${semesterFilter === "all" ? "chip-amber" : ""}`}
+          >
+            {de ? "Alle Semester" : "All semesters"}
+          </button>
+          {semesters.map((sem) => (
+            <button
+              key={sem}
+              type="button"
+              onClick={() => setSemesterFilter(sem)}
+              aria-pressed={semesterFilter === sem}
+              aria-label={`Semester ${sem}`}
+              className={`chip shrink-0 cursor-pointer tabular-nums ${semesterFilter === sem ? "chip-amber" : ""}`}
+            >
+              {`Sem. ${sem}`}
+            </button>
+          ))}
+        </motion.div>
+      )}
+
       {/* ── Stat cards ── */}
       <motion.div variants={riseChild} className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
         {statCards.map((card) => (
@@ -397,7 +480,7 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
               >
                 <span className="h-3 text-[8px] text-ink-400 leading-3 whitespace-nowrap">{week.label ?? ""}</span>
                 {week.days.map((cell) => (
-                  <Tip key={cell.key} label={`${cell.date.toLocaleDateString(locale)} — ${cell.count} ${cell.count === 1 ? "Review" : "Reviews"}`}>
+                  <Tip key={cell.key} label={`${cell.date.toLocaleDateString(locale)} — ${cell.count} ${de ? (cell.count === 1 ? "Review" : "Reviews") : (cell.count === 1 ? "review" : "reviews")}`}>
                     <div className={`heat-cell w-[13px] h-[13px] rounded-[3px] ${heatColor(cell.count, cell.future)}`} />
                   </Tip>
                 ))}
@@ -428,7 +511,7 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
             <div className="flex flex-col gap-4">
               {computed.modules.slice(0, 8).map((mod, i) => (
                 <div key={mod.name}>
-                  <Tip label={`${mod.reviews} ${de ? "Reviews" : "reviews"}${mod.items > 0 ? ` · ${mod.items} ${de ? "Vorl." : "lect."} · Ø L${(mod.avgLevel + 1).toFixed(1)}` : ""}`}>
+                  <Tip label={`${mod.reviews} ${de ? "Reviews" : "reviews"}${mod.items > 0 ? ` · ${mod.items} ${de ? "Vorl." : "lect."} · Ø L${(mod.avgLevel + 1).toLocaleString(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}` : ""}`}>
                   <div className="flex justify-between gap-3 text-[13px] mb-[7px]">
                     <span className="text-ink-900 truncate" style={{ fontWeight: 550 }}>{mod.name}</span>
                     <span className="text-ink-600 tabular-nums whitespace-nowrap">

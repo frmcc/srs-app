@@ -127,7 +127,6 @@ interface ReviewCard {
   subject: string;
   topic: string;
   level: number;
-  dueDate: string;
   isDue: boolean;
   semester: number;
   raw: RawReviewItem;
@@ -179,6 +178,16 @@ function clearDraft(itemId: string, level: number) {
   if (typeof window === "undefined") return;
   try { localStorage.removeItem(draftKeyFor(itemId, level)); } catch { /* quota/private mode */ }
 }
+
+// ---- Upload intake -----------------------------------------------------------
+// Extensions the pipeline can parse (mirrors the file input's `accept`). The
+// picker enforces this natively, but drag-and-drop bypasses it — so drops are
+// checked against the same list.
+const UPLOAD_EXTENSIONS = [".pdf", ".docx", ".xlsx", ".csv", ".txt"];
+const isSupportedUpload = (name: string) => {
+  const lower = name.toLowerCase();
+  return UPLOAD_EXTENSIONS.some((ext) => lower.endsWith(ext));
+};
 
 interface NdjsonEvent {
   event: "progress" | "done" | "error";
@@ -446,17 +455,13 @@ const formatItems = (data: RawReviewItem[]): ReviewCard[] => {
   const now = new Date();
 
   const formatted = data.map(item => {
-    const dueDate = new Date(item.nextReviewDate);
-    const isDue = isDueLocal(dueDate, now);
-
-    const formattedDate = `${dueDate.getDate().toString().padStart(2, '0')}.${(dueDate.getMonth() + 1).toString().padStart(2, '0')}.${dueDate.getFullYear()}`;
+    const isDue = isDueLocal(new Date(item.nextReviewDate), now);
 
     return {
       id: item.id,
       subject: item.subjectMain,
       topic: item.subjectSub,
       level: item.currentLevel,
-      dueDate: isDue ? "Due Now" : formattedDate,
       isDue,
       semester: item.semester || 1,
       raw: item
@@ -675,6 +680,14 @@ export default function DashboardClient({
   // Two-step confirmation state for the semester danger-zone buttons
   const [confirmingNewSemester, setConfirmingNewSemester] = useState(false);
   const [confirmingResetSemester, setConfirmingResetSemester] = useState(false);
+
+  /** Single close path for settings — disarms the semester confirms so a stale
+   *  "click again to confirm" can't survive into the next time it opens. */
+  const closeSettingsModal = useCallback(() => {
+    setShowSettingsModal(false);
+    setConfirmingNewSemester(false);
+    setConfirmingResetSemester(false);
+  }, []);
   const [isSemesterActionBusy, setIsSemesterActionBusy] = useState(false);
 
   // Historical feedback modal (+ per-module feedback history from ReviewLog)
@@ -1035,21 +1048,28 @@ export default function DashboardClient({
     return () => { cancelled = true; };
   }, [expandedHistoryIds, feedbackHistory, language, historyTranslations, historyTranslating]);
 
-  // Global Escape key — closes whichever modal is currently on top.
+  // Global Escape key — closes whichever overlay is on top, ordered by z-index
+  // (prompt viewer 90 → prompts list / comprehension feedback 80 → settings 60
+  // → the z-50 modals). With nothing open, Escape backs out of armed two-step
+  // confirms (snooze pills, delete confirms) instead of leaving them to their
+  // timeout.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       if (promptModal) { setPromptModal(null); return; }
       if (promptsModal) { setPromptsModal(null); return; }
+      if (compFeedback) { setCompFeedback(null); return; }
+      if (showSettingsModal) { closeSettingsModal(); return; }
       if (showCalendarModal) { setShowCalendarModal(false); return; }
-      if (showSettingsModal) { setShowSettingsModal(false); return; }
       if (activeFeedbackItem) { setActiveFeedbackItem(null); return; }
       if (archiveModalData) { setArchiveModalData(null); return; }
-      if (compFeedback) { setCompFeedback(null); return; }
+      if (snoozeArmedId) { setSnoozeArmedId(null); return; }
+      if (confirmingDeleteId) { setConfirmingDeleteId(null); return; }
+      if (confirmingDeleteModuleKey) { setConfirmingDeleteModuleKey(null); return; }
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [promptModal, promptsModal, showCalendarModal, showSettingsModal, activeFeedbackItem, archiveModalData, compFeedback]);
+  }, [promptModal, promptsModal, compFeedback, showSettingsModal, closeSettingsModal, showCalendarModal, activeFeedbackItem, archiveModalData, snoozeArmedId, confirmingDeleteId, confirmingDeleteModuleKey]);
 
   // The inline "Wirklich löschen?" prompt resets itself if not confirmed.
   useEffect(() => {
@@ -1072,6 +1092,17 @@ export default function DashboardClient({
     return () => window.clearTimeout(timeoutId);
   }, [snoozeArmedId]);
 
+  // Armed semester actions (settings modal) reset themselves like every other
+  // two-step confirm in the app.
+  useEffect(() => {
+    if (!confirmingNewSemester && !confirmingResetSemester) return;
+    const timeoutId = window.setTimeout(() => {
+      setConfirmingNewSemester(false);
+      setConfirmingResetSemester(false);
+    }, 4000);
+    return () => window.clearTimeout(timeoutId);
+  }, [confirmingNewSemester, confirmingResetSemester]);
+
   /** Push a review OUT by N days (sick/holiday/no time). The server offsets from
    *  max(now, current due date), so snoozing can never PULL a review closer. */
   const handleSnooze = async (e: React.MouseEvent, id: string, days: number) => {
@@ -1093,7 +1124,7 @@ export default function DashboardClient({
         throw new Error(errData.error || `Server returned status ${res.status}`);
       }
       const updated = await res.json();
-      const newDate = new Date(updated.nextReviewDate).toLocaleDateString();
+      const newDate = new Date(updated.nextReviewDate).toLocaleDateString(language === "german" ? "de-DE" : "en-GB");
       // CRAFT.md §8 — forgiveness: an undo bar instead of a confirm dialog.
       addToast("undo", language === "german" ? `Verschoben auf ${newDate}.` : `Snoozed until ${newDate}.`, prevIso ? {
         action: {
@@ -1134,13 +1165,15 @@ export default function DashboardClient({
         // 404 = already gone on the server — remove it locally either way.
         setUpcomingReviews(prev => prev.filter(r => r.id !== id));
         setRawItems(prev => prev.filter(r => r.id !== id));
-        addToast("success", language === "german" ? "Modul gelöscht." : "Module deleted.");
+        // One card = one lecture (SRSItem) — "Modul" here misled: the module's
+        // other lectures survive this delete.
+        addToast("success", language === "german" ? "Vorlesung gelöscht." : "Lecture deleted.");
       } else {
         throw new Error(`Server returned status ${res.status}`);
       }
     } catch (err) {
       console.error(err);
-      addToast("error", language === "german" ? "Fehler beim Löschen des Moduls." : "Failed to delete the module.");
+      addToast("error", language === "german" ? "Fehler beim Löschen der Vorlesung." : "Failed to delete the lecture.");
     } finally {
       setDeletingIds(prev => {
         const next = { ...prev };
@@ -1199,8 +1232,12 @@ export default function DashboardClient({
       const failedCount = lectures.length - okSet.size;
       if (failedCount > 0) {
         addToast("error", language === "german"
-          ? `${failedCount} von ${lectures.length} Vorlesungen konnten nicht gelöscht werden.`
-          : `${failedCount} of ${lectures.length} lectures could not be deleted.`);
+          ? (lectures.length === 1
+              ? "Die Vorlesung konnte nicht gelöscht werden."
+              : `${failedCount} von ${lectures.length} Vorlesungen konnten nicht gelöscht werden.`)
+          : (lectures.length === 1
+              ? "The lecture could not be deleted."
+              : `${failedCount} of ${lectures.length} lectures could not be deleted.`));
       } else {
         addToast("success", language === "german" ? "Modul gelöscht." : "Module deleted.");
       }
@@ -1444,8 +1481,27 @@ export default function DashboardClient({
     window.print();
   };
 
+  /** Shared intake for the drop zone and the file picker: keeps supported
+   *  types only, skips duplicate names (both paths), reports rejects. */
+  const addUploadFiles = (incoming: File[]) => {
+    const rejected = incoming.filter((f) => !isSupportedUpload(f.name));
+    if (rejected.length > 0) {
+      const names = rejected.map((f) => f.name).join(", ");
+      addToast("error", language === "german"
+        ? `Nicht unterstützt: ${names} — bitte PDF, DOCX, XLSX, CSV oder TXT.`
+        : `Not supported: ${names} — please use PDF, DOCX, XLSX, CSV or TXT.`);
+    }
+    const supported = incoming.filter((f) => isSupportedUpload(f.name));
+    if (supported.length > 0) {
+      setUploadedFiles((prev) => {
+        const existingNames = new Set(prev.map((f) => f.name));
+        return [...prev, ...supported.filter((f) => !existingNames.has(f.name))];
+      });
+    }
+  };
+
   const handleGenerate = async () => {
-    if ((!textInput && uploadedFiles.length === 0) || !subjectInput) return;
+    if ((!textInput.trim() && uploadedFiles.length === 0) || !subjectInput.trim()) return;
     if (isGenerating) return; // double-submit guard
     setIsGenerating(true);
     setProgressStep(0);
@@ -1462,7 +1518,7 @@ export default function DashboardClient({
       formData.append("subjectSub", topicInput.trim() || (language === "german" ? "Modul" : "Module"));
       formData.append("language", language);
       formData.append("modelName", generationModel);
-      if (textInput) formData.append("content", textInput);
+      if (textInput.trim()) formData.append("content", textInput);
       uploadedFiles.forEach(file => formData.append("files", file));
 
       const res = await fetch("/api/quiz", {
@@ -1701,9 +1757,17 @@ export default function DashboardClient({
   const interactiveTogglePause = interactive.togglePause;
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // ⌘K / Ctrl+K — jump to the library search. Always available, even while typing.
+      // ⌘K / Ctrl+K — jump to the library search. Always available, even while
+      // typing. Any open overlay closes first so focus can't land behind it.
       if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) {
         e.preventDefault();
+        setPromptModal(null);
+        setPromptsModal(null);
+        setCompFeedback(null);
+        closeSettingsModal();
+        setShowCalendarModal(false);
+        setActiveFeedbackItem(null);
+        setArchiveModalData(null);
         setActiveTab("library");
         window.setTimeout(() => librarySearchRef.current?.focus(), 80);
         return;
@@ -1748,7 +1812,7 @@ export default function DashboardClient({
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [
-    promptModal, promptsModal, showCalendarModal, showSettingsModal, activeFeedbackItem, archiveModalData, compFeedback,
+    promptModal, promptsModal, showCalendarModal, showSettingsModal, closeSettingsModal, activeFeedbackItem, archiveModalData, compFeedback,
     activeTab, isGrading, gradingResult, parsedTasks, individualAnswers, studentAnswers, upcomingReviews,
     interactiveActive, interactiveTogglePause, startQuiz, handleGrade,
   ]);
@@ -1769,7 +1833,7 @@ export default function DashboardClient({
               </p>
               <div className="flex justify-between mt-4 pt-4 border-t border-zinc-200 text-xs text-zinc-500">
                 <p>Name: ___________________________</p>
-                <p>Datum: _______________</p>
+                <p>{language === "german" ? "Datum" : "Date"}: _______________</p>
               </div>
             </div>
 
@@ -1796,7 +1860,7 @@ export default function DashboardClient({
                       {task.questionText}
                     </div>
                     <div>
-                      <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-2">Antwort:</p>
+                      <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-2">{language === "german" ? "Antwort" : "Answer"}:</p>
                       {Array.from({ length: lineCount }).map((_, i) => (
                         <div key={i} className="border-b border-zinc-300 h-8 w-full"></div>
                       ))}
@@ -1820,7 +1884,12 @@ export default function DashboardClient({
             </div>
             <h1 className="text-[15px] font-bold tracking-[-0.01em] text-ink-900">SRS <span className="font-display italic text-(--accent-text)" style={{ fontWeight: 560 }}>Master</span></h1>
           </button>
-          <button onClick={() => setShowMobileMenu(!showMobileMenu)} className="p-2 -mr-2 text-ink-600 hover:text-ink-900 cursor-pointer">
+          <button
+            onClick={() => setShowMobileMenu(!showMobileMenu)}
+            aria-expanded={showMobileMenu}
+            aria-label={language === "german" ? (showMobileMenu ? "Menü schließen" : "Menü öffnen") : (showMobileMenu ? "Close menu" : "Open menu")}
+            className="p-2 -mr-2 text-ink-600 hover:text-ink-900 cursor-pointer"
+          >
             {showMobileMenu ? <XMarkIcon className="w-6 h-6" /> : <Bars3Icon className="w-6 h-6" />}
           </button>
         </div>
@@ -1931,7 +2000,7 @@ export default function DashboardClient({
               <Tip label={language === "german" ? "Abmelden" : "Sign out"}>
                 <button
                   onClick={() => signOut({ callbackUrl: "/login" })}
-                  className="w-7 h-7 flex items-center justify-center rounded-[9px] text-ink-400 hover:text-(--grade-fail-accent) hover:bg-(--grade-fail-wash) transition-all cursor-pointer shrink-0"
+                  className="w-9 h-9 -m-1 flex items-center justify-center rounded-[9px] text-ink-400 hover:text-(--grade-fail-accent) hover:bg-(--grade-fail-wash) transition-all cursor-pointer shrink-0"
                 >
                   <ArrowRightOnRectangleIcon className="w-[15px] h-[15px]" strokeWidth={1.6} />
                 </button>
@@ -2204,11 +2273,11 @@ export default function DashboardClient({
                                               {de ? "Wirklich löschen?" : "Really delete?"}
                                             </motion.button>
                                           ) : (
-                                            <Tip label={de ? "Modul löschen" : "Delete module"}>
+                                            <Tip label={de ? "Vorlesung löschen" : "Delete lecture"}>
                                             <button
                                               onClick={(e) => handleDeleteModule(e, review.id)}
                                               disabled={!!deletingIds[review.id]}
-                                              className="btn-ghost-icon w-8 h-8 flex items-center justify-center opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:!text-(--grade-fail-accent) disabled:opacity-60 disabled:cursor-wait cursor-pointer transition-opacity"
+                                              className="btn-ghost-icon w-8 h-8 flex items-center justify-center sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 sm:focus-visible:opacity-100 hover:!text-(--grade-fail-accent) disabled:opacity-60 disabled:cursor-wait cursor-pointer transition-opacity"
                                             >
                                               {deletingIds[review.id] ? (
                                                 <ArrowPathIcon className="w-4 h-4 animate-spin" />
@@ -2377,7 +2446,7 @@ export default function DashboardClient({
                                 </div>
                                 <div className="text-[12.5px] text-ink-600 mt-1.5">
                                   {de
-                                    ? `${passRate30.passed} von ${passRate30.total} Wiederholungen bestanden`
+                                    ? `${passRate30.passed} von ${passRate30.total} Reviews bestanden`
                                     : `${passRate30.passed} of ${passRate30.total} reviews passed`}
                                 </div>
                                 <div className="h-[3px] rounded-full bg-paper-2 mt-3.5 overflow-hidden">
@@ -2505,16 +2574,16 @@ export default function DashboardClient({
                       <div
                         className={`w-full border-[1.5px] border-dashed rounded-[18px] p-6 md:p-10 mb-4 flex flex-col items-center justify-center transition-colors ${isDragging ? 'border-(--accent-border-strong) bg-(--accent-wash-softer)' : 'border-[color-mix(in_srgb,var(--foreground)_16%,transparent)] bg-(--paper-hover)'}`}
                         onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-                        onDragLeave={() => setIsDragging(false)}
+                        onDragLeave={(e) => {
+                          // dragleave also fires when moving onto the zone's own
+                          // children — ignore those so the highlight doesn't flicker.
+                          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setIsDragging(false);
+                        }}
                         onDrop={(e) => {
                           e.preventDefault();
                           setIsDragging(false);
                           if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-                            const incoming = Array.from(e.dataTransfer.files);
-                            setUploadedFiles(prev => {
-                              const existingNames = new Set(prev.map(f => f.name));
-                              return [...prev, ...incoming.filter(f => !existingNames.has(f.name))];
-                            });
+                            addUploadFiles(Array.from(e.dataTransfer.files));
                           }
                         }}
                       >
@@ -2540,7 +2609,7 @@ export default function DashboardClient({
                             const picked = e.target.files ? Array.from(e.target.files) : [];
                             e.target.value = ""; // reset so re-picking the same file still fires onChange
                             if (picked.length > 0) {
-                              setUploadedFiles(prev => [...prev, ...picked]);
+                              addUploadFiles(picked);
                             }
                           }}
                         />
@@ -2552,12 +2621,19 @@ export default function DashboardClient({
                       {uploadedFiles.length > 0 && (
                         <div className="flex flex-wrap gap-2 mb-4">
                           {uploadedFiles.map((file, idx) => (
-                            <div key={idx} className="flex items-center gap-2 bg-(--accent-wash-soft) text-(--accent-text-strong) h-[30px] px-[11px] rounded-[10px] text-xs border border-(--accent-border-soft)" style={{ fontWeight: 550 }}>
+                            /* addUploadFiles dedupes by name, so file.name is a stable key */
+                            <div key={file.name} className="flex items-center gap-2 bg-(--accent-wash-soft) text-(--accent-text-strong) h-[30px] px-[11px] rounded-[10px] text-xs border border-(--accent-border-soft)" style={{ fontWeight: 550 }}>
                               <DocumentTextIcon className="w-4 h-4 text-amber-600" />
                               {file.name}
-                              <button onClick={() => setUploadedFiles(prev => prev.filter((_, i) => i !== idx))} className="ml-1.5 text-(--accent-text-strong)/60 hover:text-ink-900 cursor-pointer">
-                                <XMarkIcon className="w-4 h-4" />
-                              </button>
+                              <Tip label={language === "german" ? "Datei entfernen" : "Remove file"}>
+                                <button
+                                  onClick={() => setUploadedFiles(prev => prev.filter((_, i) => i !== idx))}
+                                  aria-label={language === "german" ? `${file.name} entfernen` : `Remove ${file.name}`}
+                                  className="ml-0.5 -mr-1.5 w-7 h-7 flex items-center justify-center rounded-full text-(--accent-text-strong)/60 hover:text-ink-900 cursor-pointer"
+                                >
+                                  <XMarkIcon className="w-4 h-4" />
+                                </button>
+                              </Tip>
                             </div>
                           ))}
                         </div>
@@ -2583,7 +2659,7 @@ export default function DashboardClient({
                         </select>
                         <button
                           onClick={handleGenerate}
-                          disabled={isGenerating || (!textInput && uploadedFiles.length === 0) || !subjectInput}
+                          disabled={isGenerating || (!textInput.trim() && uploadedFiles.length === 0) || !subjectInput.trim()}
                           className="btn-primary flex-1 h-[52px] text-sm flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-40"
                         >
                           <SparklesIcon className="w-[18px] h-[18px]" strokeWidth={1.6} />
@@ -2646,7 +2722,7 @@ export default function DashboardClient({
                       <Tip label={language === "german" ? "Suche löschen" : "Clear search"}>
                         <button
                           onClick={() => setLibrarySearch("")}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center rounded-full text-ink-400 hover:text-ink-900 hover:bg-paper-2 transition-colors cursor-pointer"
+                          className="absolute right-1 top-1/2 -translate-y-1/2 w-10 h-10 flex items-center justify-center rounded-full text-ink-400 hover:text-ink-900 hover:bg-paper-2 transition-colors cursor-pointer"
                         >
                           <XMarkIcon className="w-4 h-4" />
                         </button>
@@ -2748,7 +2824,7 @@ export default function DashboardClient({
                         )}
                         <div className="flex-1 h-px bg-(--hairline) mx-1" />
                         <span className="text-[11px] text-ink-400 font-medium whitespace-nowrap">
-                          {modules.size} {language === "german" ? "Module" : "modules"} · {totalLectures} {language === "german" ? "Vorlesungen" : "lectures"}
+                          {modules.size} {language === "german" ? (modules.size === 1 ? "Modul" : "Module") : (modules.size === 1 ? "module" : "modules")} · {totalLectures} {language === "german" ? (totalLectures === 1 ? "Vorlesung" : "Vorlesungen") : (totalLectures === 1 ? "lecture" : "lectures")}
                         </span>
                       </button>
 
@@ -2788,12 +2864,18 @@ export default function DashboardClient({
                                       <span className="text-[15px] font-semibold text-ink-900 transition-colors flex-1 text-left truncate">
                                         {moduleName}
                                       </span>
-                                      {/* Due pill — only while collapsed & not editing (design 9a) */}
+                                      {/* Due pill — only while collapsed & not editing (design 9a).
+                                          Below sm the pill collapses to a bare amber dot (round-1 open item: mobile due signal). */}
                                       {!modOpen && !libraryEditing && dueCount > 0 && (
-                                        <span className="hidden sm:inline-flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-[0.12em] px-2 py-0.5 rounded-full badge-due shrink-0">
-                                          <span className="w-[5px] h-[5px] rounded-full bg-amber-500" />
-                                          {dueCount} {language === "german" ? "fällig" : "due"}
-                                        </span>
+                                        <>
+                                          <span className="sm:hidden w-[7px] h-[7px] rounded-full bg-amber-500 shrink-0">
+                                            <span className="sr-only">{dueCount} {language === "german" ? "fällig" : "due"}</span>
+                                          </span>
+                                          <span className="hidden sm:inline-flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-[0.12em] px-2 py-0.5 rounded-full badge-due shrink-0">
+                                            <span className="w-[5px] h-[5px] rounded-full bg-amber-500" />
+                                            {dueCount} {language === "german" ? "fällig" : "due"}
+                                          </span>
+                                        </>
                                       )}
                                       {/* Meta (rating + count) hides in edit mode so the row reads as "removable" */}
                                       {!libraryEditing && (
@@ -2892,9 +2974,15 @@ export default function DashboardClient({
                                                       </Tip>
                                                     )}
                                                     {isDue && (
-                                                      <span className="hidden sm:inline text-[9px] font-bold uppercase tracking-[0.12em] px-2 py-0.5 rounded-full badge-due shrink-0">
-                                                        {language === "german" ? "Fällig" : "Due"}
-                                                      </span>
+                                                      <>
+                                                        {/* Below sm the badge collapses to a bare amber dot (round-1 open item: mobile due signal) */}
+                                                        <span className="sm:hidden w-[7px] h-[7px] rounded-full bg-amber-500 shrink-0">
+                                                          <span className="sr-only">{language === "german" ? "Fällig" : "Due"}</span>
+                                                        </span>
+                                                        <span className="hidden sm:inline text-[9px] font-bold uppercase tracking-[0.12em] px-2 py-0.5 rounded-full badge-due shrink-0">
+                                                          {language === "german" ? "Fällig" : "Due"}
+                                                        </span>
+                                                      </>
                                                     )}
                                                     {/* 7-dot level progress */}
                                                     <div className="hidden sm:flex items-center gap-0.5 shrink-0">
@@ -3047,7 +3135,7 @@ export default function DashboardClient({
                                                                     {Math.round(item.comprehensionScore)} %
                                                                   </span>
                                                                   {item.comprehensionAt && (
-                                                                    <span className="text-[11px] text-ink-400 shrink-0">{new Date(item.comprehensionAt).toLocaleDateString()}</span>
+                                                                    <span className="text-[11px] text-ink-400 shrink-0">{new Date(item.comprehensionAt).toLocaleDateString(language === "german" ? "de-DE" : "en-GB")}</span>
                                                                   )}
                                                                   <ChevronRightIcon className="w-3.5 h-3.5 text-ink-300 group-hover/cf:text-ink-600 transition-colors shrink-0" strokeWidth={2} />
                                                                 </button>
@@ -3211,7 +3299,7 @@ export default function DashboardClient({
                                                             <span className="flex items-center gap-1.5">
                                                               <CalendarDaysIcon className="w-3.5 h-3.5" strokeWidth={1.6} />
                                                               {language === "german" ? "Erstellt: " : "Created: "}
-                                                              <span className="text-ink-600">{new Date(item.createdAt).toLocaleDateString()}</span>
+                                                              <span className="text-ink-600">{new Date(item.createdAt).toLocaleDateString(language === "german" ? "de-DE" : "en-GB")}</span>
                                                             </span>
                                                             <span className="flex items-center gap-1.5">
                                                               <ClockIcon className="w-3.5 h-3.5" strokeWidth={1.6} />
@@ -3219,7 +3307,7 @@ export default function DashboardClient({
                                                               <span className={isDue ? "text-(--accent-text-strong)" : "text-ink-600"} style={isDue ? { fontWeight: 550 } : undefined}>
                                                                 {isDue
                                                                   ? (language === "german" ? "jetzt fällig" : "due now")
-                                                                  : new Date(item.nextReviewDate).toLocaleDateString()}
+                                                                  : new Date(item.nextReviewDate).toLocaleDateString(language === "german" ? "de-DE" : "en-GB")}
                                                               </span>
                                                             </span>
                                                           </div>
@@ -3644,7 +3732,7 @@ export default function DashboardClient({
                                         <span className="eq-bar h-full" style={{ animationDelay: "450ms" }} />
                                       </span>
                                       {language === "german" ? "Höre zu" : "Listening"}
-                                      <span className="text-ink-400 font-medium">{language === "german" ? "· sag „nächste Aufgabe“ zum Weitergehen" : '· say "nächste Aufgabe" to move on'}</span>
+                                      <span className="text-ink-400 font-medium">{language === "german" ? "· sag „nächste Aufgabe“ zum Weitergehen" : '· say "next task" to move on'}</span>
                                     </span>
                                   ) : interactive.phase === "loading" ? (
                                     <span className="flex items-center gap-1.5 text-ink-600"><span className="w-3.5 h-3.5 border-2 border-(--accent-border) border-t-amber-500 rounded-full animate-spin" />{language === "german" ? "Audio lädt…" : "Loading audio…"}</span>
@@ -3697,9 +3785,14 @@ export default function DashboardClient({
                             </motion.button>
                           </div>
                           <p className="text-center text-xs text-ink-400 mt-3">
-                            {language === "german"
-                              ? "Die Bewertung dauert etwa eine Minute. Dein Entwurf ist auf diesem Gerät gespeichert."
-                              : "Grading takes about a minute. Your draft is saved on this device."}
+                            {/* Comprehension checks are draft-free (see startQuiz) — don't promise a saved draft there. */}
+                            {comprehensionMode
+                              ? (language === "german"
+                                  ? "Die Bewertung dauert etwa eine Minute. Verständnis-Check-Antworten werden nicht als Entwurf gespeichert."
+                                  : "Grading takes about a minute. Comprehension-check answers aren't saved as a draft.")
+                              : (language === "german"
+                                  ? "Die Bewertung dauert etwa eine Minute. Dein Entwurf ist auf diesem Gerät gespeichert."
+                                  : "Grading takes about a minute. Your draft is saved on this device.")}
                             <span className="hidden md:inline"> · </span>
                             <span className="hidden md:inline-flex items-center gap-1 whitespace-nowrap"><span className="kbd">⌘</span><span className="kbd">↵</span> {language === "german" ? "zum Abschicken" : "to submit"}</span>
                           </p>
@@ -3740,9 +3833,14 @@ export default function DashboardClient({
                           </motion.button>
                         </div>
                         <p className="text-center text-xs text-ink-400 mt-3">
-                          {language === "german"
-                            ? "Die Bewertung dauert etwa eine Minute. Dein Entwurf ist auf diesem Gerät gespeichert."
-                            : "Grading takes about a minute. Your draft is saved on this device."}
+                          {/* Comprehension checks are draft-free (see startQuiz) — don't promise a saved draft there. */}
+                          {comprehensionMode
+                            ? (language === "german"
+                                ? "Die Bewertung dauert etwa eine Minute. Verständnis-Check-Antworten werden nicht als Entwurf gespeichert."
+                                : "Grading takes about a minute. Comprehension-check answers aren't saved as a draft.")
+                            : (language === "german"
+                                ? "Die Bewertung dauert etwa eine Minute. Dein Entwurf ist auf diesem Gerät gespeichert."
+                                : "Grading takes about a minute. Your draft is saved on this device.")}
                           <span className="hidden md:inline"> · </span>
                           <span className="hidden md:inline-flex items-center gap-1 whitespace-nowrap"><span className="kbd">⌘</span><span className="kbd">↵</span> {language === "german" ? "zum Abschicken" : "to submit"}</span>
                         </p>
@@ -3761,9 +3859,11 @@ export default function DashboardClient({
                 {...overlayMotion}
                 key="archive-overlay"
                 className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-(--overlay) backdrop-blur-[3px]"
+                onClick={() => setArchiveModalData(null)}
               >
                 <motion.div
                   {...modalPanel}
+                  onClick={(e) => e.stopPropagation()}
                   className="card-glass w-full max-w-lg overflow-hidden flex flex-col max-h-[85dvh] border border-(--line-soft)"
                 >
                   <div className="p-6 border-b border-(--hairline-card) flex justify-between items-center">
@@ -3782,7 +3882,7 @@ export default function DashboardClient({
                       <div key={idx} className="card-surface p-4 flex items-center justify-between">
                         <div>
                           <h4 className="text-ink-900 text-sm font-semibold">Level {item.level + 1} Video</h4>
-                          {item.date && <p className="text-xs text-ink-600 mt-0.5">{new Date(item.date).toLocaleDateString()}</p>}
+                          {item.date && <p className="text-xs text-ink-600 mt-0.5">{new Date(item.date).toLocaleDateString(language === "german" ? "de-DE" : "en-GB")}</p>}
                         </div>
                         <a
                           href={item.url}
@@ -3810,9 +3910,11 @@ export default function DashboardClient({
               {...overlayMotion}
               key="feedback-overlay"
               className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-(--overlay) backdrop-blur-[3px]"
+              onClick={() => setActiveFeedbackItem(null)}
             >
               <motion.div
                 {...modalPanel}
+                onClick={(e) => e.stopPropagation()}
                 className="card-glass w-full max-w-4xl overflow-hidden flex flex-col max-h-[85dvh] border border-(--line-soft)"
               >
                 {/* Header */}
@@ -3896,9 +3998,9 @@ export default function DashboardClient({
                                   Level {entry.level + 1}
                                 </span>
                                 <span className="text-xs text-ink-600 flex-1 truncate">
-                                  {new Date(entry.completedAt).toLocaleDateString()}{" "}
+                                  {new Date(entry.completedAt).toLocaleDateString(language === "german" ? "de-DE" : "en-GB")}{" "}
                                   <span className="text-ink-300">
-                                    {new Date(entry.completedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                                    {new Date(entry.completedAt).toLocaleTimeString(language === "german" ? "de-DE" : "en-GB", { hour: "2-digit", minute: "2-digit" })}
                                   </span>
                                 </span>
                                 {entry.feedback ? (
@@ -4083,7 +4185,7 @@ export default function DashboardClient({
             key="settings-overlay"
             {...overlayMotion}
             className="fixed inset-0 bg-(--overlay) flex items-center justify-center p-4 z-[60] backdrop-blur-[3px]"
-            onClick={() => setShowSettingsModal(false)}
+            onClick={closeSettingsModal}
           >
             <motion.div
               {...modalPanel}
@@ -4101,7 +4203,7 @@ export default function DashboardClient({
                 </div>
                 <Tip label={language === "german" ? "Schließen — Esc" : "Close — Esc"}>
                   <button
-                    onClick={() => setShowSettingsModal(false)}
+                    onClick={closeSettingsModal}
                     className="p-2 hover:bg-paper-2 rounded-full transition-colors text-ink-600 hover:text-ink-900 cursor-pointer"
                   >
                     <XMarkIcon className="w-5 h-5" />
@@ -4219,7 +4321,7 @@ export default function DashboardClient({
                       <div className="font-display text-2xl font-medium text-ink-900">Semester {currentSemester}</div>
                       <div className="text-[13px] text-ink-600 mt-1">
                         {language === "german" ? "Aktiver Studienzeitraum" : "Active study period"}
-                        {modulePresets.length > 0 && <> · {modulePresets.length} {language === "german" ? "Module" : (modulePresets.length === 1 ? "module" : "modules")}</>}
+                        {modulePresets.length > 0 && <> · {modulePresets.length} {language === "german" ? (modulePresets.length === 1 ? "Modul" : "Module") : (modulePresets.length === 1 ? "module" : "modules")}</>}
                       </div>
                     </div>
                   </div>
@@ -4234,17 +4336,20 @@ export default function DashboardClient({
                       modulePresets.map((preset, idx) => (
                         <div key={idx} className="flex items-center justify-between h-11 bg-paper-0 border border-(--hairline) rounded-xl px-4">
                           <span className="text-ink-900 text-sm">{preset}</span>
-                          <button
-                            onClick={() => {
-                              const newPresets = modulePresets.filter((_, i) => i !== idx);
-                              savePresets(newPresets, (saved) => {
-                                if (subjectInput === preset) setSubjectInput(saved[0] || "");
-                              });
-                            }}
-                            className="text-ink-400 hover:text-(--grade-fail-text) transition-colors cursor-pointer"
-                          >
-                            <XMarkIcon className="w-4 h-4" />
-                          </button>
+                          <Tip label={language === "german" ? "Voreinstellung entfernen" : "Remove preset"}>
+                            <button
+                              onClick={() => {
+                                const newPresets = modulePresets.filter((_, i) => i !== idx);
+                                savePresets(newPresets, (saved) => {
+                                  if (subjectInput === preset) setSubjectInput(saved[0] || "");
+                                });
+                              }}
+                              aria-label={language === "german" ? `${preset} entfernen` : `Remove ${preset}`}
+                              className="w-8 h-8 -mr-2 flex items-center justify-center rounded-full text-ink-400 hover:text-(--grade-fail-text) transition-colors cursor-pointer"
+                            >
+                              <XMarkIcon className="w-4 h-4" />
+                            </button>
+                          </Tip>
                         </div>
                       ))
                     )}
@@ -4338,7 +4443,7 @@ export default function DashboardClient({
                   <p className="text-xs text-ink-600 mb-4 leading-relaxed">
                     {language === "german"
                       ? "Hybrid: Die Browser-Diktierfunktion schreibt sofort mit — sagst du „nächste Aufgabe“, ersetzt die KI-Transkription deine Antwort automatisch in besserer Qualität. Gemini: nur KI (verzögert, aber zuverlässig auf dem iPhone). Standard: nur Browser (sofort, ohne KI-Korrektur)."
-                      : "Hybrid: browser dictation types instantly — when you say “nächste Aufgabe”, the AI transcription automatically replaces your answer with a higher-quality version. Gemini: AI only (delayed, but reliable on iPhone). Standard: browser only (instant, no AI polish)."}
+                      : "Hybrid: browser dictation types instantly — when you say “next task”, the AI transcription automatically replaces your answer with a higher-quality version. Gemini: AI only (delayed, but reliable on iPhone). Standard: browser only (instant, no AI polish)."}
                   </p>
                   <div className="segmented">
                     <button
@@ -4518,7 +4623,7 @@ export default function DashboardClient({
               {...modalPanel}
               key="prompts-list-modal"
               onClick={(e) => e.stopPropagation()}
-              className="card-glass border border-(--line-soft) w-full max-w-md overflow-hidden"
+              className="card-glass border border-(--line-soft) w-full max-w-md max-h-[80dvh] flex flex-col overflow-hidden"
             >
               <div className="flex items-start justify-between gap-4 px-6 py-5 border-b border-(--hairline)">
                 <div className="min-w-0">
@@ -4534,7 +4639,7 @@ export default function DashboardClient({
                   </button>
                 </Tip>
               </div>
-              <div className="p-4 flex flex-col gap-2">
+              <div className="p-4 flex flex-col gap-2 overflow-y-auto custom-scrollbar">
                 {promptsModal.prompts.map((p) => (
                   <button
                     key={p.label}
@@ -4582,7 +4687,7 @@ export default function DashboardClient({
                       </span>
                     )}
                     {compFeedback.comprehensionAt && (
-                      <span className="text-[11px] text-ink-400">{new Date(compFeedback.comprehensionAt).toLocaleDateString()}</span>
+                      <span className="text-[11px] text-ink-400">{new Date(compFeedback.comprehensionAt).toLocaleDateString(language === "german" ? "de-DE" : "en-GB")}</span>
                     )}
                   </div>
                 </div>

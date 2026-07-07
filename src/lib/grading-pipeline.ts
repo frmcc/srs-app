@@ -280,7 +280,13 @@ export async function runGradingPipeline(opts: {
     let compFeedback = "";
     if (summaryC) compFeedback += summaryC + "\n\n---\n\n";
     if (briefC) compFeedback += briefC;
-    if (!compFeedback) compFeedback = chefFeedback;
+    if (!compFeedback) {
+      // Marker-miss fallback (mirrors the saas twin): keep the raw brief but
+      // strip the machine-facing decision block so it never renders in the modal.
+      compFeedback = chefFeedback
+        .replace(/===ASSESSMENT_DECISION_START===[\s\S]*?===ASSESSMENT_DECISION_END===/g, "")
+        .trim();
+    }
     const perTaskC1 = extractSection(res1.text, "===QUESTION_ASSESSMENTS_PART_1_START===", "===QUESTION_ASSESSMENTS_PART_1_END===");
     const perTaskC2 = extractSection(res2.text, "===QUESTION_ASSESSMENTS_PART_2_START===", "===QUESTION_ASSESSMENTS_PART_2_END===");
     const perTaskC = [perTaskC1, perTaskC2].filter(Boolean).join("\n\n");
