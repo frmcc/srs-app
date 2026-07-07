@@ -53,7 +53,9 @@ export function ToastStack({ toasts, onDismiss }: { toasts: ToastItem[]; onDismi
               key={toast.id}
               layout
               {...toastMotion}
-              role="status"
+              // Errors are assertive so screen readers announce failures;
+              // success/info stay polite.
+              role={toast.variant === "error" ? "alert" : "status"}
               className={`pointer-events-auto w-full flex items-start gap-3 px-4 py-3.5 rounded-[18px] border bg-paper-1 shadow-(--shadow-e3) text-sm leading-relaxed text-ink-900 ${
                 toast.variant === "success"
                   ? "border-(--grade-pass-border)"

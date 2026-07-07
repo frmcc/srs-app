@@ -31,7 +31,8 @@ export async function GET() {
   try {
     return NextResponse.json(serialize(await getOrCreateConfig()));
   } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : "Unknown error" }, { status: 500 });
+    console.error("[settings] request failed:", e);
+    return NextResponse.json({ error: "Request failed" }, { status: 500 });
   }
 }
 
@@ -50,6 +51,12 @@ export async function POST(req: NextRequest) {
       case "update_presets": {
         if (!Array.isArray(presets)) {
           return NextResponse.json({ error: "presets must be an array" }, { status: 400 });
+        }
+        // Bound the blob: string entries only, capped count and length. The UI
+        // renders these as a string list, and unbounded/typed junk could bloat
+        // the column or break rendering.
+        if (presets.length > 200 || !presets.every((p) => typeof p === "string" && p.length <= 200)) {
+          return NextResponse.json({ error: "presets must be at most 200 strings of ≤200 chars" }, { status: 400 });
         }
         const updated = await prisma.appConfig.update({
           where: { id: 1 },
@@ -95,6 +102,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Invalid action" }, { status: 400 });
     }
   } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : "Unknown error" }, { status: 500 });
+    console.error("[settings] request failed:", e);
+    return NextResponse.json({ error: "Request failed" }, { status: 500 });
   }
 }

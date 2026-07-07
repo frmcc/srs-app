@@ -29,7 +29,10 @@ export async function GET(req: NextRequest) {
   // Public base URL. req.nextUrl.host is the INTERNAL Cloud Run bind (0.0.0.0:8080),
   // so prefer the forwarded / Host headers; APP_BASE_URL overrides for certainty.
   const envBase = (process.env.APP_BASE_URL || process.env.NEXT_PUBLIC_BASE_URL || "").replace(/\/+$/, "");
-  const host = req.headers.get("x-forwarded-host") || req.headers.get("host") || req.nextUrl.host;
+  const rawHost = req.headers.get("x-forwarded-host") || req.headers.get("host") || req.nextUrl.host;
+  // Normalise the host to plausible characters only, so a spoofed
+  // X-Forwarded-Host can't point the event links at an arbitrary origin.
+  const host = /^[a-zA-Z0-9.\-:]+$/.test(rawHost) ? rawHost : req.nextUrl.host;
   const proto = req.headers.get("x-forwarded-proto") || (/^(localhost|0\.0\.0\.0|127\.)/.test(host) ? "http" : "https");
   const baseUrl = envBase || `${proto}://${host}`;
   const eventLines: string[] = [];
@@ -37,7 +40,8 @@ export async function GET(req: NextRequest) {
   for (const item of items) {
     const reviewDate = new Date(item.nextReviewDate);
     const endDate = new Date(reviewDate);
-    endDate.setDate(endDate.getDate() + 1);
+    // UTC to match formatICSDate (all-day DTEND is exclusive = start + 1 day).
+    endDate.setUTCDate(endDate.getUTCDate() + 1);
 
     const interval = intervalLabelFor(item.currentLevel);
     const levelNum = item.currentLevel;
@@ -62,8 +66,9 @@ export async function GET(req: NextRequest) {
       `SUMMARY:${escapeICS(`Review: ${subjectLabel}`)}`,
       `DESCRIPTION:${escapeICS(description)}`,
       // Clickable deep link to the module's current quiz (standard ICS field,
-      // surfaced as a tappable link/button by Apple & Google Calendar).
-      `URL:${baseUrl}/quiz/${item.id}`,
+      // surfaced as a tappable link/button by Apple & Google Calendar). Escaped
+      // like every other value so the host can't inject ICS syntax.
+      `URL:${escapeICS(`${baseUrl}/quiz/${item.id}`)}`,
       "TRANSP:TRANSPARENT",
       "BEGIN:VALARM",
       "TRIGGER:-PT30M",

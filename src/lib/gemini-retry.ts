@@ -9,11 +9,36 @@ const aiWrapper = wrapperKey
   ? new GoogleGenAI({ apiKey: wrapperKey, httpOptions: { baseUrl: wrapperUrl } })
   : null;
 
-const MAX_RETRIES = 4;
-/** Backoff schedule between attempts. Total worst-case wait ≈ 85s per step. */
-const RETRY_DELAYS_MS = [10_000, 25_000, 50_000];
+const MAX_RETRIES = 3;
+/**
+ * Backoff schedule between attempts. Kept SHORT and bounded so the total time
+ * (waits + calls) stays within the route budgets — translate has
+ * maxDuration=60, and the old [10s,25s,50s]≈85s schedule blew straight past it
+ * and got the function killed mid-retry (after quota was already spent).
+ * Worst-case wait here ≈ 1.5+4+9 = 14.5s.
+ */
+const RETRY_DELAYS_MS = [1_500, 4_000, 9_000];
+
+/** Per-call soft deadline: a hung upstream socket must not consume the whole
+ *  route. On timeout we reject with a transient error so the loop can retry. */
+const CALL_TIMEOUT_MS = 45_000;
+
+class CallTimeoutError extends Error {
+  constructor(label: string) {
+    super(`timeout: ${label} exceeded ${Math.round(CALL_TIMEOUT_MS / 1000)}s`);
+    this.name = "CallTimeoutError";
+  }
+}
+
+function withTimeout<T>(p: Promise<T>, label: string): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new CallTimeoutError(label)), CALL_TIMEOUT_MS)),
+  ]);
+}
 
 function isTransient(error: Error & { status?: number }): boolean {
+  if (error instanceof CallTimeoutError) return true;
   // Prefer the structured status when the SDK provides one.
   if (error.status === 503 || error.status === 429) return true;
   if (typeof error.status === "number" && error.status >= 400 && error.status < 500) return false;
@@ -30,6 +55,31 @@ function isTransient(error: Error & { status?: number }): boolean {
   );
 }
 
+/**
+ * True for wrapper errors that are the wrapper's own fault (unreachable proxy,
+ * connectivity, 5xx, timeout, rate-limit) — those are worth re-sending to the
+ * official API. A permanent content/4xx error (e.g. a safety block) is NOT:
+ * the official API would reject it too, so re-sending just wastes a call.
+ */
+function wrapperFallbackWorthwhile(error: Error & { status?: number }): boolean {
+  if (isTransient(error)) return true;
+  const msg = error.message || "";
+  return /fetch failed|ECONNREFUSED|ENOTFOUND|EAI_AGAIN|network|proxy|socket|ECONNRESET/i.test(msg);
+}
+
+/** Does this request still carry usable content after fileData parts are stripped? */
+function hasSubstantiveParts(contents: unknown): boolean {
+  if (!Array.isArray(contents)) return true; // non-array shapes: don't block
+  for (const content of contents) {
+    const parts = (content as { parts?: unknown })?.parts;
+    if (!Array.isArray(parts)) continue;
+    for (const part of parts) {
+      if (part && typeof part === "object" && !("fileData" in part)) return true;
+    }
+  }
+  return false;
+}
+
 export async function generateContentWithRetry(
   ai: GoogleGenAI,
   modelName: string,
@@ -41,30 +91,43 @@ export async function generateContentWithRetry(
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
       if (!useAiWrapper || !aiWrapper) {
-        return await ai.models.generateContent({ model: modelName, ...request });
+        return await withTimeout(ai.models.generateContent({ model: modelName, ...request }), stepLabel);
       }
 
       // FIRST LINE: AIStudioToAPI proxy. Strip fileData (File API URIs) since
       // proxies don't support the File API — text/inlineData parts carry the content.
+      const wrapperRequest = { ...request };
+      if (Array.isArray(wrapperRequest.contents)) {
+        wrapperRequest.contents = wrapperRequest.contents.map((content) => {
+          if (typeof content !== "object" || content === null || !("parts" in content)) return content;
+          const parts = (content as { parts?: unknown }).parts;
+          return {
+            ...content,
+            parts: Array.isArray(parts) ? parts.filter((part) => !(part && typeof part === "object" && "fileData" in part)) : parts,
+          };
+        }) as typeof wrapperRequest.contents;
+      }
+
+      // If stripping fileData left the wrapper request with NO usable content
+      // (a legacy item whose only source is a File API upload), the wrapper would
+      // "succeed" on nothing. Skip it and use the official API, which supports
+      // fileData, with the full request.
+      if (!hasSubstantiveParts(wrapperRequest.contents)) {
+        return await withTimeout(ai.models.generateContent({ model: modelName, ...request }), stepLabel);
+      }
+
       try {
-        const wrapperRequest = { ...request };
-        if (Array.isArray(wrapperRequest.contents)) {
-          wrapperRequest.contents = wrapperRequest.contents.map((content) => {
-            if (typeof content !== "object" || content === null || !("parts" in content)) return content;
-            const parts = (content as { parts?: unknown }).parts;
-            return {
-              ...content,
-              parts: Array.isArray(parts) ? parts.filter((part) => !(part && typeof part === "object" && "fileData" in part)) : parts,
-            };
-          }) as typeof wrapperRequest.contents;
-        }
-        return await aiWrapper.models.generateContent({ model: modelName, ...wrapperRequest });
-      } catch (wrapperError) {
-        // SECOND LINE: official Gemini API with the FULL request (native PDFs included).
-        const errMsg = wrapperError instanceof Error ? wrapperError.message : String(wrapperError);
-        console.warn(`[Gemini Wrapper] Failed for ${stepLabel}, falling back to standard Gemini API...`, errMsg);
-        progressCallback(`Proxy nicht erreichbar — wechsle zur offiziellen Gemini API (${stepLabel})...`);
-        return await ai.models.generateContent({ model: modelName, ...request });
+        return await withTimeout(aiWrapper.models.generateContent({ model: modelName, ...wrapperRequest }), stepLabel);
+      } catch (wrapperErr) {
+        const wrapperError = wrapperErr as Error & { status?: number };
+        // Only re-send to the official API when the wrapper failure was the
+        // wrapper's own fault (unreachable/5xx/timeout). A permanent content/4xx
+        // (e.g. safety block) would be rejected there too — rethrow it instead.
+        if (!wrapperFallbackWorthwhile(wrapperError)) throw wrapperError;
+        const reason = isTransient(wrapperError) ? "Proxy überlastet" : "Proxy nicht erreichbar";
+        console.warn(`[Gemini Wrapper] ${reason} for ${stepLabel}, falling back to official Gemini API...`, wrapperError.message);
+        progressCallback(`${reason} — wechsle zur offiziellen Gemini API (${stepLabel})...`);
+        return await withTimeout(ai.models.generateContent({ model: modelName, ...request }), stepLabel);
       }
     } catch (err) {
       const error = err as Error & { status?: number };

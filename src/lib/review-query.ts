@@ -69,15 +69,6 @@ export interface ReviewListItem {
   comprehensionFeedback: string | null;
 }
 
-/** Row shape of the raw comprehension-column query (columns added post-client-generation). */
-interface ComprehensionRow {
-  id: string;
-  comprehensionScore: number | null;
-  comprehensionPassed: number | boolean | null;
-  comprehensionAt: string | null;
-  comprehensionFeedback: string | null;
-}
-
 /** Current items store {driveFileId,...} in sourceMaterialContent; legacy rows may not. */
 function hasDownloadableSource(content: string | null): boolean {
   if (!content) return false;
@@ -110,17 +101,19 @@ export async function fetchReviewList(): Promise<ReviewListItem[]> {
     failMap.set(f.itemId, arr);
   }
 
-  // Comprehension columns were added after the Prisma client was generated,
-  // so they're read raw until the next `prisma generate`. Overwritten per run.
-  let compMap = new Map<string, ComprehensionRow>();
-  try {
-    const compRows = await prisma.$queryRawUnsafe<ComprehensionRow[]>(
-      `SELECT id, comprehensionScore, comprehensionPassed, comprehensionAt, comprehensionFeedback FROM SRSItem WHERE comprehensionScore IS NOT NULL`
-    );
-    compMap = new Map(compRows.map((c) => [c.id, c]));
-  } catch (err) {
-    console.error("[review-query] comprehension columns unavailable:", err);
-  }
+  // Comprehension columns are heavy (feedback text), so fetch them ONLY for the
+  // items that actually have a result, rather than widening the list projection.
+  const compRows = await prisma.sRSItem.findMany({
+    where: { subjectMain: { not: "Freies Lernen" }, comprehensionScore: { not: null } },
+    select: {
+      id: true,
+      comprehensionScore: true,
+      comprehensionPassed: true,
+      comprehensionAt: true,
+      comprehensionFeedback: true,
+    },
+  });
+  const compMap = new Map(compRows.map((c) => [c.id, c]));
 
   return rows.map((row) => ({
     id: row.id,
@@ -148,7 +141,7 @@ export async function fetchReviewList(): Promise<ReviewListItem[]> {
     failCounts: failMap.get(row.id) ?? [0, 0, 0, 0, 0, 0, 0],
     comprehensionScore: compMap.get(row.id)?.comprehensionScore ?? null,
     comprehensionPassed: compMap.has(row.id) ? Boolean(compMap.get(row.id)?.comprehensionPassed) : null,
-    comprehensionAt: compMap.get(row.id)?.comprehensionAt ?? null,
+    comprehensionAt: compMap.get(row.id)?.comprehensionAt?.toISOString() ?? null,
     comprehensionFeedback: compMap.get(row.id)?.comprehensionFeedback ?? null,
   }));
 }

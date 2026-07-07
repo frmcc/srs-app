@@ -24,14 +24,6 @@ const DEFAULT_MODEL = "gemini-3.5-flash";
 
 type Part = Record<string, unknown>;
 
-/** Latest comprehension record (raw read: columns added post-client-generation). */
-interface PrevComprehensionRow {
-  comprehensionScore: number | null;
-  comprehensionPassed: number | boolean | null;
-  comprehensionAt: string | null;
-  comprehensionFeedback: string | null;
-}
-
 /** Grader briefs can be huge — clip each so 8 of them still fit comfortably. */
 function clip(text: string, max = 4000): string {
   return text.length > max ? text.slice(0, max) + "\n[... gekürzt ...]" : text;
@@ -75,16 +67,12 @@ export async function runComprehensionQuizGeneration(opts: {
   });
 
   // Previous comprehension run (feeds rule 6: don't repeat its questions).
-  let prevComp: PrevComprehensionRow | null = null;
-  try {
-    const rows = await prisma.$queryRawUnsafe<PrevComprehensionRow[]>(
-      `SELECT comprehensionScore, comprehensionPassed, comprehensionAt, comprehensionFeedback FROM SRSItem WHERE id = ?`,
-      itemId
-    );
-    prevComp = rows[0] ?? null;
-  } catch (err) {
-    console.error("[comprehension] previous record unavailable:", err);
-  }
+  const prevComp = {
+    comprehensionScore: srsItem.comprehensionScore,
+    comprehensionPassed: srsItem.comprehensionPassed,
+    comprehensionAt: srsItem.comprehensionAt,
+    comprehensionFeedback: srsItem.comprehensionFeedback,
+  };
 
   // ---- Step 1: lecture material --------------------------------------------
   progress(1, language === "english" ? "Loading lecture material..." : "Vorlesungsmaterial wird geladen...");
@@ -121,7 +109,9 @@ export async function runComprehensionQuizGeneration(opts: {
   }
 
   if (prevComp?.comprehensionFeedback) {
-    const when = prevComp.comprehensionAt ? String(prevComp.comprehensionAt).slice(0, 10) : "unbekannt";
+    const when = prevComp.comprehensionAt instanceof Date
+      ? prevComp.comprehensionAt.toISOString().slice(0, 10)
+      : "unbekannt";
     userParts.push({
       text: `Letzter Verständnis-Check (${when}, Ergebnis: ${prevComp.comprehensionScore ?? "?"} % · ${prevComp.comprehensionPassed ? "PASS" : "REPEAT"}):\n${clip(prevComp.comprehensionFeedback)}`,
     });
@@ -152,10 +142,10 @@ export async function runComprehensionQuizGeneration(opts: {
   // ONLY the quiz column. Score/pass/date/feedback stay until the NEXT graded
   // run overwrites them — an abandoned quiz must not blank the library rating.
   progress(3, language === "english" ? "Saving quiz..." : "Quiz wird gespeichert...");
-  await prisma.$executeRawUnsafe(
-    `UPDATE SRSItem SET comprehensionQuizText = ? WHERE id = ?`,
-    quizText, itemId
-  );
+  await prisma.sRSItem.update({
+    where: { id: itemId },
+    data: { comprehensionQuizText: quizText },
+  });
 
   return { quizText };
 }

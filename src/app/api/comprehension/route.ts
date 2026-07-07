@@ -2,6 +2,15 @@ export const maxDuration = 300;
 import { NextRequest, NextResponse } from "next/server";
 import { runComprehensionQuizGeneration } from "@/lib/comprehension-quiz";
 
+/** Models a client is allowed to request; anything else falls back to default. */
+const ALLOWED_MODELS = new Set([
+  "gemini-3.5-flash",
+  "gemini-3.1-flash-lite",
+  "gemini-3-pro",
+  "gemini-2.5-flash",
+  "gemini-2.5-pro",
+]);
+
 /**
  * Verständnis-Check quiz generation endpoint (library button). Thin wrapper
  * over runComprehensionQuizGeneration: validates input, streams NDJSON
@@ -26,10 +35,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const { itemId, language, modelName } = body;
+  const { itemId } = body;
   if (!itemId) {
     return NextResponse.json({ error: "Item ID is required" }, { status: 400 });
   }
+  // Whitelist client-supplied language and model. `language` is interpolated
+  // into the LLM system prompt, and an arbitrary `modelName` would let a caller
+  // pick (and bill) any model. Unknown values fall back to the server defaults
+  // (undefined → the lib reads AppConfig / its own default).
+  const language = body.language === "english" || body.language === "german" ? body.language : undefined;
+  const modelName = body.modelName && ALLOWED_MODELS.has(body.modelName) ? body.modelName : undefined;
 
   const stream = new ReadableStream({
     async start(controller) {

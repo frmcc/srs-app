@@ -72,13 +72,25 @@ function AnimatedNumber({ value }: { value: number }) {
   const [display, setDisplay] = useState(0);
 
   useEffect(() => {
-    if (reduceMotion) return;
-    const controls = animate(0, value, {
+    // Reduced motion: skip the count-up but STILL reflect value changes — this
+    // number is derived from live dashboard state (e.g. "Heute fällig"), so it
+    // must update as reviews are completed, not freeze at the mount value.
+    if (reduceMotion) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reflect the new value without animating
+      setDisplay(value);
+      return;
+    }
+    // Animate from the CURRENT display toward the new value (not always from 0),
+    // so an update mid-session doesn't visibly reset to zero.
+    const controls = animate(display, value, {
       duration: 1.1,
       ease: EASE_OUT,
       onUpdate: (v) => setDisplay(Math.round(v)),
     });
     return () => controls.stop();
+    // `display` intentionally omitted: including it would restart the animation
+    // on every frame. We only want to (re)animate when the target value changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value, reduceMotion]);
 
   // With reduced motion the live value is rendered directly — no count-up, and
@@ -160,8 +172,28 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
     };
   }, [data, items, semesterFilter]);
 
+  // Which local day it is. Refreshed when the tab regains focus/visibility so
+  // the panel doesn't keep showing yesterday's "today" (streak/heatmap/forecast)
+  // if it stays mounted across local midnight.
+  const [dayStamp, setDayStamp] = useState(() => dayKey(startOfLocalDay(new Date())));
+  useEffect(() => {
+    const refresh = () => {
+      const k = dayKey(startOfLocalDay(new Date()));
+      setDayStamp((prev) => (prev === k ? prev : k));
+    };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    const id = window.setInterval(refresh, 60_000);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+      window.clearInterval(id);
+    };
+  }, []);
+
   // ---- Aggregations (all local-time) ---------------------------------------
   const computed = useMemo(() => {
+    void dayStamp; // referenced so the memo recomputes when the local day rolls over
     const { logs, items } = filtered;
     const today = startOfLocalDay(new Date());
 
@@ -264,7 +296,8 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
     const maxLevel = Math.max(1, ...levelDist);
 
     return { streak, weeks, recent, recentPassed, modules, forecast, levelDist, dueToday, maxForecast, maxLevel };
-  }, [filtered, locale]);
+    // dayStamp: recompute when the local day rolls over (see effect above).
+  }, [filtered, locale, dayStamp]);
 
   /* Heatmap ramp per Stats.dc.html: zero = var(--chart-zero), then amber-500 washes
      0.28 → 0.5 → 0.72 → solid var(--a-g2). No glow — quiet until touched. */

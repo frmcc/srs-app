@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
+import { deleteFromDrive } from "@/lib/google-drive";
 
 /** Full item detail (everything the slim list omits). */
 export async function GET(
@@ -41,11 +42,19 @@ export async function PATCH(
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
 
-    // Undo path (CRAFT.md §8): restore the exact pre-snooze due date.
+    // Undo path (CRAFT.md §8): restore the exact pre-snooze due date. Clamp to a
+    // sane window so this branch can't be used to set an arbitrary schedule
+    // (e.g. force a far-future item due today, or park it in year 9999).
     if (body.restoreDate !== undefined) {
       const restore = new Date(body.restoreDate);
       if (isNaN(restore.getTime())) {
         return NextResponse.json({ error: "restoreDate must be a valid date" }, { status: 400 });
+      }
+      const now = Date.now();
+      const MIN = now - 2 * 24 * 60 * 60 * 1000; // small tolerance into the past
+      const MAX = now + 366 * 24 * 60 * 60 * 1000; // longest SRS interval + slack
+      if (restore.getTime() < MIN || restore.getTime() > MAX) {
+        return NextResponse.json({ error: "restoreDate is out of the allowed range" }, { status: 400 });
       }
       const item = await prisma.sRSItem.update({
         where: { id },
@@ -94,6 +103,25 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
+
+    // Best-effort cleanup of side artifacts BEFORE the row is gone. Failures here
+    // must not block the delete — they're logged and swallowed.
+    const item = await prisma.sRSItem.findUnique({
+      where: { id },
+      select: { sourceMaterialContent: true },
+    });
+    if (item?.sourceMaterialContent) {
+      try {
+        const driveFileId = JSON.parse(item.sourceMaterialContent)?.driveFileId;
+        if (driveFileId) await deleteFromDrive(driveFileId);
+      } catch (e) {
+        console.error("[reviews] Failed to delete Drive source file for", id, e);
+      }
+    }
+    // Drop any pending/processing background jobs for this item so they don't
+    // dangle against a now-missing row.
+    await prisma.backgroundJob.deleteMany({ where: { itemId: id } }).catch(() => {});
+
     await prisma.sRSItem.delete({ where: { id } });
     return NextResponse.json({ success: true });
   } catch (err) {

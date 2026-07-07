@@ -93,6 +93,9 @@ export async function POST(req: NextRequest) {
       if (!audioData) {
         lastError = "model returned text instead of audio";
         console.warn(`[tts] attempt ${attempt}/${MAX_ATTEMPTS}: ${lastError}`);
+        // Brief pause before retrying — without it this path fired up to 3 paid
+        // generations back-to-back within ~2s.
+        if (attempt < MAX_ATTEMPTS) await new Promise((r) => setTimeout(r, 700 * attempt));
         continue;
       }
       const wav = pcmToWav(Buffer.from(audioData, "base64"));
@@ -115,6 +118,8 @@ export async function POST(req: NextRequest) {
       await new Promise((r) => setTimeout(r, (isRateLimit ? 3000 : 700) * attempt));
     }
   }
+  // Log the raw upstream reason server-side, but return a generic message —
+  // don't echo provider internals (quota/model details) to the client.
   console.error(`[tts] giving up (model=${TTS_MODEL}, voice=${VOICE_NAME}):`, lastError);
-  return new Response(`TTS failed (model=${TTS_MODEL}): ${lastError}`, { status: 502 });
+  return new Response("TTS failed. Please try again.", { status: 502 });
 }

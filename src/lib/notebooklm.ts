@@ -10,6 +10,52 @@ const getApiUrl = () => {
   return url.replace(/\/$/, ""); // Remove trailing slash
 };
 
+// Every NotebookLM call gets a hard client-side timeout via AbortSignal so a
+// black-holed NOTEBOOKLM_API_URL can't hang the worker for undici's ~5-min
+// default (a worker doing upload + sleep + askChat could otherwise pin
+// resources far past maxDuration).
+const FETCH_TIMEOUT_MS = 120_000;
+async function nlmFetch(url: string, init: RequestInit = {}): Promise<Response> {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...init, signal: ctrl.signal });
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+/** Parse sourceMaterialContent; legacy rows may hold plain text (not JSON). */
+function parseSourceMaterial(content: string | null): { driveFileId?: string } | null {
+  if (!content) return null;
+  try {
+    return JSON.parse(content);
+  } catch {
+    return null; // legacy plain text → no structured driveFileId
+  }
+}
+
+/** Atomically append an entry to the videoUrl JSON history (avoids lost updates
+ *  when two grade workers for the same item run concurrently). */
+async function appendVideoHistory(itemId: string, level: number, url: string) {
+  await prisma.$transaction(async (tx) => {
+    const cur = await tx.sRSItem.findUnique({ where: { id: itemId }, select: { videoUrl: true } });
+    let history: { level: number; url: string; date: string }[] = [];
+    if (cur?.videoUrl) {
+      try {
+        const parsed = JSON.parse(cur.videoUrl);
+        history = Array.isArray(parsed)
+          ? parsed
+          : [{ level, url: cur.videoUrl, date: new Date().toISOString() }];
+      } catch {
+        history = [{ level, url: cur.videoUrl, date: new Date().toISOString() }];
+      }
+    }
+    history.push({ level, url, date: new Date().toISOString() });
+    await tx.sRSItem.update({ where: { id: itemId }, data: { videoUrl: JSON.stringify(history) } });
+  });
+}
+
 /**
  * Background worker that automates NotebookLM for Video Prompts.
  * Creates a notebook, uploads the PDF, and automatically asks the two video prompts.
@@ -31,85 +77,59 @@ export async function generateVideoPromptsWorker(
     const title = `${isPass ? "Pass" : "Repeat"}: ${subjectMain}`;
     console.log(`[NotebookLM Video] Creating notebook: ${title}`);
     const notebookId = await createNotebook(title);
-
-    // IMMEDIATELY SAVE THE LINK TO DB SO UI UPDATES INSTANTLY
     const newVideoUrl = `https://notebooklm.google.com/notebook/${notebookId}`;
-    console.log(`[NotebookLM Video] Saving videoUrl instantly: ${newVideoUrl}`);
-    
-    // Parse existing history
-    let videoHistory: { level: number, url: string, date: string }[] = [];
-    if (item.videoUrl) {
-      try {
-        const parsed = JSON.parse(item.videoUrl);
-        if (Array.isArray(parsed)) {
-          videoHistory = parsed;
-        } else {
-          // Legacy string migration
-          videoHistory = [{ level: item.currentLevel - (isPass ? 1 : 0), url: item.videoUrl, date: new Date().toISOString() }];
-        }
-      } catch {
-        // Legacy string migration
-        videoHistory = [{ level: item.currentLevel - (isPass ? 1 : 0), url: item.videoUrl, date: new Date().toISOString() }];
-      }
-    }
-
-    videoHistory.push({
-      level: item.currentLevel,
-      url: newVideoUrl,
-      date: new Date().toISOString()
-    });
-
-    await prisma.sRSItem.update({
-      where: { id: itemId },
-      data: { videoUrl: JSON.stringify(videoHistory) }
-    });
 
     // 2. Upload the original PDF
-    const sourceMaterial = item.sourceMaterialContent ? JSON.parse(item.sourceMaterialContent as string) : null;
-    if (sourceMaterial && sourceMaterial.driveFileId) {
+    const sourceMaterial = parseSourceMaterial(item.sourceMaterialContent);
+    if (sourceMaterial?.driveFileId) {
       console.log(`[NotebookLM Video] Downloading file from Google Drive: ${sourceMaterial.driveFileId}`);
-      try {
-        const buffer = await downloadFromDrive(sourceMaterial.driveFileId);
-        await uploadFile(notebookId, "Vorlesungsmaterial.pdf", buffer.toString("base64"), "Vorlesungsmaterial.pdf");
-      } catch (e) {
-        console.error(`[NotebookLM Video] Failed to download/upload file from Drive ${sourceMaterial.driveFileId}`, e);
-      }
+      const buffer = await downloadFromDrive(sourceMaterial.driveFileId);
+      await uploadFile(notebookId, "Vorlesungsmaterial.pdf", buffer.toString("base64"), "Vorlesungsmaterial.pdf");
     } else {
       console.log(`[NotebookLM Video] No Drive File ID found, skipping PDF upload.`);
     }
 
-    // 3. Wait 20 seconds for notebook to process file
+    // 3. Wait for the notebook to process the file
     console.log(`[NotebookLM Video] Waiting 20 seconds for notebook to process file...`);
     await new Promise(resolve => setTimeout(resolve, 20000));
 
-    // 4. Send prompts separately to trigger video generation for each
+    // 4. Send prompts separately to trigger video generation for each. Track
+    //    whether at least one succeeded — we only persist the link if real work
+    //    landed, so a hard failure doesn't leave the UI pointing at an empty
+    //    notebook. (Errors here rethrow to the outer catch, which notifies.)
+    let anySucceeded = false;
     if (prompt1) {
       console.log(`[NotebookLM Video] Asking Prompt 1...`);
-      try {
-        await askChat(notebookId, `Erstelle ein Video, Whiteboard Style auf Deutsch.\n\n${prompt1}`);
-      } catch (e) {
-        console.error(`[NotebookLM Video] Failed to ask prompt 1`, e);
-      }
+      await askChat(notebookId, `Erstelle ein Video, Whiteboard Style auf Deutsch.\n\n${prompt1}`);
+      anySucceeded = true;
     }
-    
     if (prompt2) {
       console.log(`[NotebookLM Video] Asking Prompt 2...`);
-      try {
-        await askChat(notebookId, `Erstelle ein Video, Whiteboard Style auf Deutsch.\n\n${prompt2}`);
-      } catch (e) {
-        console.error(`[NotebookLM Video] Failed to ask prompt 2`, e);
-      }
+      await askChat(notebookId, `Erstelle ein Video, Whiteboard Style auf Deutsch.\n\n${prompt2}`);
+      anySucceeded = true;
+    }
+
+    // 5. Persist the link atomically, only now that the notebook is populated.
+    if (anySucceeded || !prompt1) {
+      await appendVideoHistory(itemId, item.currentLevel, newVideoUrl);
     }
 
     console.log(`[NotebookLM Video] Success! Prompts generated.`);
-
   } catch (err) {
-    console.error(`[NotebookLM Video] Worker Error:`, err);
+    // Surface the failure instead of swallowing it — otherwise the run looks
+    // "done" with no video and no signal.
+    const error = err instanceof Error ? err : new Error(String(err));
+    console.error(`[NotebookLM Video] Worker Error:`, error);
+    await sendPushNotification({
+      title: "❌ Video-Prompts Fehler",
+      body: `Fehler bei der Video-Generierung für ${subjectMain}.`,
+      tag: `video-error-${itemId}`,
+    }).catch(() => {});
   }
 }
 
 export async function createNotebook(title: string): Promise<string> {
-  const res = await fetch(`${getApiUrl()}/v1/notebooks`, {
+  const res = await nlmFetch(`${getApiUrl()}/v1/notebooks`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ title })
@@ -120,7 +140,7 @@ export async function createNotebook(title: string): Promise<string> {
 }
 
 export async function uploadText(notebookId: string, title: string, content: string) {
-  const res = await fetch(`${getApiUrl()}/v1/notebooks/${notebookId}/sources/text`, {
+  const res = await nlmFetch(`${getApiUrl()}/v1/notebooks/${notebookId}/sources/text`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ title, content })
@@ -145,7 +165,7 @@ export async function uploadFile(notebookId: string, filePath: string, base64Dat
   const blob = new Blob([new Uint8Array(fileBuffer)]);
   formData.append("upload", blob, fileName);
 
-  const res = await fetch(`${getApiUrl()}/v1/notebooks/${notebookId}/sources/file`, {
+  const res = await nlmFetch(`${getApiUrl()}/v1/notebooks/${notebookId}/sources/file`, {
     method: "POST",
     body: formData
   });
@@ -154,7 +174,7 @@ export async function uploadFile(notebookId: string, filePath: string, base64Dat
 }
 
 export async function askChat(notebookId: string, question: string) {
-  const res = await fetch(`${getApiUrl()}/v1/notebooks/${notebookId}/chat/ask`, {
+  const res = await nlmFetch(`${getApiUrl()}/v1/notebooks/${notebookId}/chat/ask`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ question })
@@ -164,7 +184,7 @@ export async function askChat(notebookId: string, question: string) {
 }
 
 export async function generateArtifact(notebookId: string, type: "audio" | "video", instructions?: string) {
-  const res = await fetch(`${getApiUrl()}/v1/notebooks/${notebookId}/artifacts/generate`, {
+  const res = await nlmFetch(`${getApiUrl()}/v1/notebooks/${notebookId}/artifacts/generate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -180,15 +200,17 @@ export async function generateArtifact(notebookId: string, type: "audio" | "vide
 }
 
 export async function downloadArtifact(notebookId: string, type: "audio" | "video") {
-  const res = await fetch(`${getApiUrl()}/v1/notebooks/${notebookId}/artifacts/download?type=${type}`, {
+  const res = await nlmFetch(`${getApiUrl()}/v1/notebooks/${notebookId}/artifacts/download?type=${type}`, {
     method: "GET"
   });
   
   if (!res.ok) {
-    if (res.status === 404 || res.status === 400 || res.status === 500) {
-      throw new Error("Artifact not ready or error");
+    // 404/400 = genuinely "not ready yet" (expected while polling). A 500 is a
+    // real server error and shouldn't be masked as "not ready".
+    if (res.status === 404 || res.status === 400) {
+      throw new Error("Artifact not ready");
     }
-    throw new Error(`Failed to download: ${res.statusText}`);
+    throw new Error(`Failed to download artifact (status ${res.status})`);
   }
   
   const arrayBuffer = await res.arrayBuffer();
@@ -233,7 +255,7 @@ export async function generatePodcastWorker(
       }
     } else {
       // Fallback: If no memory files were passed, try to fetch from Drive!
-      const sourceMaterial = item.sourceMaterialContent ? JSON.parse(item.sourceMaterialContent as string) : null;
+      const sourceMaterial = parseSourceMaterial(item.sourceMaterialContent);
       if (sourceMaterial && sourceMaterial.driveFileId) {
         console.log(`[NotebookLM] Downloading file from Google Drive: ${sourceMaterial.driveFileId}`);
         try {

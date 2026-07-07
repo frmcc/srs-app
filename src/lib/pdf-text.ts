@@ -17,7 +17,10 @@ export async function pdfToText(buffer: Buffer): Promise<string> {
   // NB: the previous require()-based code passed the Uint8Array directly and
   // returned getText() unawaited-unwrapped — i.e. "[object Object]". The
   // correct v2 API is { data } + TextResult.text.
-  const parser = new PDFParse({ data: new Uint8Array(buffer) });
+  // Zero-copy view over the existing Buffer. `new Uint8Array(buffer)` would
+  // COPY the whole PDF a second time (Buffer is already a Uint8Array) — doubling
+  // peak memory for large files.
+  const parser = new PDFParse({ data: new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength) });
   try {
     const result = await parser.getText();
     return result.text;

@@ -24,7 +24,8 @@ export async function GET() {
   for (const log of logs) {
     const reviewDate = new Date(log.completedAt);
     const endDate = new Date(reviewDate);
-    endDate.setDate(endDate.getDate() + 1);
+    // UTC to match formatICSDate (all-day DTEND is exclusive = start + 1 day).
+    endDate.setUTCDate(endDate.getUTCDate() + 1);
 
     const subjectLabel = log.subjectSub?.trim() ? `${log.subjectMain} - ${log.subjectSub}` : log.subjectMain;
     const summary = log.passed ? `Completed: ${subjectLabel}` : `Repeat: ${subjectLabel}`;

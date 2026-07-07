@@ -25,9 +25,6 @@ import { calendarTokenFor } from "@/lib/auth-token";
  * deployment can't burn Gemini/Drive/NotebookLM quota. Dev stays open.
  */
 
-/** Endpoints that cost real money — never public in production. */
-const EXPENSIVE_API = /^\/api\/(quiz|grade|podcast|transcribe|tts|tutor\/chat)(\/|$)/;
-
 export async function middleware(req: NextRequest) {
   const shortcutToken = process.env.SHORTCUT_TOKEN;
   const authConfigured = !!process.env.NEXTAUTH_SECRET;
@@ -76,18 +73,26 @@ export async function middleware(req: NextRequest) {
   }
 
   // ---- No auth configured ----------------------------------------------------
+  // Local dev stays open for convenience. (A non-production deployment that
+  // should NOT be open must set NEXTAUTH_SECRET so it takes the configured
+  // path above.)
   if (process.env.NODE_ENV !== "production") return NextResponse.next();
 
-  const isApi = pathname.startsWith("/api/");
-  const isMutation = req.method !== "GET" && req.method !== "HEAD" && req.method !== "OPTIONS";
-  if (isApi && (EXPENSIVE_API.test(pathname) || isMutation)) {
-    console.warn(`[auth] Blocked unauthenticated ${req.method} ${pathname} — configure NEXTAUTH_SECRET (+ AUTH_GOOGLE_CLIENT_ID/SECRET) and optionally SHORTCUT_TOKEN for Shortcuts.`);
+  // Production with no auth configured: FAIL FULLY CLOSED. Previously only
+  // expensive/mutating APIs were blocked while every GET read fell through
+  // publicly — so a prod deploy that forgot NEXTAUTH_SECRET silently exposed
+  // all read endpoints (reviews, stats, settings, source PDFs, tutor, …).
+  console.warn(`[auth] Blocked ${req.method} ${pathname} — NEXTAUTH_SECRET is not set. Configure NEXTAUTH_SECRET (+ AUTH_GOOGLE_CLIENT_ID/SECRET) and optionally SHORTCUT_TOKEN.`);
+  if (pathname.startsWith("/api/")) {
     return NextResponse.json(
-      { error: "Auth ist nicht konfiguriert — dieser Endpoint ist gesperrt. Setze NEXTAUTH_SECRET und AUTH_GOOGLE_CLIENT_ID/AUTH_GOOGLE_CLIENT_SECRET (Web) bzw. SHORTCUT_TOKEN (Shortcuts) in den Umgebungsvariablen." },
+      { error: "Auth ist nicht konfiguriert — dieser Endpoint ist gesperrt. Setze NEXTAUTH_SECRET und AUTH_GOOGLE_CLIENT_ID/AUTH_GOOGLE_CLIENT_SECRET (Web) bzw. SHORTCUT_TOKEN (Shortcuts)." },
       { status: 503 }
     );
   }
-  return NextResponse.next();
+  return new NextResponse(
+    "Authentifizierung ist nicht konfiguriert. Bitte NEXTAUTH_SECRET setzen.",
+    { status: 503, headers: { "Content-Type": "text/plain; charset=utf-8" } }
+  );
 }
 
 function hasValidToken(req: NextRequest, token: string): boolean {

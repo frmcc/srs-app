@@ -63,6 +63,11 @@ export async function POST(req: NextRequest) {
     .slice(-MAX_TURNS)
     .map((m) => ({ role: m.role, text: m.text.slice(0, MAX_MSG_CHARS) }));
 
+  // After trimming to the last MAX_TURNS, the window can start with a `model`
+  // turn — some Gemini API versions reject a history that doesn't start with a
+  // user turn. Drop any leading model turns so it always begins with `user`.
+  while (messages.length && messages[0].role === "model") messages.shift();
+
   if (!messages.length || messages[messages.length - 1].role !== "user") {
     return NextResponse.json({ error: "Last message must be from the user." }, { status: 400 });
   }

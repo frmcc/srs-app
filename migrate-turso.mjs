@@ -3,52 +3,77 @@ import fs from 'fs';
 import path from 'path';
 import 'dotenv/config';
 
+// Applies prisma/migrations/*/migration.sql to a Turso/libSQL database, in
+// order, exactly once each. Prisma's own `migrate deploy` cannot talk to a
+// `libsql://` URL (it needs the driver adapter the CLI doesn't use), so this
+// runner is the deploy path for Turso.
+//
+// Sound-by-design:
+//  - tracks applied migrations in `_srs_migrations` and skips them next run;
+//  - runs each migration's statements in a single transaction (batch);
+//  - FAILS LOUDLY on any real error (unlike the old "continue on error" version).
+//    "already exists" / "duplicate column" are tolerated ONLY for the very first
+//    baseline applied to a pre-existing (hand-built) DB, then recorded as applied.
+
+const IGNORABLE = /already exists|duplicate column name/i;
+
 async function migrate() {
   const url = process.env.TURSO_DATABASE_URL;
   const authToken = process.env.TURSO_AUTH_TOKEN;
-
-  if (!url || !authToken) {
-    console.error("Missing Turso credentials");
+  if (!url) {
+    console.error('Missing TURSO_DATABASE_URL');
     process.exit(1);
   }
 
-  const client = createClient({
-    url,
-    authToken,
-  });
+  const client = createClient({ url, authToken });
+  console.log('Connected to Turso.');
 
-  console.log("Connected to Turso. Finding migrations...");
+  await client.execute(
+    'CREATE TABLE IF NOT EXISTS "_srs_migrations" ("name" TEXT PRIMARY KEY, "appliedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)',
+  );
+  const applied = new Set(
+    (await client.execute('SELECT name FROM "_srs_migrations"')).rows.map((r) => r.name),
+  );
 
   const migrationsDir = path.join(process.cwd(), 'prisma', 'migrations');
-  const dirs = fs.readdirSync(migrationsDir).filter(d => fs.statSync(path.join(migrationsDir, d)).isDirectory());
-  
-  // Sort them chronologically by folder name
-  dirs.sort();
+  const dirs = fs
+    .readdirSync(migrationsDir)
+    .filter((d) => fs.statSync(path.join(migrationsDir, d)).isDirectory())
+    .sort();
 
   for (const dir of dirs) {
+    if (applied.has(dir)) {
+      console.log(`Skipping (already applied): ${dir}`);
+      continue;
+    }
     const sqlPath = path.join(migrationsDir, dir, 'migration.sql');
-    if (fs.existsSync(sqlPath)) {
-      console.log(`Executing migration: ${dir}`);
-      const sql = fs.readFileSync(sqlPath, 'utf8');
-      
-      // Split by semicolon and execute each statement
-      const statements = sql.split(';').filter(s => s.trim().length > 0);
-      
-      for (const statement of statements) {
-        try {
-          await client.execute(statement);
-        } catch (e) {
-          if (!e.message.includes("already exists")) {
-            console.error(`Error executing statement: ${statement}`);
-            console.error(e);
-            // Don't exit on error, try to continue in case it's a "table already exists" error
-          }
-        }
+    if (!fs.existsSync(sqlPath)) continue;
+
+    console.log(`Applying migration: ${dir}`);
+    const sql = fs.readFileSync(sqlPath, 'utf8');
+    const statements = sql
+      .split(';')
+      .map((s) => s.replace(/--.*$/gm, '').trim())
+      .filter(Boolean);
+
+    // Baseline against a possibly-pre-existing DB tolerates "already exists".
+    const isBaseline = applied.size === 0 && dir.includes('baseline');
+
+    for (const statement of statements) {
+      try {
+        await client.execute(statement);
+      } catch (e) {
+        if (isBaseline && IGNORABLE.test(String(e?.message))) continue;
+        console.error(`\nMigration ${dir} failed on statement:\n${statement}\n`);
+        console.error(e);
+        process.exit(1);
       }
     }
+    await client.execute({ sql: 'INSERT INTO "_srs_migrations" (name) VALUES (?)', args: [dir] });
+    console.log(`  ✓ ${dir}`);
   }
 
-  console.log("Migrations complete!");
+  console.log('Migrations complete.');
   process.exit(0);
 }
 

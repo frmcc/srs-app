@@ -44,15 +44,22 @@ export function nextReviewDateAfter(currentLevel: number, isPass: boolean): Date
 }
 
 /**
- * Count tasks in a quiz sheet. The generation prompts enforce "Aufgabe N"
- * (German) / "Task N" (English mode translates everything) at line starts.
- * Anchoring at the line start also stops cross-references inside question
- * text ("vergleiche mit Aufgabe 2") from inflating the count.
+ * Heading words that a generated quiz may use to label a task, at the start of
+ * a line. German ("Aufgabe"/"Frage") plus the English synonyms a model actually
+ * emits when told to "translate everything" (nothing pins it to "Task"):
+ * Task / Question / Exercise / Problem / Item. Matching a broad set stops the
+ * language of the quiz from silently zeroing the count.
+ */
+const TASK_HEADING_RE = /^[ \t]*(?:Aufgabe|Frage|Task|Question|Exercise|Problem|Item)\s+\d+/gim;
+
+/**
+ * Count tasks in a quiz sheet. Anchored at line start so cross-references inside
+ * question text ("vergleiche mit Aufgabe 2") don't inflate the count.
  *
- * The German-only, unanchored predecessor made EVERY English quiz count as
- * zero → fallback 10 → the Co-Prüfer were told to grade tasks that didn't
- * exist (mirrors the Task|Aufgabe fix already in the UI's parseQuizTasks).
+ * Returns the real count; if nothing matches it returns `fallback`. Callers that
+ * need to distinguish "genuinely zero" from "couldn't parse" should pass
+ * `fallback = 0` and check for 0 explicitly (see grading-pipeline's split math).
  */
 export function countTasks(quizSheet: string, fallback = 10): number {
-  return (quizSheet.match(/^[ \t]*(?:Aufgabe|Task)\s+\d+/gim) || []).length || fallback;
+  return (quizSheet.match(TASK_HEADING_RE) || []).length || fallback;
 }

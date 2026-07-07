@@ -46,6 +46,14 @@ export async function runQuizGeneration(params: {
     }).catch((e) => console.error("[quiz-gen] Failed to mark job processing:", e));
   }
 
+  // Touch the job's updatedAt at each major step. Generation can legitimately
+  // run several minutes; without a heartbeat the GET poller's stale detector
+  // (10-min updatedAt age) could falsely flip a healthy run to "error", the user
+  // would resubmit, and a duplicate module would be created.
+  const heartbeat = jobId
+    ? () => prisma.backgroundJob.update({ where: { id: jobId }, data: { status: "processing" } }).catch(() => {})
+    : () => Promise.resolve();
+
   try {
     const appConfig = await prisma.appConfig.findUnique({ where: { id: 1 } });
     const wrapperMode = appConfig?.wrapperMode || "all";
@@ -98,6 +106,7 @@ export async function runQuizGeneration(params: {
     const blueprint = blueprintRes.text;
 
     // ---- Step 2: Quiz 1 (later quizzes are generated on-demand after grading) ----
+    await heartbeat();
     progress(2, "Generating Quiz 1...");
     const quiz1Res = await generateContentWithRetry(ai, modelName, {
       contents: [{ role: "user", parts: [...masterContextParts, { text: "Hier sind die Materialien. Bitte führe deine System-Instruktionen aus." }] }],
@@ -115,6 +124,7 @@ export async function runQuizGeneration(params: {
     const quiz1Ledger = extractSection(quiz1Text, "===COVERAGE_LEDGER_START===", "===COVERAGE_LEDGER_END===");
 
     // ---- Step 3+4: Tutor prompt & podcast prompts in parallel (independent) ----
+    await heartbeat();
     progress(3, "Generating Tutor Prompt & Podcast Prompts...");
     const [tutorRes, podcastRes] = await Promise.all([
       generateContentWithRetry(ai, modelName, {
@@ -147,6 +157,7 @@ export async function runQuizGeneration(params: {
     }
 
     // ---- Step 6: Google Drive (Semester X / Module / Topic) ----
+    await heartbeat();
     progress(6, "Uploading to Google Drive...");
     let folderId = "";
     let mainPdfId = "";
@@ -185,31 +196,37 @@ export async function runQuizGeneration(params: {
     }
 
     // ---- Step 7: Persist ----
+    await heartbeat();
     progress(7, "Saving records to database...");
-    const createdItem = await prisma.sRSItem.create({
-      data: {
-        subjectMain,
-        subjectSub,
-        semester: currentSemester,
-        currentLevel: 0,
-        nextReviewDate: new Date(Date.now() + 24 * 60 * 60 * 1000),
-        quiz1DocId: quiz1Text,
-        blueprint,
-        coverageLedger: quiz1Ledger,
-        tutorPromptContent: tutorPrompt,
-        tutorPromptDocId: "pending",
-        prePodcastPrompt: prePodcastPrompt || null,
-        postPodcastPrompt: postPodcastPrompt || null,
-        prePodcastUrl: preNotebookId ? `https://notebooklm.google.com/notebook/${preNotebookId}` : null,
-        postPodcastUrl: postNotebookId ? `https://notebooklm.google.com/notebook/${postNotebookId}` : null,
-        sourceMaterialContent: JSON.stringify({ driveFileId: mainPdfId, driveFolderId: folderId }),
-      },
+    // Create + set tutorPromptDocId to the item's own id ATOMICALLY. The old
+    // two-step (create with "pending", then update) could crash between the
+    // writes and leave tutorPromptDocId="pending" forever → a broken /tutor link.
+    const finalItem = await prisma.$transaction(async (tx) => {
+      const created = await tx.sRSItem.create({
+        data: {
+          subjectMain,
+          subjectSub,
+          semester: currentSemester,
+          currentLevel: 0,
+          nextReviewDate: new Date(Date.now() + 24 * 60 * 60 * 1000),
+          quiz1DocId: quiz1Text,
+          blueprint,
+          coverageLedger: quiz1Ledger,
+          tutorPromptContent: tutorPrompt,
+          tutorPromptDocId: "pending",
+          prePodcastPrompt: prePodcastPrompt || null,
+          postPodcastPrompt: postPodcastPrompt || null,
+          prePodcastUrl: preNotebookId ? `https://notebooklm.google.com/notebook/${preNotebookId}` : null,
+          postPodcastUrl: postNotebookId ? `https://notebooklm.google.com/notebook/${postNotebookId}` : null,
+          sourceMaterialContent: JSON.stringify({ driveFileId: mainPdfId, driveFolderId: folderId }),
+        },
+      });
+      return tx.sRSItem.update({
+        where: { id: created.id },
+        data: { tutorPromptDocId: created.id },
+      });
     });
-
-    const finalItem = await prisma.sRSItem.update({
-      where: { id: createdItem.id },
-      data: { tutorPromptDocId: createdItem.id },
-    });
+    const createdItem = finalItem;
 
     if (jobId) {
       await prisma.backgroundJob.update({

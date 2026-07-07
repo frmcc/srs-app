@@ -61,10 +61,15 @@ export function getOrCreateDriveFolder(name: string, parentFolderId?: string): P
 
   const task = (async () => {
     const drive = getDriveClient();
-    const escapedName = name.replace(/'/g, "\\'");
+    // Escape backslashes FIRST, then single quotes — order matters, otherwise a
+    // name containing a backslash produces a malformed query.
+    const escapedName = name.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
     const query = `name='${escapedName}' and '${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
     const response = await drive.files.list({
       q: query,
+      // Order by creation time so that, if duplicate folders already exist, the
+      // SAME (oldest) one wins every call instead of a nondeterministic pick.
+      orderBy: 'createdTime',
       fields: 'files(id, name)',
       spaces: 'drive',
     });
@@ -186,4 +191,10 @@ export async function downloadFromDrive(fileId: string): Promise<Buffer> {
     );
     return Buffer.from(response.data as ArrayBuffer);
   }
+}
+
+/** Best-effort delete of a Drive file (used when a module is deleted). */
+export async function deleteFromDrive(fileId: string): Promise<void> {
+  const drive = getDriveClient();
+  await drive.files.delete({ fileId });
 }
