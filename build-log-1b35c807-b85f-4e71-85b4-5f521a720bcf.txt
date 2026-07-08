@@ -1,0 +1,352 @@
+
+To live stream log output for this build, please ensure the grpc module is installed. Run:
+  pip install grpcio
+and set:
+  export CLOUDSDK_PYTHON_SITEPACKAGES=1
+
+----------------------------- REMOTE BUILD OUTPUT ------------------------------
+starting build "1b35c807-b85f-4e71-85b4-5f521a720bcf"
+FETCHSOURCE
+Fetching storage object: gs://run-sources-auto-drive-494409-europe-west1/services/srs-app/1783446807.925826-e9b7aac5d9fb4f26914704a34fc894c9.zip#1783446808437188
+Copying gs://run-sources-auto-drive-494409-europe-west1/services/srs-app/1783446807.925826-e9b7aac5d9fb4f26914704a34fc894c9.zip#1783446808437188...
+/ [0 files][    0.0 B/407.8 KiB]                                                / [1 files][407.8 KiB/407.8 KiB]
+Operation completed over 1 objects/407.8 KiB.
+Archive:  /tmp/source-archive.zip
+   creating: /workspace/prisma/
+   creating: /workspace/docs/
+   creating: /workspace/public/
+   creating: /workspace/scripts/
+   creating: /workspace/src/
+   creating: /workspace/prisma/migrations/
+   creating: /workspace/prisma/migrations/00000000000000_baseline/
+   creating: /workspace/docs/legacy-migrations/
+   creating: /workspace/docs/legacy-migrations/20260701100000_reviewlog_feedback_history/
+   creating: /workspace/docs/legacy-migrations/20260625120000_add_agent_mode/
+   creating: /workspace/docs/legacy-migrations/20260612090000_indexes_and_job_updatedat/
+   creating: /workspace/docs/legacy-migrations/20260529074531_add_tutor_prompt_content/
+   creating: /workspace/docs/legacy-migrations/20260528133415_add_push_and_jobs/
+   creating: /workspace/src/app/
+   creating: /workspace/src/components/
+   creating: /workspace/src/lib/
+   creating: /workspace/src/app/quiz/
+   creating: /workspace/src/app/components/
+   creating: /workspace/src/app/tutor/
+   creating: /workspace/src/app/api/
+   creating: /workspace/src/app/login/
+   creating: /workspace/src/app/quiz/[id]/
+   creating: /workspace/src/app/tutor/[id]/
+   creating: /workspace/src/app/api/comprehension/
+   creating: /workspace/src/app/api/settings/
+   creating: /workspace/src/app/api/calendar/
+   creating: /workspace/src/app/api/director/
+   creating: /workspace/src/app/api/translate/
+   creating: /workspace/src/app/api/auth/
+   creating: /workspace/src/app/api/source/
+   creating: /workspace/src/app/api/quiz/
+   creating: /workspace/src/app/api/grade/
+   creating: /workspace/src/app/api/push/
+   creating: /workspace/src/app/api/tutor/
+   creating: /workspace/src/app/api/tts/
+   creating: /workspace/src/app/api/podcast/
+   creating: /workspace/src/app/api/transcribe/
+   creating: /workspace/src/app/api/login/
+   creating: /workspace/src/app/api/stats/
+   creating: /workspace/src/app/api/reviews/
+   creating: /workspace/src/app/api/calendar/done/
+   creating: /workspace/src/app/api/director/analyze/
+   creating: /workspace/src/app/api/auth/[...nextauth]/
+   creating: /workspace/src/app/api/source/[id]/
+   creating: /workspace/src/app/api/quiz/generate-jit/
+   creating: /workspace/src/app/api/quiz/submit/
+   creating: /workspace/src/app/api/grade/shortcut/
+   creating: /workspace/src/app/api/push/subscribe/
+   creating: /workspace/src/app/api/tutor/chat/
+   creating: /workspace/src/app/api/tutor/[id]/
+   creating: /workspace/src/app/api/podcast/generate/
+   creating: /workspace/src/app/api/reviews/[id]/
+   creating: /workspace/src/app/api/reviews/[id]/history/
+  inflating: /workspace/.fuse_hidden0000000200000001
+  inflating: /workspace/finish-setup.command
+  inflating: /workspace/seed-simulation.mjs
+  inflating: /workspace/postcss.config.mjs
+  inflating: /workspace/Dockerfile
+  inflating: /workspace/fix-prod-db.mjs
+  inflating: /workspace/README.md
+  inflating: /workspace/deploy-both.command
+  inflating: /workspace/.dockerignore
+  inflating: /workspace/strip-placeholders.mjs
+  inflating: /workspace/CODE_REVIEW.md
+  inflating: /workspace/package-lock.json
+  inflating: /workspace/package.json
+  inflating: /workspace/test-models.mjs
+  inflating: /workspace/refinement-log.md
+  inflating: /workspace/tsconfig.json
+  inflating: /workspace/deploy.sh
+  inflating: /workspace/test.txt
+  inflating: /workspace/cancel.mjs
+  inflating: /workspace/AGENTS.md
+  inflating: /workspace/migrate-turso.mjs
+  inflating: /workspace/eslint.config.mjs
+  inflating: /workspace/CLAUDE.md
+  inflating: /workspace/migrate.mjs
+  inflating: /workspace/next.config.ts
+  inflating: /workspace/CODE_REVIEW_2026-06-25.md
+  inflating: /workspace/prisma/schema.prisma
+  inflating: /workspace/prisma/reconcile-existing-db.sql
+  inflating: /workspace/prisma/migrations/migration_lock.toml
+  inflating: /workspace/prisma/migrations/00000000000000_baseline/migration.sql
+  inflating: /workspace/docs/DATABASE.md
+  inflating: /workspace/docs/legacy-migrations/20260701100000_reviewlog_feedback_history/migration.sql
+  inflating: /workspace/docs/legacy-migrations/20260625120000_add_agent_mode/migration.sql
+  inflating: /workspace/docs/legacy-migrations/20260612090000_indexes_and_job_updatedat/migration.sql
+  inflating: /workspace/docs/legacy-migrations/20260529074531_add_tutor_prompt_content/migration.sql
+  inflating: /workspace/docs/legacy-migrations/20260528133415_add_push_and_jobs/migration.sql
+  inflating: /workspace/public/icon-192.svg
+  inflating: /workspace/public/file.svg
+  inflating: /workspace/public/icon-192.png
+  inflating: /workspace/public/icon-512.svg
+  inflating: /workspace/public/vercel.svg
+  inflating: /workspace/public/manifest.json
+  inflating: /workspace/public/next.svg
+  inflating: /workspace/public/globe.svg
+  inflating: /workspace/public/window.svg
+  inflating: /workspace/public/sw.js
+  inflating: /workspace/scripts/test-prisma.js
+  inflating: /workspace/scripts/fix_fluid.js
+  inflating: /workspace/scripts/fix-db.js
+  inflating: /workspace/scripts/test-doc.js
+  inflating: /workspace/scripts/add_columns.js
+  inflating: /workspace/scripts/test-genai.js
+  inflating: /workspace/scripts/check-drive.js
+  inflating: /workspace/scripts/create_tables.sql
+  inflating: /workspace/scripts/test.js
+  inflating: /workspace/scripts/test-db.js
+  inflating: /workspace/scripts/insert_free_tutor.js
+  inflating: /workspace/scripts/schema.sql
+  inflating: /workspace/scripts/update_translations2.js
+  inflating: /workspace/scripts/enforce_grid.js
+  inflating: /workspace/scripts/setup_turso.js
+  inflating: /workspace/scripts/add_review_log.js
+  inflating: /workspace/scripts/test_db.js
+  inflating: /workspace/scripts/setup-oauth.js
+  inflating: /workspace/scripts/update_translations3.js
+  inflating: /workspace/scripts/add-column.js
+  inflating: /workspace/scripts/simulate_logic.js
+  inflating: /workspace/scripts/check-perms.js
+  inflating: /workspace/scripts/test_extract.js
+  inflating: /workspace/scripts/test_api.js
+  inflating: /workspace/scripts/test_api3.js
+  inflating: /workspace/scripts/test-drive.js
+  inflating: /workspace/scripts/check-quota.js
+  inflating: /workspace/scripts/import-schema.mjs
+  inflating: /workspace/scripts/test_api2.js
+  inflating: /workspace/scripts/migrate-2026-06-indexes.js
+  inflating: /workspace/scripts/test_gemini.js
+  inflating: /workspace/scripts/reconcile-existing-db.mjs
+  inflating: /workspace/scripts/create_tables2.sql
+  inflating: /workspace/scripts/migrate.js
+  inflating: /workspace/scripts/test-model.js
+  inflating: /workspace/scripts/add_language.js
+  inflating: /workspace/scripts/fix-db2.js
+  inflating: /workspace/scripts/update_translations.js
+  inflating: /workspace/scripts/list-drive.js
+  inflating: /workspace/scripts/test-date.js
+  inflating: /workspace/scripts/make_responsive.js
+  inflating: /workspace/scripts/migrate_turso.js
+  inflating: /workspace/scripts/test-db.mjs
+  inflating: /workspace/scripts/migrate_icons.js
+  inflating: /workspace/scripts/test_chat.js
+  inflating: /workspace/scripts/check-tts.mjs
+  inflating: /workspace/scripts/test_api_status.js
+  inflating: /workspace/src/middleware.ts
+  inflating: /workspace/src/app/favicon.ico
+  inflating: /workspace/src/app/useInteractiveQuiz.ts
+  inflating: /workspace/src/app/layout.tsx
+  inflating: /workspace/src/app/DashboardClient.tsx
+  inflating: /workspace/src/app/page.tsx
+  inflating: /workspace/src/app/globals.css
+  inflating: /workspace/src/app/quiz/[id]/page.tsx
+  inflating: /workspace/src/app/components/StatsPanel.tsx
+  inflating: /workspace/src/app/components/Tooltip.tsx
+  inflating: /workspace/src/app/components/.fuse_hidden0000000500000001
+  inflating: /workspace/src/app/components/AutoGrowTextarea.tsx
+  inflating: /workspace/src/app/components/TutorPanel.tsx
+  inflating: /workspace/src/app/components/Toast.tsx
+  inflating: /workspace/src/app/tutor/[id]/copy-button.tsx
+  inflating: /workspace/src/app/tutor/[id]/page.tsx
+  inflating: /workspace/src/app/api/comprehension/route.ts
+  inflating: /workspace/src/app/api/settings/route.ts
+  inflating: /workspace/src/app/api/calendar/route.ts
+  inflating: /workspace/src/app/api/calendar/done/route.ts
+  inflating: /workspace/src/app/api/translate/route.ts
+  inflating: /workspace/src/app/api/auth/[...nextauth]/route.ts
+  inflating: /workspace/src/app/api/source/[id]/route.ts
+  inflating: /workspace/src/app/api/quiz/prompts.ts
+  inflating: /workspace/src/app/api/quiz/route.ts
+  inflating: /workspace/src/app/api/quiz/submit/route.ts
+  inflating: /workspace/src/app/api/grade/prompts.ts
+  inflating: /workspace/src/app/api/grade/route.ts
+  inflating: /workspace/src/app/api/grade/shortcut/route.ts
+  inflating: /workspace/src/app/api/push/subscribe/route.ts
+  inflating: /workspace/src/app/api/tutor/chat/route.ts
+  inflating: /workspace/src/app/api/tutor/[id]/route.ts
+  inflating: /workspace/src/app/api/tts/route.ts
+  inflating: /workspace/src/app/api/podcast/generate/route.ts
+  inflating: /workspace/src/app/api/transcribe/route.ts
+  inflating: /workspace/src/app/api/login/route.ts
+  inflating: /workspace/src/app/api/stats/route.ts
+  inflating: /workspace/src/app/api/reviews/route.ts
+  inflating: /workspace/src/app/api/reviews/[id]/route.ts
+  inflating: /workspace/src/app/api/reviews/[id]/history/route.ts
+  inflating: /workspace/src/app/login/LoginClient.tsx
+  inflating: /workspace/src/app/login/page.tsx
+  inflating: /workspace/src/components/Providers.tsx
+  inflating: /workspace/src/lib/appearance.ts
+  inflating: /workspace/src/lib/push.ts
+  inflating: /workspace/src/lib/ics.ts
+  inflating: /workspace/src/lib/review-query.ts
+  inflating: /workspace/src/lib/markers.ts
+  inflating: /workspace/src/lib/agent.ts
+  inflating: /workspace/src/lib/gemini-retry.ts
+  inflating: /workspace/src/lib/motion.ts
+  inflating: /workspace/src/lib/quiz-generator.ts
+  inflating: /workspace/src/lib/pdf-text.ts
+  inflating: /workspace/src/lib/comprehension-quiz.ts
+  inflating: /workspace/src/lib/auth-token.ts
+  inflating: /workspace/src/lib/google-drive.ts
+  inflating: /workspace/src/lib/notebooklm.ts
+  inflating: /workspace/src/lib/srs.ts
+  inflating: /workspace/src/lib/db.ts
+  inflating: /workspace/src/lib/auth.ts
+  inflating: /workspace/src/lib/grading-pipeline.ts
+BUILD
+Already have image (with digest): gcr.io/cloud-builders/docker
+Sending build context to Docker daemon  1.471MB
+Step 1/34 : FROM node:22-alpine AS base
+22-alpine: Pulling from library/node
+55afa1ecc21d: Already exists
+3f4c164634d2: Pulling fs layer
+1d4d101ceaad: Pulling fs layer
+d10ff586f6bd: Pulling fs layer
+d10ff586f6bd: Verifying Checksum
+d10ff586f6bd: Download complete
+1d4d101ceaad: Verifying Checksum
+1d4d101ceaad: Download complete
+3f4c164634d2: Verifying Checksum
+3f4c164634d2: Download complete
+3f4c164634d2: Pull complete
+1d4d101ceaad: Pull complete
+d10ff586f6bd: Pull complete
+Digest: sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2
+Status: Downloaded newer image for node:22-alpine
+ ---> bd168dc5d9d7
+Step 2/34 : FROM base AS deps
+ ---> bd168dc5d9d7
+Step 3/34 : RUN apk add --no-cache libc6-compat openssl
+ ---> Running in 408f68f3d2b2
+(1/4) Installing musl-obstack (1.2.3-r2)
+(2/4) Installing libucontext (1.5.1-r0)
+(3/4) Installing gcompat (1.1.0-r4)
+(4/4) Installing openssl (3.5.7-r0)
+Executing busybox-1.37.0-r31.trigger
+OK: 11.8 MiB in 22 packages
+Removing intermediate container 408f68f3d2b2
+ ---> 2a79b2519cb6
+Step 4/34 : WORKDIR /app
+ ---> Running in 7779708e36ff
+Removing intermediate container 7779708e36ff
+ ---> af28930eef9b
+Step 5/34 : COPY package.json package-lock.json* ./
+ ---> cd44bfdb873e
+Step 6/34 : COPY prisma ./prisma/
+ ---> ba89289f124d
+Step 7/34 : RUN npm ci
+ ---> Running in 56e703c81594
+[91mnpm warn deprecated prebuild-install@7.1.3: No longer maintained. Please contact the author of the relevant native addon; alternatives are available.
+[0m[91mnpm warn deprecated node-domexception@1.0.0: Use your platform's native DOMException instead
+[0m[91mnpm warn deprecated uuid@8.3.2: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
+[0m[91mnpm warn deprecated glob@10.5.0: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
+[0m
+added 608 packages, and audited 609 packages in 42s
+186 packages are looking for funding
+  run `npm fund` for details
+6 moderate severity vulnerabilities
+To address issues that do not require attention, run:
+  npm audit fix
+To address all issues (including breaking changes), run:
+  npm audit fix --force
+Run `npm audit` for details.
+[91mnpm notice
+npm notice New major version of npm available! 10.9.8 -> 11.18.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.18.0
+npm notice To update run: npm install -g npm@11.18.0
+npm notice
+[0mRemoving intermediate container 56e703c81594
+ ---> 32f25932605c
+Step 8/34 : FROM base AS builder
+ ---> bd168dc5d9d7
+Step 9/34 : WORKDIR /app
+ ---> Running in c8343736a8f4
+Removing intermediate container c8343736a8f4
+ ---> 89a60c74a94a
+Step 10/34 : RUN apk add --no-cache openssl
+ ---> Running in a4c4607c040d
+(1/1) Installing openssl (3.5.7-r0)
+Executing busybox-1.37.0-r31.trigger
+OK: 11.6 MiB in 19 packages
+Removing intermediate container a4c4607c040d
+ ---> 4c103d1e1445
+Step 11/34 : COPY --from=deps /app/node_modules ./node_modules
+ ---> f19b7e29911c
+Step 12/34 : COPY . .
+ ---> 4adc19415f17
+Step 13/34 : ENV NEXT_TELEMETRY_DISABLED=1
+ ---> Running in e1ce39ff112b
+Removing intermediate container e1ce39ff112b
+ ---> a0e527e6e627
+Step 14/34 : RUN npx prisma generate
+ ---> Running in a95c0761ffe3
+Prisma schema loaded from prisma/schema.prisma
+[91mwarn Preview feature "driverAdapters" is deprecated. The functionality can be used without specifying it as a preview feature.
+[0m
+✔ Generated Prisma Client (v6.19.3) to ./node_modules/@prisma/client in 303ms
+Start by importing your Prisma Client (See: https://pris.ly/d/importing-client)
+Tip: Need your database queries to be 1000x faster? Accelerate offers you that and more: https://pris.ly/tip-2-accelerate
+[91mnpm notice
+npm notice New major version of npm available! 10.9.8 -> 11.18.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.18.0
+npm notice To update run: npm install -g npm@11.18.0
+npm notice
+[0mRemoving intermediate container a95c0761ffe3
+ ---> c2e3be6ecd37
+Step 15/34 : RUN npm run build
+ ---> Running in 2fb6177561a8
+> srs-app@0.1.0 build
+> prisma generate && next build
+Prisma schema loaded from prisma/schema.prisma
+[91mwarn Preview feature "driverAdapters" is deprecated. The functionality can be used without specifying it as a preview feature.
+[0m
+✔ Generated Prisma Client (v6.19.3) to ./node_modules/@prisma/client in 273ms
+Start by importing your Prisma Client (See: https://pris.ly/d/importing-client)
+Tip: Need your database queries to be 1000x faster? Accelerate offers you that and more: https://pris.ly/tip-2-accelerate
+▲ Next.js 16.2.6 (Turbopack)
+[91m⚠ The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+[0m  Creating an optimized production build ...
+✓ Compiled successfully in 46s
+  Running TypeScript ...
+  Finished TypeScript in 47s ...
+  Collecting page data using 1 worker ...
+[91mError: Failed to load external module @libsql/client-a0665382d71f31f0: Error: Error relocating /app/node_modules/@prisma/adapter-libsql/node_modules/@libsql/linux-x64-musl/index.node: fcntl64: symbol not found
+    at Context.externalImport [as y] (.next/server/chunks/[turbopack]_runtime.js:607:15)
+    at async (.next/server/chunks/[root-of-the-server]__06bzm5-._.js:1:1138)
+[0m[91m
+[0m[91m> Build error occurred
+[0m[91mError: Failed to collect page data for /api/push/subscribe
+    at ignore-listed frames {
+  type: 'Error'
+}
+The command '/bin/sh -c npm run build' returned a non-zero code: 1
+ERROR
+ERROR: build step 0 "gcr.io/cloud-builders/docker" failed: step exited with non-zero status: 1
+[0m
+--------------------------------------------------------------------------------

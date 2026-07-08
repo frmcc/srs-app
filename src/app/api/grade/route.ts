@@ -1,7 +1,10 @@
 export const maxDuration = 300;
 import { NextRequest, NextResponse, after } from "next/server";
-import { runGradingPipeline, GradingMismatchError, ConcurrentGradingError } from "@/lib/grading-pipeline";
+import { runGradingPipeline, GradingMismatchError, ConcurrentGradingError, type GradingSketch } from "@/lib/grading-pipeline";
 import { DecisionParseError } from "@/lib/markers";
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/lib/auth";
+import { scribbleEnabledForEmail } from "@/lib/feature-flags";
 
 /**
  * Web grading endpoint. Thin wrapper over runGradingPipeline:
@@ -15,18 +18,63 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  let body: { itemId?: string; studentAnswers?: string; language?: string; modelName?: string; comprehension?: boolean };
+  let body: { itemId?: string; studentAnswers?: string; language?: string; modelName?: string; comprehension?: boolean; sketches?: unknown };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const { itemId, studentAnswers, language, modelName, comprehension } = body;
+  const { itemId, studentAnswers, language, modelName, comprehension, sketches } = body;
   if (!itemId) {
     return NextResponse.json({ error: "Item ID is required" }, { status: 400 });
   }
-  if (!studentAnswers || !studentAnswers.trim()) {
+
+  // ── Scribbled answer boxes (allowlist feature) ────────────────────────────
+  // Normalize + validate BEFORE opening the stream: strip the data-URL prefix,
+  // whitelist raster mime types, and cap count/size so a buggy client can't
+  // ship megabytes of junk into every Gemini call of the pipeline.
+  const MAX_SKETCHES = 20;
+  const MAX_SKETCH_B64_CHARS = 3_000_000;  // ~2.2 MB image each
+  const MAX_TOTAL_B64_CHARS = 16_000_000;  // ~12 MB total
+  const ALLOWED_SKETCH_MIMES = new Set(["image/png", "image/jpeg", "image/webp"]);
+  let normalizedSketches: GradingSketch[] | undefined;
+  if (sketches !== undefined) {
+    if (!Array.isArray(sketches) || sketches.length > MAX_SKETCHES) {
+      return NextResponse.json({ error: "Invalid sketches payload" }, { status: 400 });
+    }
+    let totalChars = 0;
+    const cleaned: GradingSketch[] = [];
+    for (const raw of sketches) {
+      const label = typeof raw?.label === "string" ? raw.label.trim().slice(0, 80) : "";
+      const image = typeof raw?.image === "string" ? raw.image : "";
+      // Accept "data:image/png;base64,AAAA…" or raw base64 (PNG assumed).
+      const dataUrlMatch = image.match(/^data:([a-z0-9./+-]+);base64,(.+)$/i);
+      const mimeType = dataUrlMatch ? dataUrlMatch[1].toLowerCase() : "image/png";
+      const data = dataUrlMatch ? dataUrlMatch[2] : image;
+      if (!label || !data || !ALLOWED_SKETCH_MIMES.has(mimeType) || !/^[A-Za-z0-9+/=\s]+$/.test(data)) {
+        return NextResponse.json({ error: "Invalid sketch entry (label/image)" }, { status: 400 });
+      }
+      if (data.length > MAX_SKETCH_B64_CHARS || (totalChars += data.length) > MAX_TOTAL_B64_CHARS) {
+        return NextResponse.json({ error: "Sketch images too large" }, { status: 413 });
+      }
+      cleaned.push({ label, data: data.replace(/\s+/g, ""), mimeType });
+    }
+    if (cleaned.length > 0) normalizedSketches = cleaned;
+  }
+
+  // Server-side re-check of the allowlist (the client UI is only the first gate).
+  // No DB users here (JWT sessions), so we read the email straight off the
+  // session. Fails closed: no session ⇒ no sketches.
+  if (normalizedSketches) {
+    const session = await getServerSession(authOptions);
+    if (!scribbleEnabledForEmail(session?.user?.email)) {
+      return NextResponse.json({ error: "Scribble answers are not enabled for this account." }, { status: 403 });
+    }
+  }
+
+  // A submission may be typed text, sketches, or both — but never neither.
+  if ((!studentAnswers || !studentAnswers.trim()) && !normalizedSketches) {
     return NextResponse.json({ error: "Student answers are required" }, { status: 400 });
   }
 
@@ -44,7 +92,7 @@ export async function POST(req: NextRequest) {
       try {
         const result = await runGradingPipeline({
           itemId,
-          submission: { text: studentAnswers },
+          submission: { text: studentAnswers, sketches: normalizedSketches },
           language,
           modelName,
           comprehension: comprehension === true,

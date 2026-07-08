@@ -1,0 +1,129 @@
+# Refinement log
+
+## Round 1 — 2026-07-07 (automated)
+
+### 1. Stats semester filter (both repos)
+- `src/app/api/stats/route.ts`: ReviewLog select now also returns `subjectSub` + `itemId` (query-select change only; no schema/migration).
+- `src/app/components/StatsPanel.tsx` (kept byte-identical in both repos):
+  - New chip-row selector above the stat cards — "Alle Semester / All semesters" (default) + one chip per semester present in `items`. Hidden until a second semester exists (a one-option selector is clutter). Uses existing `chip` / `chip-amber` / `caps-label` tokens, `aria-pressed`, horizontal scroll on mobile.
+  - Filtering covers everything the panel renders (streak, heatmap, 30d pass rate, per-module bars, 14-day forecast, level distribution).
+  - Log→semester attribution (documented in code): `itemId` → item lookup first, fallback `subjectMain`+`subjectSub` match (first match wins), unattributable logs appear only under "All semesters".
+  - "Reviews gesamt" card: all-time server total when unfiltered; with a semester selected it counts the filtered logs (365d window) and the sub-label switches to "letzte 12 Monate / last 12 months".
+  - `StatsItemSlim` gained `id` + `subjectSub` (DashboardClient already passes full raw items).
+  - Comprehension checks remain excluded — they never write ReviewLog, and the filter only re-slices existing logs/items.
+
+### 2. Mobile delete visibility (both repos)
+- `DashboardClient.tsx` library lecture-card delete button was `opacity-0 group-hover:opacity-100` → invisible on touch. Now `sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 sm:focus-visible:opacity-100`: always visible below `sm`, hover/focus-revealed on desktop. Only occurrence of the pattern in either repo; snooze and module-remove controls were already always visible (click-armed).
+
+### 3. Detail pass (both repos)
+- Library semester header: "1 Module · 1 Vorlesungen" → proper singular/plural in both languages (matches the plural handling used elsewhere).
+- Date locale consistency: visible dates that used bare `toLocaleDateString()` (browser locale) now pass `de-DE`/`en-GB` like the rest of the file — library meta row (created/next review), comprehension timestamps (row + modal), review-history entries (date & time), video-archive entries, snooze toast.
+- Interactive quiz hint: English UI said “say ‘nächste Aufgabe’” — the trigger regex accepts English (`next task/question/one`), so the English hint now says “say ‘next task’”.
+
+### Checks
+- `npx tsc --noEmit` and `npx eslint` on changed files: clean in both repos after every step. No commits made, per instructions.
+
+### Open / notes for later rounds
+- Due pills, comprehension %, and level dots on library rows are `hidden sm:*` — intentional (design 9a) but worth revisiting for a compact mobile signal.
+- `/api/stats` "totals" remain unfiltered server-side; a per-semester all-time total would need itemId→semester resolution server-side (or shipping item semesters with totals). The 365d-window count + honest sub-label was chosen instead.
+- Semester chips derive from active items; if an entire semester's items are ever deleted, its historical logs fold into "Alle Semester" only.
+
+## Round 2 — 2026-07-07 (automated)
+
+All changes in `DashboardClient.tsx`, mirrored 1:1 into both repos. StatsPanel needed nothing (still byte-identical between repos; token-clean).
+
+### 1. i18n parity
+- Settings → dictation-mode explainer: English branch still said “when you say ‘nächste Aufgabe’” — same bug class round 1 fixed in the in-quiz hint (TRIGGER_RE accepts `next task/question/one`). English text now says “next task”.
+- Print-only quiz sheet: hardcoded `Datum:` / `Antwort:` now split per language (`Date:` / `Answer:`). `Name:` is identical in both languages and stays as-is. Print block keeps its raw zinc/white palette on purpose — print is always ink-on-white, independent of theme.
+
+### 2. Accessibility & touch
+- Mobile top-bar hamburger (the primary mobile nav control) was icon-only with no accessible name → added bilingual dynamic `aria-label` (Menü öffnen/schließen · Open/Close menu) + `aria-expanded`. Hit area was already 40px.
+- Sidebar sign-out button: 28px → 36px hit area via `w-9 h-9 -m-1` (negative margin keeps the row layout; sidebar is also the mobile menu, so it is a touch target).
+- Library search “clear” button: 24px → 40px (`w-10 h-10`, `right-3`→`right-1`) inside the h-12 input; overlays the input's existing `pr-10` zone.
+- Verified (no change needed): global Escape handler covers every modal in both repos incl. saas credits modal; all modal close buttons are `Tip`-wrapped (Tip mirrors labels into aria-label); global `:focus-visible` outline in globals.css.
+
+### 3. Edge cases
+- Settings “Aktuelles Semester” card: German said “1 Module” for a single preset → “1 Modul”.
+- Partial module-delete error toast: “1 von 1 Vorlesungen konnten …” → dedicated singular wording in both languages when the module has exactly one lecture.
+- Verified (no change needed): empty states for due/upcoming/history/presets all exist with language splits; Ø knowledge rating hides until the first rated lecture; comprehension badge absent until first run (explainer tooltip covers first-run); long module names truncate, lecture titles wrap with full-name Tip.
+
+### 4. Round-1 open item — mobile due signal (design 9a follow-up)
+- Library module header due pill and lecture-row due badge were `hidden sm:*` → below `sm` they now collapse to a 7px amber dot (`bg-amber-500` = `--a-g2`, theme/accent-safe) with `sr-only` text (“N fällig / due”, “Fällig / Due”). Same conditions as the pills (collapsed & not editing / `isDue`). Comprehension % and level dots stay desktop-only — informational, not actionable.
+
+### Checks
+- `npx tsc --noEmit` + `npx eslint src/app/DashboardClient.tsx`: clean in both repos after every step (7 checkpoints). No commits. No schema/API/pipeline/SRS-logic touched. Mirror parity grep-verified per change.
+
+### Open / notes for later rounds
+- `/api/stats` per-semester all-time total still unresolved (round 1 note stands).
+- Login screen (`LoginClient.tsx`) is German-only by design — no `language` context pre-login; revisit only if the SaaS twin ever needs an English login.
+- StatsPanel.tsx contains a byte sequence that makes grep treat it as binary (use `grep -a`); harmless (tsc/eslint fine), but worth normalizing someday.
+- Consider a `sm:hidden` compact signal for the comprehension % on lecture rows if users ask for it; skipped deliberately to keep mobile rows quiet.
+
+## Round 3 — 2026-07-07 (automated)
+
+All changes in `DashboardClient.tsx`, mirrored 1:1 into both repos unless marked saas-only. StatsPanel and the other shared components needed nothing (components dir still byte-identical between repos).
+
+### 1. Upload / generate flow
+- Drag-and-drop affordance: `onDragLeave` fired when the cursor moved onto the drop zone's own children, so the amber highlight flickered mid-drag → leaves into descendants are now ignored (relatedTarget containment check).
+- Dropped files bypassed the picker's `accept` filter: any type (.pptx, .png, …) was silently queued and only failed server-side later. New shared intake `addUploadFiles` (drop + picker) keeps only .pdf/.docx/.xlsx/.csv/.txt (`UPLOAD_EXTENSIONS`, mirrors `accept`), dedupes by name on BOTH paths (the picker path previously didn't dedupe), and names rejected files in a bilingual error toast.
+- Whitespace-only pasted text no longer counts as content: the generate button's disabled check and the `handleGenerate` guard use `.trim()`, and whitespace-only text is no longer appended to the FormData (payload otherwise unchanged).
+
+### 2. Modals
+- Backdrop click-to-close was missing on exactly two overlays (video archive, feedback history) while every other one had it → added, with `stopPropagation` on the panels. All overlays now behave alike (Esc ✓, ✕ ✓, backdrop ✓).
+- Prompts-list modal had no height cap → `max-h-[80dvh]` flex column + scrollable body, matching the other modals on small screens.
+- Semester danger-zone two-step confirms ("Start new semester" / "Reset to semester 1") never disarmed: the armed state survived closing and reopening settings — a destructive action one accidental click away, arbitrarily later. Now: new `closeSettingsModal` (used by Esc, backdrop and ✕) disarms on close, plus the same 4s auto-reset every other two-step confirm already had.
+
+### 3. Keyboard shortcuts & quiz flow
+- Escape now closes overlays in stacking order (prompt viewer z-90 → prompts list / comp-feedback z-80 → settings z-60 → the z-50 modals, incl. the saas credits modal); previously comp-feedback (z-80) was checked last.
+- Escape with no modal open backs out of armed inline confirms (snooze pills, due-card delete, library module delete) instead of leaving them to their timeouts.
+- ⌘K now closes any open overlay before jumping to the library search — previously the tab switched underneath and focus landed behind the still-open modal (saas: also closes the credits modal).
+- Quiz-footer honesty: "Dein Entwurf ist auf diesem Gerät gespeichert" also showed during Verständnis-Checks, which are deliberately draft-free (round-2-verified behaviour; a reload does lose those answers). Comprehension mode now says drafts aren't saved — both quiz variants, both languages.
+
+### 4. Cross-app drift (saas reconciled to app)
+- Dashboard divider gradient: saas used a plain `transparent` end stop (can fade through gray depending on interpolation); now uses app's `color-mix(in srgb, var(--a-g2) 0%, transparent)`.
+- Sidebar sign-out button indentation drift (from the round-2 hit-area edit) normalized.
+- Full-file diff audited hunk by hunk: everything remaining is intentional divergence (credits/Stripe/checkout + 402 handling, NotebookLM allowlist gating, API-token settings vs Gemini-proxy settings, model selects single-user-only, Drive vs archive pipeline steps, calendar-token sourcing, `tutorPromptUrl`/`sourceMaterialUrl` vs `tutorPromptDocId`).
+
+### Verified, no change needed
+- Dashboard tab: snooze pills (tooltips, busy state, undo toast), skeletons, materials disclosure, right-rail pass-rate card, empty/all-clear states — already consistent with the library's round-1/2 polish.
+- Verständnis-Check quiz view: header label, %-result screen, "Zurück zur Bibliothek" nav all correct; print export unaffected (parsedTasks only).
+
+### Checks
+- `npx tsc --noEmit` + `npx eslint src/app/DashboardClient.tsx` clean in both repos after every step (6 checkpoints; one eslint `set-state-in-effect` finding during work led to the cleaner `closeSettingsModal` design). No commits. No prisma commands, no schema/API-contract changes, comprehension raw-SQL columns untouched, SRS scheduling logic untouched.
+
+### Open / notes for later rounds
+- Rounds 1–2 open items stand (server-side per-semester all-time total; German-only login by design; StatsPanel grep-as-binary byte).
+- "Demnächst/Upcoming" rows and due-card bodies are click-only (no tabIndex). Keyboard users can still do everything that matters (Enter starts the first due review; snooze/delete/materials are real buttons) — but starting a *specific* future review early is mouse-only. Whole-card focus needs a nested-interactive ARIA pass; deliberately deferred.
+- "Show all N upcoming" has no collapse once expanded (resets on reload); harmless, revisit only if lists grow long.
+
+## Round 4 — 2026-07-07 (automated deep-dive audit, final round)
+
+Systematic hunt across both repos: comprehension invariant end-to-end, all API routes (auth/tenant scoping/status codes/NDJSON cleanup), client logic (stale state, stream races, drafts, date math), i18n/formatting, theme/responsive, dead code.
+
+### Verified sound (no change needed)
+- **Comprehension invariant holds end-to-end in both repos**: generation writes ONLY `comprehensionQuizText`, grading in comprehension mode writes ONLY score/passed/at/feedback — all five via raw SQL, early-return before any schedule/level/quiz-slot/ReviewLog/stats write. `comprehension: true` is sent only from Verständnis-Check mode; /api/quiz, /api/quiz/submit and /api/grade/shortcut have zero comprehension references, so the normal pipeline is untouched when the flag is absent.
+- **saas credit gates**: /api/comprehension and /api/grade both run 401 (session) → 400 (key/body) → 402 (balance) → 404 (tenant-scoped ownership) before opening the stream; `assertCredits` re-checks between expensive stages; every saas route query is userId-scoped (where-clause or post-fetch check). /api/translate is deliberately unbilled (documented).
+- All four NDJSON routes per repo close their controller in `finally`; the client reader buffers partial lines, flushes the decoder, cancels on terminal events; all three streaming fetches have abort timeouts cleared in `finally`.
+- Optimistic deletes update `upcomingReviews` AND `rawItems`; 404s treated as already-deleted. Modal stack, Escape order, height caps all consistent (round-3 work held up).
+
+### Fixed
+1. **StatsPanel (both repos, still byte-identical): stale stat numbers for reduced-motion users** — `AnimatedNumber` froze its initial value in `useState`, so switching the round-1 semester filter never updated the four stat cards when `prefers-reduced-motion` was on. Now renders the live value directly (no setState-in-effect).
+2. **StatsPanel: English date locale was `en-US`** while the entire rest of the app formats visible dates as `de-DE`/`en-GB` (round-1 convention) — heatmap/forecast tooltips showed M/D/YYYY. Now `en-GB`.
+3. **Round-2 open item resolved — "grep treats file as binary"**: literal U+0000 NUL bytes were embedded in source as composite-key separators (StatsPanel ×2 both repos, saas quiz/submit idempotency-hash join ×1). Replaced with the `" "` escape — identical runtime string (hash/keys unchanged), files are plain text again.
+4. **Dead code (both repos): `ReviewCard.dueDate`** — computed in `formatItems` (with a hardcoded English "Due Now" sentinel that would have been an i18n bug if ever rendered) but never read anywhere. Removed field + computation.
+5. **German terminology drift (both repos)**: right-rail pass-rate card said "X von Y **Wiederholungen** bestanden" — "Wiederholung" means REPEAT/fail everywhere else (toasts, badges), and the stats vocabulary is "Reviews" ("Reviews gesamt", "Anzahl bewerteter Reviews"). Now "X von Y Reviews bestanden".
+6. **StatsPanel polish**: redundant `de ? X : X` ternary in semester-chip aria-label collapsed; heatmap tooltip now lowercases "review/reviews" in English (German keeps the capitalized noun).
+7. **srs-app comprehension feedback fallback aligned to its saas twin**: on a double marker miss (no summary AND no brief) the app stored/rendered raw `chefFeedback` including the machine-facing `===ASSESSMENT_DECISION===` block; saas already stripped it. Mirrored the strip (fallback path only; score extraction reads the head and is unaffected).
+8. **saas push notification date**: `nextReviewDate.toLocaleDateString()` with no locale on a UTC server formats per host locale — pinned to `en-GB` (matches the notification's English text and the app's English date locale).
+
+### Checks
+`npx tsc --noEmit` + `npx eslint <changed files>` clean in BOTH repos after every fix (5 checkpoints). StatsPanel verified byte-identical between repos after edits; no NUL bytes remain in either src tree. No commits, no prisma commands, no schema/API-contract/billing changes.
+
+### Found but deliberately NOT fixed (risky or needs the user)
+- **Pipeline divergence — coverageLedger on REPEAT**: srs-app updates the ledger only on PASS; srs-saas updates it whenever the (remedial) next quiz emits a `COVERAGE_LEDGER` block, including REPEAT. Behavioral difference in grading persistence — needs a product decision on which is intended; changing either violates the "don't change pipeline behavior" constraint.
+- **saas mid-stream credit exhaustion UX**: a 402 BEFORE the stream opens the top-up modal, but an `InsufficientCreditsError` mid-pipeline arrives as an NDJSON `error` event and only shows a toast (English-only server string). Wiring it to the credits modal means string-matching server messages or adding a structured error code (API-contract change).
+- **srs-app sidebar "Live Tutor Pro — Demnächst/Coming soon" teaser** still locked while the Live Tutor toggle ships in the quiz header (saas has no teaser). Looks stale, but could be a deliberate upsell placeholder for a voice product — user call.
+- **% formatting families**: comprehension values render "45 %" (space, DIN-style) everywhere; pass rates render "45%" (no space) everywhere. Each family is self-consistent; unifying is a typography decision.
+- **`formatItems` computes `isDue` at fetch time** — a tab left open past midnight shows stale due-badges on dashboard cards until the next refetch (library rows compute at render). Fixing cleanly needs a midnight re-render tick; low value for the extra timer.
+- **srs-app single-user routes accept arbitrary `language`/`modelName` body strings** (interpolated into prompts); saas allowlists both. Fine for a personal deployment, worth an allowlist if the app is ever exposed.
+- Rounds 1–3 open items otherwise stand (server-side per-semester all-time total; German-only login; upcoming-row keyboard focus pass; "show all" collapse).

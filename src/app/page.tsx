@@ -3,6 +3,7 @@ import { calendarTokenFor } from "@/lib/auth-token";
 import { getServerSession } from "next-auth/next";
 import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
+import { scribbleEnabledForEmail } from "@/lib/feature-flags";
 import DashboardClient from "./DashboardClient";
 
 export const dynamic = "force-dynamic";
@@ -32,6 +33,7 @@ export default async function Page() {
       userEmail={session.user.email ?? null}
       vapidPublicKey={process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? null}
       calendarToken={calendarToken}
+      scribbleEnabled={scribbleEnabledForEmail(session.user.email)}
     />
   );
 }

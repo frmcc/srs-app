@@ -18,6 +18,7 @@ import {
   BookOpenIcon,
   CalendarDaysIcon,
   ChevronRightIcon,
+  PencilIcon,
   SparklesIcon,
   ClockIcon,
   ArrowPathIcon,
@@ -53,7 +54,7 @@ import {
   MagnifyingGlassIcon,
 } from "@heroicons/react/24/outline";
 
-import { useState, useEffect, useCallback, useRef, useMemo, useTransition, type ReactNode } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo, useTransition, Fragment, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import { useToasts, ToastStack } from "./components/Toast";
@@ -61,12 +62,17 @@ import { Tip } from "./components/Tooltip";
 import { getAppearance, setAppearance, APPEARANCE_ACCENTS, type AppearancePref, type AppearanceAccent } from "@/lib/appearance";
 import { useInteractiveQuiz, type DictationMode } from "./useInteractiveQuiz";
 import { AutoGrowTextarea } from "./components/AutoGrowTextarea";
+import { ScribbleCanvas } from "./components/ScribbleCanvas";
 import StatsPanel from "./components/StatsPanel";
 import TutorPanel from "./components/TutorPanel";
 import { signOut } from "next-auth/react";
 
 const LIB_LEVEL_SHORT = ["T1", "T3", "T7", "T21", "T60", "T180", "T365"] as const;
 const LIB_LEVEL_FULL  = ["Tag 1", "Tag 3", "Tag 7", "Tag 21", "Tag 60", "Tag 180", "Tag 365"] as const;
+
+// Scribble key for the free-form (unstructured) answer box — the per-task
+// sketches are keyed by task.id, this one has no task to hang off.
+const FREE_SKETCH_KEY = "__free__";
 
 /**
  * Convert a base64url VAPID public key into the Uint8Array that the Push API
@@ -498,6 +504,7 @@ export default function DashboardClient({
   userEmail,
   vapidPublicKey,
   calendarToken,
+  scribbleEnabled = false,
 }: {
   initialItems: RawReviewItem[];
   userName?: string | null;
@@ -505,6 +512,8 @@ export default function DashboardClient({
   userEmail?: string | null;
   vapidPublicKey?: string | null;
   calendarToken?: string | null;
+  /** Handwriting canvas in the answer boxes — allowlist feature (SCRIBBLE_ALLOWED_EMAILS). */
+  scribbleEnabled?: boolean;
 }) {
   // Query-string fragments for the ICS feed URLs (calendar clients can't log in).
   const calTokenAnd = calendarToken ? `&token=${calendarToken}` : "";
@@ -599,6 +608,11 @@ export default function DashboardClient({
   const [studentAnswers, setStudentAnswers] = useState("");
   const [parsedTasks, setParsedTasks] = useState<ReturnType<typeof parseQuizTasks>>([]);
   const [individualAnswers, setIndividualAnswers] = useState<Record<string, string>>({});
+  // Scribbled answers (allowlist feature): taskId (or FREE_SKETCH_KEY) → PNG data
+  // URL, plus which pads are open. Deliberately NOT part of the localStorage draft
+  // — a handful of canvases would blow the ~5 MB quota and kill the text draft.
+  const [answerSketches, setAnswerSketches] = useState<Record<string, string>>({});
+  const [openScribbles, setOpenScribbles] = useState<Record<string, boolean>>({});
   const [isGrading, setIsGrading] = useState(false);
 
   // ---- Verständnis-Check (library weak-spot quiz) ---------------------------
@@ -1479,6 +1493,8 @@ export default function DashboardClient({
     }
     setStudentAnswers(freeText);
     setIndividualAnswers(initialAnswers);
+    setAnswerSketches({}); // sketches never survive a quiz switch (not draft-persisted)
+    setOpenScribbles({});
     if (restored) {
       addToast("success", language === "german" ? "Entwurf wiederhergestellt." : "Draft restored.");
     }
@@ -1657,15 +1673,32 @@ export default function DashboardClient({
   const handleGrade = useCallback(async () => {
     if (!selectedReview || isGrading) return;
 
+    // Scribbled answers ride along as labeled images; the text under the task
+    // header points the graders at the right image so nothing gets orphaned.
+    const sketchesPayload: { label: string; image: string }[] = [];
     let payloadAnswers = studentAnswers;
     if (parsedTasks.length > 0) {
       payloadAnswers = parsedTasks.map(task => {
-        const answer = individualAnswers[task.id] || "";
-        return `${task.header}\n${answer.trim()}`;
+        const answer = (individualAnswers[task.id] || "").trim();
+        const sketch = answerSketches[task.id];
+        if (!sketch) return `${task.header}\n${answer}`;
+        const sketchLabel = task.header.replace(/:\s*$/, ""); // "Aufgabe 3"
+        sketchesPayload.push({ label: sketchLabel, image: sketch });
+        const note = language === "german"
+          ? `[Antwort handschriftlich gescribbelt — siehe Bild „${sketchLabel}“ unten]`
+          : `[Answer scribbled by hand — see image "${sketchLabel}" below]`;
+        return `${task.header}\n${answer ? `${answer}\n${note}` : note}`;
       }).join("\n\n");
+    } else if (answerSketches[FREE_SKETCH_KEY]) {
+      const freeLabel = language === "german" ? "Antwortblatt" : "Answer sheet";
+      sketchesPayload.push({ label: freeLabel, image: answerSketches[FREE_SKETCH_KEY] });
+      const note = language === "german"
+        ? `\n\n[Zusätzlich handschriftlich gescribbelte Antworten — siehe Bild „${freeLabel}“ unten]`
+        : `\n\n[Additional hand-scribbled answers — see image "${freeLabel}" below]`;
+      payloadAnswers = `${studentAnswers}${note}`;
     }
 
-    if (!payloadAnswers.trim()) return;
+    if (!payloadAnswers.trim() && sketchesPayload.length === 0) return;
 
     // Stop any live interactive (hands-free) session before grading — otherwise
     // the mic stays hot through the grading + result screens and, in gemini/
@@ -1694,6 +1727,8 @@ export default function DashboardClient({
           // Verständnis-Check: same pipeline, but the outcome is only the
           // score — schedule, levels and logs stay untouched server-side.
           ...(comprehensionMode ? { comprehension: true } : {}),
+          // Scribbled answer boxes (allowlist feature; server re-checks).
+          ...(sketchesPayload.length > 0 ? { sketches: sketchesPayload } : {}),
         }),
         signal: abortController.signal
       });
@@ -1762,7 +1797,7 @@ export default function DashboardClient({
       window.clearTimeout(timeoutId);
       setIsGrading(false); // never leave the grading spinner stuck
     }
-  }, [selectedReview, isGrading, studentAnswers, parsedTasks, individualAnswers, language, gradingModel, fetchReviews, addToast, comprehensionMode, stopInteractive]);
+  }, [selectedReview, isGrading, studentAnswers, parsedTasks, individualAnswers, answerSketches, language, gradingModel, fetchReviews, addToast, comprehensionMode, stopInteractive]);
 
   /**
    * Verständnis-Check button (library): stream the quiz generation, then drop
@@ -3128,73 +3163,95 @@ export default function DashboardClient({
                                                       >
                                                         <div className="px-5 pb-5 pt-1 bg-(--paper-hover) space-y-5">
 
-                                                          {/* Level progress detail */}
-                                                          <div>
-                                                            <p className="caps-label mb-3">
-                                                              {language === "german" ? "Level-Fortschritt" : "Level progress"}
-                                                            </p>
-                                                            <div className="flex items-start gap-2 sm:gap-3">
-                                                              {item.generatedLevels.map((generated, l) => (
-                                                                <div key={l} className="flex flex-col items-center gap-1.5 flex-1 min-w-0">
-                                                                  <div className={`w-5 h-5 rounded-full flex items-center justify-center transition-all ${
-                                                                    l < item.currentLevel
-                                                                      ? "bg-amber-500"
-                                                                      : l === item.currentLevel
-                                                                        ? "bg-transparent border-2 border-amber-500 shadow-[0_0_8px_color-mix(in_srgb,var(--a-g2)_30%,transparent)]"
-                                                                        : generated
-                                                                          ? "bg-transparent border-2 border-(--line)"
-                                                                          : "bg-transparent border-2 border-(--hairline-card)"
-                                                                  }`}>
-                                                                    {l < item.currentLevel && (
-                                                                      <CheckIcon className="w-3 h-3 text-(--accent-on)" strokeWidth={2.6} />
-                                                                    )}
-                                                                    {l === item.currentLevel && (
-                                                                      <div className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                                                                    )}
-                                                                  </div>
-                                                                  <span className={`text-[9px] leading-none text-center ${l === item.currentLevel ? "text-(--accent-text-strong) font-semibold" : "text-ink-400 font-medium"}`}>
-                                                                    {LIB_LEVEL_SHORT[l]}
-                                                                  </span>
-                                                                  {(item.failCounts?.[l] ?? 0) > 0 && (
+                                                          {/* Progress — one unified level timeline (passed / current / mastery) with per-level repeat markers. Replaces the old duplicate "Level progress" + "Quiz generation" pair, incl. the misleading "N of 7 generated" counter that read empty quiz-URL columns. */}
+                                                          {(() => {
+                                                            const LEVELS = LIB_LEVEL_SHORT.length; // 7 SRS intervals T1…T365
+                                                            const inMastery = item.currentLevel >= LEVELS; // all 7 cleared; now looping T365 (currentLevel is an uncapped mastery counter)
+                                                            const masteryLaps = inMastery ? item.currentLevel - (LEVELS - 1) : 0; // completed T365 mastery reviews
+                                                            const totalRepeats = (item.failCounts ?? []).reduce((a, b) => a + (b || 0), 0);
+                                                            return (
+                                                              <div>
+                                                                <div className="flex items-center justify-between mb-3">
+                                                                  <p className="caps-label">
+                                                                    {language === "german" ? "Fortschritt" : "Progress"}
+                                                                  </p>
+                                                                  {inMastery ? (
                                                                     <Tip label={language === "german"
-                                                                      ? `${item.failCounts![l]} Fehlversuch${item.failCounts![l] === 1 ? "" : "e"} auf diesem Level`
-                                                                      : `${item.failCounts![l]} failed attempt${item.failCounts![l] === 1 ? "" : "s"} at this level`}>
-                                                                      <span className="text-[8px] font-bold text-(--grade-fail-text) tnum leading-none">×{item.failCounts![l]}</span>
+                                                                      ? `Alle 7 Level bestanden — ${masteryLaps}× durch die Meister-Schleife (Tag 365)`
+                                                                      : `All 7 levels cleared — ${masteryLaps}× through the mastery loop (Day 365)`}>
+                                                                      <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-[0.08em] px-2 py-0.5 rounded-full bg-amber-400/[0.14] border border-(--accent-border-soft) text-amber-600">
+                                                                        <AcademicCapIcon className="w-3 h-3" strokeWidth={2} />
+                                                                        {language === "german" ? "Meister" : "Mastery"} ×{masteryLaps}
+                                                                      </span>
                                                                     </Tip>
+                                                                  ) : (
+                                                                    <span className="text-[10px] font-semibold text-ink-400 tnum">
+                                                                      {language === "german" ? `Level ${item.currentLevel + 1} von 7` : `Level ${item.currentLevel + 1} of 7`}
+                                                                    </span>
                                                                   )}
                                                                 </div>
-                                                              ))}
-                                                            </div>
-                                                          </div>
 
-                                                          {/* Quiz generation status */}
-                                                          <div>
-                                                            <p className="caps-label mb-2">
-                                                              {language === "german" ? "Quiz-Generierung" : "Quiz Generation"}
-                                                            </p>
-                                                            <div className="flex flex-wrap gap-1.5">
-                                                              {item.generatedLevels.map((generated, l) => (
-                                                                <span
-                                                                  key={l}
-                                                                  className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border transition-all ${
-                                                                    l < item.currentLevel
-                                                                      ? "bg-amber-400/[0.1] border-(--accent-border-soft) text-amber-600"
-                                                                      : generated
-                                                                        ? "bg-paper-2 border-(--line) text-ink-600"
-                                                                        : "bg-transparent border-(--hairline-card) text-ink-300"
-                                                                  }`}
-                                                                >
-                                                                  L{l+1} {l < item.currentLevel ? "✓" : generated ? "·" : "○"}
-                                                                </span>
-                                                              ))}
-                                                            </div>
-                                                            <p className="text-[10px] text-ink-300 mt-2">
-                                                              {language === "german"
-                                                                ? `${item.generatedLevels.filter(Boolean).length} von 7 Quizzen generiert`
-                                                                : `${item.generatedLevels.filter(Boolean).length} of 7 quizzes generated`}
-                                                            </p>
-                                                          </div>
+                                                                {/* Interval stepper: the 7 SRS intervals as nodes; the connecting track fills up to the level reached. */}
+                                                                <div className="flex items-start">
+                                                                  {LIB_LEVEL_SHORT.map((label, l) => {
+                                                                    const passed = l < item.currentLevel;
+                                                                    const current = l === item.currentLevel;
+                                                                    const reached = l <= item.currentLevel;
+                                                                    const fails = item.failCounts?.[l] ?? 0;
+                                                                    const status = passed
+                                                                      ? (language === "german" ? "Bestanden" : "Passed")
+                                                                      : current
+                                                                        ? (language === "german" ? "Aktuell" : "Current")
+                                                                        : (language === "german" ? "Ausstehend" : "Locked");
+                                                                    return (
+                                                                      <Fragment key={l}>
+                                                                        {l > 0 && (
+                                                                          <div className={`flex-1 h-[2px] mt-[9px] rounded-full transition-colors ${reached ? "bg-amber-500" : "bg-(--hairline-card)"}`} />
+                                                                        )}
+                                                                        <div className="flex flex-col items-center gap-1.5 shrink-0">
+                                                                          <Tip label={`${label} (${LIB_LEVEL_FULL[l]}): ${status}`}>
+                                                                            <div className={`w-5 h-5 rounded-full flex items-center justify-center transition-all ${
+                                                                              passed
+                                                                                ? "bg-amber-500"
+                                                                                : current
+                                                                                  ? "bg-(--paper-hover) border-2 border-amber-500 shadow-[0_0_8px_color-mix(in_srgb,var(--a-g2)_35%,transparent)]"
+                                                                                  : "bg-(--paper-hover) border-2 border-(--hairline-card)"
+                                                                            }`}>
+                                                                              {passed && <CheckIcon className="w-3 h-3 text-(--accent-on)" strokeWidth={2.6} />}
+                                                                              {current && <div className="w-1.5 h-1.5 rounded-full bg-amber-500" />}
+                                                                            </div>
+                                                                          </Tip>
+                                                                          <span className={`w-7 text-center text-[9px] leading-none ${current ? "text-(--accent-text-strong) font-semibold" : passed ? "text-ink-500 font-medium" : "text-ink-300 font-medium"}`}>
+                                                                            {label}
+                                                                          </span>
+                                                                          {fails > 0 ? (
+                                                                            <Tip label={language === "german" ? `${fails}× auf diesem Level wiederholt` : `Repeated ${fails}× at this level`}>
+                                                                              <span className="inline-flex items-center gap-0.5 text-[8px] font-bold text-(--grade-fail-text) tnum leading-none">
+                                                                                <ArrowPathIcon className="w-2 h-2" strokeWidth={2.4} />{fails}
+                                                                              </span>
+                                                                            </Tip>
+                                                                          ) : (
+                                                                            <span className="h-2" aria-hidden="true" />
+                                                                          )}
+                                                                        </div>
+                                                                      </Fragment>
+                                                                    );
+                                                                  })}
+                                                                </div>
 
+                                                                {/* Honest footnote — replaces the old, often-wrong "N of 7 quizzes generated" line. */}
+                                                                <p className="text-[10px] text-ink-300 mt-3">
+                                                                  {totalRepeats > 0
+                                                                    ? (language === "german"
+                                                                        ? `${totalRepeats} Wiederholung${totalRepeats === 1 ? "" : "en"} insgesamt${inMastery ? " · in der Meister-Schleife" : ""}`
+                                                                        : `${totalRepeats} repeat${totalRepeats === 1 ? "" : "s"} total${inMastery ? " · now in the mastery loop" : ""}`)
+                                                                    : inMastery
+                                                                      ? (language === "german" ? "Alle Level ohne Wiederholung gemeistert." : "All levels mastered — no repeats.")
+                                                                      : (language === "german" ? "Noch keine Wiederholung." : "No repeats yet.")}
+                                                                </p>
+                                                              </div>
+                                                            );
+                                                          })()}
                                                           {/* Verständnis-Check — on-demand weak-spot quiz; never touches the SRS schedule */}
                                                           <div>
                                                             <p className="caps-label mb-2">
@@ -3829,7 +3886,27 @@ export default function DashboardClient({
                               </div>
 
                               <div className="border-t border-(--hairline) pt-5">
-                                <span className="caps-label block mb-2">{language === "german" ? "Deine Antwort" : "Your answer"}</span>
+                                <div className="flex items-center justify-between gap-2 mb-2">
+                                  <span className="caps-label">{language === "german" ? "Deine Antwort" : "Your answer"}</span>
+                                  {scribbleEnabled && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setOpenScribbles(prev => ({ ...prev, [task.id]: !prev[task.id] }))}
+                                      className={`inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full transition-colors cursor-pointer ${
+                                        openScribbles[task.id] || answerSketches[task.id]
+                                          ? "bg-(--accent-wash) text-(--accent-text-strong)"
+                                          : "bg-paper-2 text-ink-600 hover:text-ink-900"
+                                      }`}
+                                    >
+                                      <PencilIcon className="w-3.5 h-3.5" strokeWidth={1.8} />
+                                      {openScribbles[task.id]
+                                        ? (language === "german" ? "Scribble schließen" : "Close scribble")
+                                        : answerSketches[task.id]
+                                        ? (language === "german" ? "Scribble bearbeiten" : "Edit scribble")
+                                        : "Scribble"}
+                                    </button>
+                                  )}
+                                </div>
                                 <AutoGrowTextarea
                                   value={individualAnswers[task.id] || ""}
                                   onChange={e => {
@@ -3843,6 +3920,40 @@ export default function DashboardClient({
                                     : (isMC ? "Type A, B, C, or D …" : "Answer in your own words — or dictate it in interactive mode.")}
                                   className={`input-inset w-full px-4 py-[13px] text-sm leading-[1.6] resize-none overflow-hidden ${isMC ? "min-h-[3rem]" : "min-h-[88px]"}`}
                                 />
+                                {/* Scribble pad (allowlist feature): a WIDER canvas breaks out of the
+                                    card padding so formulas/structures have room to breathe. */}
+                                {scribbleEnabled && openScribbles[task.id] && (
+                                  <div className="mt-3 -mx-[12px] md:-mx-[16px]">
+                                    <ScribbleCanvas
+                                      initialDataUrl={answerSketches[task.id] || null}
+                                      language={language}
+                                      onChange={(dataUrl) => setAnswerSketches(prev => {
+                                        const next = { ...prev };
+                                        if (dataUrl) next[task.id] = dataUrl; else delete next[task.id];
+                                        return next;
+                                      })}
+                                    />
+                                  </div>
+                                )}
+                                {scribbleEnabled && !openScribbles[task.id] && answerSketches[task.id] && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setOpenScribbles(prev => ({ ...prev, [task.id]: true }))}
+                                    className="mt-3 flex items-center gap-3 w-full text-left cursor-pointer group"
+                                  >
+                                    {/* eslint-disable-next-line @next/next/no-img-element -- local data URL preview */}
+                                    <img
+                                      src={answerSketches[task.id]}
+                                      alt={language === "german" ? "Gescribbelte Antwort (angehängt)" : "Scribbled answer (attached)"}
+                                      className="h-16 w-auto max-w-[240px] object-contain rounded-[10px] border border-(--hairline) bg-white"
+                                    />
+                                    <span className="text-[11px] text-ink-400 group-hover:text-ink-600 transition-colors">
+                                      {language === "german"
+                                        ? "Scribble wird mit eingereicht — tippen zum Bearbeiten."
+                                        : "Scribble will be submitted — tap to edit."}
+                                    </span>
+                                  </button>
+                                )}
                               </div>
                             </motion.div>
                           );
@@ -3862,7 +3973,7 @@ export default function DashboardClient({
                             <motion.button
                               {...pressable}
                               onClick={handleGrade}
-                              disabled={isGrading || !parsedTasks.some(task => (individualAnswers[task.id] || "").trim().length > 0)}
+                              disabled={isGrading || !parsedTasks.some(task => (individualAnswers[task.id] || "").trim().length > 0 || !!answerSketches[task.id])}
                               className="btn-primary flex-1 h-12 text-sm flex items-center justify-center gap-2.5 cursor-pointer"
                             >
                               <SparklesIcon className="w-[18px] h-[18px]" strokeWidth={1.6} />
@@ -3890,13 +4001,47 @@ export default function DashboardClient({
                           {extractStudentQuiz(selectedReview.raw.currentQuizText || "")}
                         </div>
 
-                        <span className="caps-label block mb-2.5">{language === "german" ? "Deine Antwort" : "Your answer"}</span>
+                        <div className="flex items-center justify-between gap-2 mb-2.5">
+                          <span className="caps-label">{language === "german" ? "Deine Antwort" : "Your answer"}</span>
+                          {scribbleEnabled && (
+                            <button
+                              type="button"
+                              onClick={() => setOpenScribbles(prev => ({ ...prev, [FREE_SKETCH_KEY]: !prev[FREE_SKETCH_KEY] }))}
+                              className={`inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full transition-colors cursor-pointer ${
+                                openScribbles[FREE_SKETCH_KEY] || answerSketches[FREE_SKETCH_KEY]
+                                  ? "bg-(--accent-wash) text-(--accent-text-strong)"
+                                  : "bg-paper-2 text-ink-600 hover:text-ink-900"
+                              }`}
+                            >
+                              <PencilIcon className="w-3.5 h-3.5" strokeWidth={1.8} />
+                              {openScribbles[FREE_SKETCH_KEY]
+                                ? (language === "german" ? "Scribble schließen" : "Close scribble")
+                                : answerSketches[FREE_SKETCH_KEY]
+                                ? (language === "german" ? "Scribble bearbeiten" : "Edit scribble")
+                                : "Scribble"}
+                            </button>
+                          )}
+                        </div>
                         <textarea
                           value={studentAnswers}
                           onChange={e => setStudentAnswers(e.target.value)}
                           placeholder={language === "german" ? "Schreibe deine Antworten hier …" : "Write your answers here …"}
                           className="input-inset flex-1 w-full p-5 text-sm leading-relaxed resize-none min-h-[300px] mb-5"
                         />
+                        {scribbleEnabled && openScribbles[FREE_SKETCH_KEY] && (
+                          <div className="mb-5">
+                            <ScribbleCanvas
+                              initialDataUrl={answerSketches[FREE_SKETCH_KEY] || null}
+                              language={language}
+                              heightPx={420}
+                              onChange={(dataUrl) => setAnswerSketches(prev => {
+                                const next = { ...prev };
+                                if (dataUrl) next[FREE_SKETCH_KEY] = dataUrl; else delete next[FREE_SKETCH_KEY];
+                                return next;
+                              })}
+                            />
+                          </div>
+                        )}
                         <div className="flex flex-col sm:flex-row gap-2.5">
                           <select
                             value={gradingModel}
@@ -3910,7 +4055,7 @@ export default function DashboardClient({
                           <motion.button
                             {...pressable}
                             onClick={handleGrade}
-                            disabled={isGrading || !studentAnswers.trim()}
+                            disabled={isGrading || (!studentAnswers.trim() && !answerSketches[FREE_SKETCH_KEY])}
                             className="btn-primary flex-1 h-12 text-sm flex items-center justify-center gap-2.5 cursor-pointer"
                           >
                             <SparklesIcon className="w-[18px] h-[18px]" strokeWidth={1.6} />

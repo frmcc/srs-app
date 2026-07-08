@@ -36,11 +36,27 @@ export class ConcurrentGradingError extends Error {
   }
 }
 
+/** One scribbled answer box (allowlist feature; see SCRIBBLE_ALLOWED_EMAILS). */
+export interface GradingSketch {
+  /** Task heading the sketch belongs to, verbatim from the sheet (e.g. "Aufgabe 3"). */
+  label: string;
+  /** Raw base64 image data (no data:-URL prefix). */
+  data: string;
+  /** image/png, image/jpeg or image/webp (validated by the route). */
+  mimeType: string;
+}
+
 export interface GradingSubmission {
   /** Typed answers (web) or extracted scan text (shortcut fallback). */
   text?: string;
   /** Scanned submission PDF (shortcut). */
   pdf?: { base64: string; mimeType: string };
+  /**
+   * Handwritten/scribbled answer boxes from the web UI (Apple Pencil canvas).
+   * Sent to Gemini as inline images directly under the typed answers so the
+   * examiners grade what was actually drawn instead of a lossy transcription.
+   */
+  sketches?: GradingSketch[];
 }
 
 export interface GradingResult {
@@ -186,6 +202,24 @@ export async function runGradingPipeline(opts: {
     if (submissionText.trim()) answerParts.push({ text: `(Zusätzlicher extrahierter Text vom Scan):\n${submissionText}` });
   } else {
     answerParts.push({ text: `Beantwortetes Quiz des Studenten:\n${submissionText}` });
+  }
+  // Scribbled answer boxes: each image goes DIRECTLY under the typed answers,
+  // pinned to its task heading, with a short handwriting disclaimer. The
+  // examiners transcribe from the pixels themselves (Gemini is multimodal) — no
+  // lossy pre-transcription step that could hallucinate content. answerParts is
+  // reused by every grading step below, so the sketches reach all of them.
+  if (submission.sketches?.length) {
+    answerParts.push({
+      text:
+        `HINWEIS ZU GESCRIBBELTEN ANTWORTEN: Der Student hat ${submission.sketches.length === 1 ? "eine Antwort" : `${submission.sketches.length} Antworten`} ` +
+        `handschriftlich gescribbelt (Stift/Touch). Die folgenden Bilder sind Teil seiner Antworten und gehören zu der jeweils genannten Aufgabe. ` +
+        `Gescribbelte Handschrift und Skizzen können schwerer lesbar sein — transkribiere sorgfältig und wohlwollend, ` +
+        `bewerte aber nur, was tatsächlich erkennbar ist, und erfinde nichts hinzu.`,
+    });
+    for (const sketch of submission.sketches) {
+      answerParts.push({ text: `Gescribbelte Antwort des Studenten zu „${sketch.label}“ (Bild):` });
+      answerParts.push({ inlineData: { data: sketch.data, mimeType: sketch.mimeType } });
+    }
   }
 
   // ---- Context ------------------------------------------------------------
