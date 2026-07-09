@@ -79,6 +79,20 @@ function hasDownloadableSource(content: string | null): boolean {
   }
 }
 
+/** 30-day pass/total counts for the dashboard's right-rail card — computed
+ *  server-side so the card paints with the first render instead of popping in
+ *  after a client /api/stats round-trip. Mirrors /api/stats' WHERE
+ *  (no "Freies Lernen") narrowed to the last 30 days. */
+export async function fetchPassRate30(): Promise<{ passed: number; total: number }> {
+  const since = new Date();
+  since.setDate(since.getDate() - 30);
+  const [total, passed] = await Promise.all([
+    prisma.reviewLog.count({ where: { subjectMain: { not: "Freies Lernen" }, completedAt: { gte: since } } }),
+    prisma.reviewLog.count({ where: { subjectMain: { not: "Freies Lernen" }, completedAt: { gte: since }, passed: true } }),
+  ]);
+  return { passed, total };
+}
+
 export async function fetchReviewList(): Promise<ReviewListItem[]> {
   const rows = await prisma.sRSItem.findMany({
     where: { subjectMain: { not: "Freies Lernen" } },

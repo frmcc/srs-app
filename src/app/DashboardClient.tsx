@@ -502,6 +502,8 @@ export default function DashboardClient({
   userName,
   userImage,
   userEmail,
+  initialLanguage = "german",
+  initialPassRate30 = null,
   vapidPublicKey,
   calendarToken,
   scribbleEnabled = false,
@@ -510,6 +512,10 @@ export default function DashboardClient({
   userName?: string | null;
   userImage?: string | null;
   userEmail?: string | null;
+  /** Server-read UI language — first paint must not flash German at English users. */
+  initialLanguage?: string;
+  /** Server-computed 30-day pass rate — the right-rail card must not pop in late. */
+  initialPassRate30?: { passed: number; total: number } | null;
   vapidPublicKey?: string | null;
   calendarToken?: string | null;
   /** Handwriting canvas in the answer boxes — allowlist feature (SCRIBBLE_ALLOWED_EMAILS). */
@@ -555,7 +561,7 @@ export default function DashboardClient({
   // Semester & Settings State
   const [currentSemester, setCurrentSemester] = useState<number>(1);
   const [modulePresets, setModulePresets] = useState<string[]>([]);
-  const [language, setLanguage] = useState<string>("german");
+  const [language, setLanguage] = useState<string>(initialLanguage);
   const [wrapperMode, setWrapperMode] = useState<string>("all");
   const [fileTransport, setFileTransport] = useState<string>("inline");
   const [showSettingsModal, setShowSettingsModal] = useState(false);
@@ -626,19 +632,10 @@ export default function DashboardClient({
   /** Feedback viewer modal for the latest comprehension result of an item. */
   const [compFeedback, setCompFeedback] = useState<RawReviewItem | null>(null);
 
-  // Right-rail pass-rate card (last 30 days) — fetched lazily, non-blocking.
-  const [passRate30, setPassRate30] = useState<{ passed: number; total: number } | null>(null);
-  useEffect(() => {
-    fetch("/api/stats")
-      .then((r) => r.json())
-      .then((d) => {
-        if (!Array.isArray(d?.logs)) return;
-        const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
-        const recent = d.logs.filter((l: { completedAt: string }) => new Date(l.completedAt).getTime() >= cutoff);
-        setPassRate30({ passed: recent.filter((l: { passed: boolean }) => l.passed).length, total: recent.length });
-      })
-      .catch(() => {});
-  }, []);
+  // Right-rail pass-rate card (last 30 days) — server-computed and passed as a
+  // prop, so it paints WITH the dashboard instead of popping in after a lazy
+  // /api/stats round-trip (which shipped a year of logs just for two counts).
+  const passRate30 = initialPassRate30;
 
   // ---- Interactive Mode: reads each question aloud (Gemini TTS with browser
   // fallback), then dictates the spoken answer into the box until the user says
@@ -4108,9 +4105,10 @@ export default function DashboardClient({
               <motion.div
                 {...overlayMotion}
                 key="archive-overlay"
-                className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-(--overlay) backdrop-blur-[3px]"
+                className="fixed inset-0 z-50 flex items-center justify-center p-4"
                 onClick={() => setArchiveModalData(null)}
               >
+                <div className="fixed -inset-6 -z-10 bg-(--overlay) backdrop-blur-[3px]" aria-hidden="true" />
                 <motion.div
                   {...modalPanel}
                   onClick={(e) => e.stopPropagation()}
@@ -4127,7 +4125,7 @@ export default function DashboardClient({
                       </button>
                     </Tip>
                   </div>
-                  <div className="p-6 space-y-3 overflow-y-auto custom-scrollbar">
+                  <div className="p-6 space-y-3 overflow-y-auto overscroll-contain custom-scrollbar">
                     {archiveModalData.map((item, idx) => (
                       <div key={idx} className="card-surface p-4 flex items-center justify-between">
                         <div>
@@ -4159,9 +4157,10 @@ export default function DashboardClient({
             <motion.div
               {...overlayMotion}
               key="feedback-overlay"
-              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-(--overlay) backdrop-blur-[3px]"
+              className="fixed inset-0 z-50 flex items-center justify-center p-4"
               onClick={() => setActiveFeedbackItem(null)}
             >
+              <div className="fixed -inset-6 -z-10 bg-(--overlay) backdrop-blur-[3px]" aria-hidden="true" />
               <motion.div
                 {...modalPanel}
                 onClick={(e) => e.stopPropagation()}
@@ -4207,7 +4206,7 @@ export default function DashboardClient({
                 </div>
 
                 {/* Body */}
-                <div className="flex-1 overflow-y-auto p-6 md:p-8 custom-scrollbar">
+                <div className="flex-1 overflow-y-auto overscroll-contain p-6 md:p-8 custom-scrollbar">
                   <FeedbackBody text={feedbackTranslation && !showFeedbackOriginal ? feedbackTranslation : (activeFeedbackItem.lastFeedback ?? "")} />
 
                   {/* Review history: every graded attempt of this module (ReviewLog) */}
@@ -4322,12 +4321,13 @@ export default function DashboardClient({
           {showCalendarModal && (
             <motion.div
               {...overlayMotion}
-              className="fixed inset-0 bg-(--overlay) backdrop-blur-[3px] z-50 flex items-center justify-center p-4"
+              className="fixed inset-0 z-50 flex items-center justify-center p-4"
               onClick={() => setShowCalendarModal(false)}
             >
+              <div className="fixed -inset-6 -z-10 bg-(--overlay) backdrop-blur-[3px]" aria-hidden="true" />
               <motion.div
                 {...modalPanel}
-                className="card-glass p-5 sm:p-6 md:p-7 max-w-[560px] w-full border border-(--line-soft) max-h-[90dvh] overflow-y-auto custom-scrollbar"
+                className="card-glass p-5 sm:p-6 md:p-7 max-w-[560px] w-full border border-(--line-soft) max-h-[90dvh] overflow-y-auto overscroll-contain custom-scrollbar"
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="flex items-center justify-between mb-2">
@@ -4434,12 +4434,13 @@ export default function DashboardClient({
           <motion.div
             key="settings-overlay"
             {...overlayMotion}
-            className="fixed inset-0 bg-(--overlay) flex items-center justify-center p-4 z-[60] backdrop-blur-[3px]"
+            className="fixed inset-0 flex items-center justify-center p-4 z-[60]"
             onClick={closeSettingsModal}
           >
+            <div className="fixed -inset-6 -z-10 bg-(--overlay) backdrop-blur-[3px]" aria-hidden="true" />
             <motion.div
               {...modalPanel}
-              className="card-glass p-5 sm:p-6 md:p-7 w-full max-w-[560px] border border-(--line-soft) max-h-[90dvh] overflow-y-auto custom-scrollbar"
+              className="card-glass p-5 sm:p-6 md:p-7 w-full max-w-[560px] border border-(--line-soft) max-h-[90dvh] overflow-y-auto overscroll-contain custom-scrollbar"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex justify-between items-start mb-7">
@@ -4899,9 +4900,10 @@ export default function DashboardClient({
           <motion.div
             {...overlayMotion}
             key="prompts-list-backdrop"
-            className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-(--overlay) backdrop-blur-[3px]"
+            className="fixed inset-0 z-[80] flex items-center justify-center p-4"
             onClick={() => setPromptsModal(null)}
           >
+            <div className="fixed -inset-6 -z-10 bg-(--overlay) backdrop-blur-[3px]" aria-hidden="true" />
             <motion.div
               {...modalPanel}
               key="prompts-list-modal"
@@ -4922,7 +4924,7 @@ export default function DashboardClient({
                   </button>
                 </Tip>
               </div>
-              <div className="p-4 flex flex-col gap-2 overflow-y-auto custom-scrollbar">
+              <div className="p-4 flex flex-col gap-2 overflow-y-auto overscroll-contain custom-scrollbar">
                 {promptsModal.prompts.map((p) => (
                   <button
                     key={p.label}
@@ -4947,9 +4949,10 @@ export default function DashboardClient({
           <motion.div
             {...overlayMotion}
             key="comp-feedback-backdrop"
-            className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center p-4 bg-(--overlay) backdrop-blur-[3px]"
+            className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center p-4"
             onClick={() => setCompFeedback(null)}
           >
+            <div className="fixed -inset-6 -z-10 bg-(--overlay) backdrop-blur-[3px]" aria-hidden="true" />
             <motion.div
               {...modalPanel}
               key="comp-feedback-modal"
@@ -4983,7 +4986,7 @@ export default function DashboardClient({
                   </button>
                 </Tip>
               </div>
-              <div className="p-6 md:p-7 overflow-y-auto custom-scrollbar">
+              <div className="p-6 md:p-7 overflow-y-auto overscroll-contain custom-scrollbar">
                 {compFeedback.comprehensionFeedback ? (
                   <FeedbackBody text={compFeedback.comprehensionFeedback} size="sm" />
                 ) : (
@@ -5002,9 +5005,10 @@ export default function DashboardClient({
         {promptModal && (
           <motion.div
             {...overlayMotion}
-            className="fixed inset-0 z-[90] flex items-end sm:items-center justify-center p-4 bg-(--overlay) backdrop-blur-[3px]"
+            className="fixed inset-0 z-[90] flex items-end sm:items-center justify-center p-4"
             onClick={() => setPromptModal(null)}
           >
+            <div className="fixed -inset-6 -z-10 bg-(--overlay) backdrop-blur-[3px]" aria-hidden="true" />
             <motion.div
               {...modalPanel}
               onClick={(e) => e.stopPropagation()}
@@ -5038,7 +5042,7 @@ export default function DashboardClient({
                 </div>
               </div>
               {/* Body */}
-              <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
+              <div className="flex-1 overflow-y-auto overscroll-contain custom-scrollbar p-6">
                 <pre className="text-sm text-ink-900/80 leading-relaxed whitespace-pre-wrap font-sans">{promptModal.content}</pre>
               </div>
             </motion.div>
