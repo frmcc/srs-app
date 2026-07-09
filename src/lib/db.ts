@@ -15,8 +15,8 @@ function createPrismaClient(): PrismaClient {
     return new PrismaClient({ adapter });
   }
 
-  // Local development: file-backed SQLite via the better-sqlite3 adapter. The
-  // schema enables the `driverAdapters` preview feature, so an adapter must be
+  // Local development: file-backed SQLite via the better-sqlite3 adapter.
+  // Prisma 7 removed the datasource `url` from the schema, so an adapter must be
   // supplied on every path — a bare `new PrismaClient()` can't connect.
   // Default to ./dev.db when DATABASE_URL is unset (e.g. during `next build`
   // page-data collection, which imports this module but never queries), so
