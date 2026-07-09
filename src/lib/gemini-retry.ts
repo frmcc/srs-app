@@ -63,7 +63,7 @@ const RETRY_DELAYS_MS = [1_500, 4_000, 9_000];
 
 /** Per-call soft deadline: a hung upstream socket must not consume the whole
  *  route. On timeout we reject with a transient error so the loop can retry. */
-const CALL_TIMEOUT_MS = 45_000;
+const CALL_TIMEOUT_MS = 180_000;
 /** Uploads move megabytes (through a browser relay in the wrapper case) — give
  *  them more room than a generate call, but still bounded. */
 const UPLOAD_TIMEOUT_MS = 120_000;

@@ -12,7 +12,9 @@ export const dynamic = "force-dynamic";
 export default async function Page() {
   // Belt & suspenders with the middleware: no session → branded Google login.
   const session = await getServerSession(authOptions);
-  if (!session?.user) redirect("/login");
+  // TEMP design-review bypass: only when auth is unconfigured in dev (NEXTAUTH_SECRET empty).
+  const devOpen = process.env.NODE_ENV !== "production" && !process.env.NEXTAUTH_SECRET;
+  if (!session?.user && !devOpen) redirect("/login");
 
   // The extra reads kill first-paint flashes: without them the client briefly
   // rendered German UI for English users and a late-popping pass-rate card
@@ -36,14 +38,14 @@ export default async function Page() {
   return (
     <DashboardClient
       initialItems={items}
-      userName={session.user.name ?? null}
-      userImage={session.user.image ?? null}
-      userEmail={session.user.email ?? null}
+      userName={session?.user?.name ?? null}
+      userImage={session?.user?.image ?? null}
+      userEmail={session?.user?.email ?? null}
       initialLanguage={config?.language ?? "german"}
       initialPassRate30={passRate30}
       vapidPublicKey={process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? null}
       calendarToken={calendarToken}
-      scribbleEnabled={scribbleEnabledForEmail(session.user.email)}
+      scribbleEnabled={scribbleEnabledForEmail(session?.user?.email)}
     />
   );
 }
