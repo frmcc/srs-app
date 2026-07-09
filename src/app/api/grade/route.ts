@@ -6,6 +6,15 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import { scribbleEnabledForEmail } from "@/lib/feature-flags";
 
+/** Models a client may request; anything else falls back to the pipeline default. */
+const ALLOWED_MODELS = new Set([
+  "gemini-3.5-flash",
+  "gemini-3.1-flash-lite",
+  "gemini-3-pro",
+  "gemini-2.5-flash",
+  "gemini-2.5-pro",
+]);
+
 /**
  * Web grading endpoint. Thin wrapper over runGradingPipeline:
  * validates input, streams NDJSON progress, defers Drive/NotebookLM work.
@@ -29,6 +38,10 @@ export async function POST(req: NextRequest) {
   if (!itemId) {
     return NextResponse.json({ error: "Item ID is required" }, { status: 400 });
   }
+
+  // Gate the client-supplied model through an allow-list (mirrors quiz/route.ts):
+  // an unvalidated modelName must never flow into the grading pipeline.
+  const safeModel = modelName && ALLOWED_MODELS.has(modelName) ? modelName : undefined;
 
   // ── Scribbled answer boxes (allowlist feature) ────────────────────────────
   // Normalize + validate BEFORE opening the stream: strip the data-URL prefix,
@@ -94,7 +107,7 @@ export async function POST(req: NextRequest) {
           itemId,
           submission: { text: studentAnswers, sketches: normalizedSketches },
           language,
-          modelName,
+          modelName: safeModel,
           comprehension: comprehension === true,
           onProgress: (step, message) => sendEvent("progress", { step, message }),
         });
