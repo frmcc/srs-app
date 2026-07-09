@@ -24,6 +24,7 @@ function serialize(config: AppConfig) {
     modulePresets: presets,
     language: config.language,
     wrapperMode: config.wrapperMode,
+    fileTransport: config.fileTransport,
   };
 }
 
@@ -38,13 +39,13 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
-    let body: { action?: string; presets?: unknown; language?: string; wrapperMode?: string };
+    let body: { action?: string; presets?: unknown; language?: string; wrapperMode?: string; fileTransport?: string };
     try {
       body = await req.json();
     } catch {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
-    const { action, presets, language, wrapperMode } = body;
+    const { action, presets, language, wrapperMode, fileTransport } = body;
     await getOrCreateConfig();
 
     switch (action) {
@@ -78,6 +79,14 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: "wrapperMode must be 'all', 'generation_only' or 'none'" }, { status: 400 });
         }
         const updated = await prisma.appConfig.update({ where: { id: 1 }, data: { wrapperMode } });
+        return NextResponse.json(serialize(updated));
+      }
+
+      case "update_file_transport": {
+        if (fileTransport !== "inline" && fileTransport !== "file_api") {
+          return NextResponse.json({ error: "fileTransport must be 'inline' or 'file_api'" }, { status: 400 });
+        }
+        const updated = await prisma.appConfig.update({ where: { id: 1 }, data: { fileTransport } });
         return NextResponse.json(serialize(updated));
       }
 

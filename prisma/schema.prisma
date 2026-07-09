@@ -111,6 +111,7 @@ model AppConfig {
   modulePresets   String   @default("[]") // JSON string array
   language        String   @default("german") // german or english
   wrapperMode     String   @default("all") // "all", "generation_only", "none"
+  fileTransport   String   @default("inline") // "inline" (base64 in request) or "file_api" (File API upload + fileData URI)
   updatedAt       DateTime @updatedAt
 }
 

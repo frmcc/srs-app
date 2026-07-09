@@ -3,7 +3,7 @@ import { GoogleGenAI } from "@google/genai";
 import { PROMPTS, podcast_prompts } from "../app/api/quiz/prompts";
 import { sendPushNotification } from "./push";
 import { generatePodcastWorker, createNotebook } from "./notebooklm";
-import { generateContentWithRetry } from "./gemini-retry";
+import { generateContentWithRetry, normalizeFileTransport } from "./gemini-retry";
 import { getOrCreateDriveFolder, uploadToDrive, createGoogleDoc } from "./google-drive";
 import { extractSection } from "./markers";
 import { pdfToText } from "./pdf-text";
@@ -58,41 +58,37 @@ export async function runQuizGeneration(params: {
     const appConfig = await prisma.appConfig.findUnique({ where: { id: 1 } });
     const wrapperMode = appConfig?.wrapperMode || "all";
     const useAiWrapper = wrapperMode === "all" || wrapperMode === "generation_only";
+    const fileTransport = normalizeFileTransport(appConfig?.fileTransport);
     const currentSemester = appConfig?.currentSemester || 1;
     const language = appConfig?.language || "german";
     const languageInstruction = `\n\nCRITICAL: You must generate ALL text, output, and responses strictly in ${language.toUpperCase()}. This applies to every section of the generated content.`;
 
-    // ---- Prepare source material: Gemini upload + text extraction fallback ----
-    const geminiFileParts: { fileData: { fileUri: string; mimeType: string } }[] = [];
+    // ---- Prepare source material: raw bytes + text extraction fallback ----
+    // Files travel as inlineData; gemini-retry's transport layer decides per
+    // backend whether they stay inline or go through the File API (the old
+    // unconditional official upload produced fileData URIs the AIStudioToAPI
+    // wrapper could never read — the model then only saw the extracted text).
+    const geminiFileParts: { inlineData: { data: string; mimeType: string } }[] = [];
     let dynamicTextContent = textContent;
 
     for (const fileInfo of filePaths) {
       try {
-        const uploadResult = await ai.files.upload({
-          file: fileInfo.path,
-          config: { mimeType: fileInfo.mimeType },
-        });
-        geminiFileParts.push({
-          fileData: { fileUri: uploadResult.uri as string, mimeType: uploadResult.mimeType as string },
-        });
-      } catch (err) {
-        console.error("[quiz-gen] Error uploading file to Gemini:", err instanceof Error ? err.message : err);
-      }
-
-      try {
         const buffer = await fs.readFile(fileInfo.path);
         const name = fileInfo.name || path.basename(fileInfo.path);
+        geminiFileParts.push({
+          inlineData: { data: buffer.toString("base64"), mimeType: fileInfo.mimeType },
+        });
         if (fileInfo.mimeType === "application/pdf" || name.toLowerCase().endsWith(".pdf")) {
           dynamicTextContent += `\n\n--- Inhalt von ${name} ---\n${await pdfToText(buffer)}`;
         } else if (fileInfo.mimeType.startsWith("text/")) {
           dynamicTextContent += `\n\n--- Inhalt von ${name} ---\n${buffer.toString("utf-8")}`;
         }
       } catch (err) {
-        console.error(`[quiz-gen] Error parsing file ${fileInfo.path}:`, err);
+        console.error(`[quiz-gen] Error reading file ${fileInfo.path}:`, err);
       }
     }
 
-    const masterContextParts: Array<{ text: string } | { fileData: { fileUri: string; mimeType: string } }> = [...geminiFileParts];
+    const masterContextParts: Array<{ text: string } | { inlineData: { data: string; mimeType: string } }> = [...geminiFileParts];
     if (dynamicTextContent.trim()) {
       masterContextParts.push({ text: `\n\nZusätzliches Textmaterial:\n${dynamicTextContent}` });
     }
@@ -102,7 +98,7 @@ export async function runQuizGeneration(params: {
     const blueprintRes = await generateContentWithRetry(ai, modelName, {
       contents: [{ role: "user", parts: [...masterContextParts, { text: `Modul/Vorlesungsthema:\n${subjectMain} - ${subjectSub}` }, { text: "Hier sind die Materialien. Bitte führe deine System-Instruktionen aus." }] }],
       config: { systemInstruction: PROMPTS.blueprint + languageInstruction },
-    }, (msg) => progress(1, msg), "Blueprint", useAiWrapper);
+    }, (msg) => progress(1, msg), "Blueprint", useAiWrapper, fileTransport);
     const blueprint = blueprintRes.text;
 
     // ---- Step 2: Quiz 1 (later quizzes are generated on-demand after grading) ----
@@ -111,7 +107,7 @@ export async function runQuizGeneration(params: {
     const quiz1Res = await generateContentWithRetry(ai, modelName, {
       contents: [{ role: "user", parts: [...masterContextParts, { text: "Hier sind die Materialien. Bitte führe deine System-Instruktionen aus." }] }],
       config: { systemInstruction: PROMPTS.quiz_tag_1 + `\n\nModul/Vorlesungsthema:\n${subjectMain}\n\nBlueprint:\n${blueprint}` + languageInstruction },
-    }, (msg) => progress(2, msg), "Quiz 1", useAiWrapper);
+    }, (msg) => progress(2, msg), "Quiz 1", useAiWrapper, fileTransport);
 
     const quiz1Text = quiz1Res.text || "";
     // A module with an empty Quiz 1 is unusable: the student opens it to no quiz
@@ -130,11 +126,11 @@ export async function runQuizGeneration(params: {
       generateContentWithRetry(ai, modelName, {
         contents: [{ role: "user", parts: [...masterContextParts, { text: `Modul/Vorlesungsthema:\n${subjectMain}` }, { text: `Didaktischer Blueprint:\n${blueprint}` }, { text: "Bitte generiere den Tutor-Prompt basierend auf dem bereitgestellten Blueprint." }] }],
         config: { systemInstruction: PROMPTS.tutor_prompt + languageInstruction },
-      }, (msg) => progress(3, msg), "Tutor Prompt", useAiWrapper),
+      }, (msg) => progress(3, msg), "Tutor Prompt", useAiWrapper, fileTransport),
       generateContentWithRetry(ai, modelName, {
         contents: [{ role: "user", parts: [...masterContextParts, { text: `Modul/Vorlesungsthema:\n${subjectMain}` }, { text: `Didaktischer Blueprint:\n${blueprint}` }, { text: "Bitte generiere die zwei Regieanweisungen basierend auf dem bereitgestellten Blueprint." }] }],
         config: { systemInstruction: podcast_prompts + languageInstruction },
-      }, (msg) => progress(3, msg), "Podcast Prompts", useAiWrapper),
+      }, (msg) => progress(3, msg), "Podcast Prompts", useAiWrapper, fileTransport),
     ]);
     const tutorPrompt = tutorRes.text;
     const podcastOutput = podcastRes.text;

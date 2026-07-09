@@ -557,6 +557,7 @@ export default function DashboardClient({
   const [modulePresets, setModulePresets] = useState<string[]>([]);
   const [language, setLanguage] = useState<string>("german");
   const [wrapperMode, setWrapperMode] = useState<string>("all");
+  const [fileTransport, setFileTransport] = useState<string>("inline");
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [newPresetInput, setNewPresetInput] = useState("");
@@ -593,6 +594,7 @@ export default function DashboardClient({
           if (data.modulePresets) setModulePresets(data.modulePresets);
           if (data.language) setLanguage(data.language);
           if (data.wrapperMode) setWrapperMode(data.wrapperMode);
+          if (data.fileTransport) setFileTransport(data.fileTransport);
           if (data.modulePresets && data.modulePresets.length > 0) {
             setSubjectInput(data.modulePresets[0]);
           }
@@ -661,6 +663,24 @@ export default function DashboardClient({
     setDictationMode(mode);
     if (typeof window !== "undefined") localStorage.setItem("srs-dictation-mode", mode);
   }, []);
+  // File transport ("inline" base64 vs "file_api" upload) — persisted in
+  // AppConfig; the grading/generation pipelines read it per run.
+  const updateFileTransport = useCallback((mode: "inline" | "file_api") => {
+    fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'update_file_transport', fileTransport: mode })
+    }).then(res => res.json()).then(data => {
+      if (data.error) {
+        addToast("error", `${language === "german" ? "Fehler" : "Error"}: ${data.error}`);
+        return;
+      }
+      if (data.fileTransport) setFileTransport(data.fileTransport);
+    }).catch(err => {
+      console.error(err);
+      addToast("error", language === "german" ? "Einstellung konnte nicht gespeichert werden." : "Failed to save setting.");
+    });
+  }, [addToast, language]);
   const handleInteractiveAnswer = useCallback((taskId: string, text: string) => {
     setIndividualAnswers(prev => ({ ...prev, [taskId]: text }));
   }, []);
@@ -4782,6 +4802,39 @@ export default function DashboardClient({
                       data-active={wrapperMode === "none"}
                     >
                       {language === "german" ? "Nur Fallback" : "Fallback only"}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="pt-6 border-t border-(--hairline-card)">
+                  <h4 className="caps-label mb-3">{language === "german" ? "Proxy: PDF-Übertragung" : "Proxy: PDF delivery"}</h4>
+                  <p className="text-xs text-ink-600 mb-4 leading-relaxed">
+                    {language === "german"
+                      ? "Gilt nur für den Gemini Proxy — die offizielle Gemini API nutzt immer ihren nativen File-Upload. Inline schickt PDFs als Base64 direkt in der Proxy-Anfrage mit (zuverlässig bis ~14 MB, unabhängig vom Proxy-Konto). File-Upload lädt die Datei einmal über den Upload-Proxy hoch und verweist nur noch darauf — spart Bandbreite bei mehreren Schritten, hängt aber am Proxy-Konto, das die Datei hochgeladen hat."
+                      : "Applies only to the Gemini proxy — the official Gemini API always uses its native file upload. Inline embeds PDFs as base64 in the proxy request itself (reliable up to ~14 MB, independent of the proxy account). File upload pushes the file once through the upload proxy and references it — saves bandwidth across steps, but is tied to the proxy account that uploaded it."}
+                  </p>
+                  {(isGenerating || isGrading) && (
+                    <div className="mb-4 text-xs font-semibold text-amber-600 flex items-center gap-2">
+                      <LockClosedIcon className="w-3.5 h-3.5" />
+                      {language === "german" ? "Einstellungen gesperrt, während eine KI-Aktion läuft." : "Settings locked while AI generation is in progress."}
+                    </div>
+                  )}
+                  <div className="segmented">
+                    <button
+                      disabled={isGenerating || isGrading}
+                      onClick={() => updateFileTransport("inline")}
+                      className={`segmented-item ${(isGenerating || isGrading) ? 'opacity-50 !cursor-not-allowed' : ''}`}
+                      data-active={fileTransport === "inline"}
+                    >
+                      {language === "german" ? "Inline (Base64)" : "Inline (base64)"}
+                    </button>
+                    <button
+                      disabled={isGenerating || isGrading}
+                      onClick={() => updateFileTransport("file_api")}
+                      className={`segmented-item ${(isGenerating || isGrading) ? 'opacity-50 !cursor-not-allowed' : ''}`}
+                      data-active={fileTransport === "file_api"}
+                    >
+                      {language === "german" ? "File-Upload" : "File upload"}
                     </button>
                   </div>
                 </div>

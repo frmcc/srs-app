@@ -42,10 +42,12 @@ CREATE TABLE IF NOT EXISTS "AppConfig" (
     "modulePresets" TEXT NOT NULL DEFAULT '[]',
     "language" TEXT NOT NULL DEFAULT 'german',
     "wrapperMode" TEXT NOT NULL DEFAULT 'all',
+    "fileTransport" TEXT NOT NULL DEFAULT 'inline',
     "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 ALTER TABLE "AppConfig" ADD COLUMN "language" TEXT NOT NULL DEFAULT 'german';
 ALTER TABLE "AppConfig" ADD COLUMN "wrapperMode" TEXT NOT NULL DEFAULT 'all';
+ALTER TABLE "AppConfig" ADD COLUMN "fileTransport" TEXT NOT NULL DEFAULT 'inline';
 
 -- ReviewLog history columns (added post-hoc on several DBs).
 ALTER TABLE "ReviewLog" ADD COLUMN "feedback" TEXT;
