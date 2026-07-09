@@ -1,6 +1,6 @@
 import { PrismaClient } from "@prisma/client";
-import { PrismaLibSql } from "@prisma/adapter-libsql";
-import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
+import { PrismaLibSQL } from "@prisma/adapter-libsql";
+import { PrismaBetterSQLite3 } from "@prisma/adapter-better-sqlite3";
 
 // Use a singleton pattern for the Prisma client
 const globalForPrisma = globalThis as unknown as { prisma: PrismaClient | undefined };
@@ -8,7 +8,7 @@ const globalForPrisma = globalThis as unknown as { prisma: PrismaClient | undefi
 function createPrismaClient(): PrismaClient {
   // Production / Turso: use the libSQL driver adapter.
   if (process.env.TURSO_DATABASE_URL) {
-    const adapter = new PrismaLibSql({
+    const adapter = new PrismaLibSQL({
       url: process.env.TURSO_DATABASE_URL,
       authToken: process.env.TURSO_AUTH_TOKEN,
     });
@@ -26,7 +26,7 @@ function createPrismaClient(): PrismaClient {
   const fileUrl = process.env.DATABASE_URL?.startsWith("file:")
     ? process.env.DATABASE_URL
     : "file:./dev.db";
-  const adapter = new PrismaBetterSqlite3({ url: fileUrl });
+  const adapter = new PrismaBetterSQLite3({ url: fileUrl });
   return new PrismaClient({ adapter });
 }
 
