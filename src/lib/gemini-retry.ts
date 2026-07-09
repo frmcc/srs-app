@@ -1,4 +1,4 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, ThinkingLevel } from "@google/genai";
 import { createHash } from "crypto";
 
 const wrapperUrl = process.env.OPENAI_PROXY_URL || process.env.AISTUDIO_BASE_URL || "http://127.0.0.1:7860";
@@ -388,6 +388,30 @@ function hasSubstantiveParts(contents: unknown): boolean {
   return false;
 }
 
+/**
+ * WRAPPER-only: pin thinking to HIGH for Gemini 3.x text models so wrapper
+ * runs match the official API's pro-level depth deterministically.
+ *
+ * Constraints that shape the gate:
+ *  - Gemini 2.5 models reject thinkingLevel with 400 INVALID_ARGUMENT
+ *    (probe-verified), and a 400 from the wrapper is NOT fallback-worthy —
+ *    it would fail the whole call. The gate must only match Gemini 3.x.
+ *  - "lite" tiers stay untouched: they are chosen for latency (translate runs
+ *    under maxDuration=60) and HIGH thinking would defeat that choice.
+ *  - A caller-provided thinkingConfig always wins.
+ *  - The official-API request must stay pristine so the fallback path re-sends
+ *    exactly what the caller built.
+ */
+function withWrapperThinkingHigh(request: GenerateRequest, modelName: string): GenerateRequest {
+  const isGemini3Text =
+    /^gemini-3/.test(modelName) && !/lite|image|tts|robotics|embed|computer-use/.test(modelName);
+  if (!isGemini3Text || request.config?.thinkingConfig) return request;
+  return {
+    ...request,
+    config: { ...request.config, thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH } },
+  };
+}
+
 type GenerateResponse = Awaited<ReturnType<GoogleGenAI["models"]["generateContent"]>>;
 
 /**
@@ -447,7 +471,7 @@ export async function generateContentWithRetry(
       // the wrapper's /upload proxy instead).
       let adaptedWrapper: AdaptedRequest;
       try {
-        adaptedWrapper = await adaptRequestForBackend(aiWrapper, "wrapper", request, fileTransport, progressCallback, stepLabel);
+        adaptedWrapper = await adaptRequestForBackend(aiWrapper, "wrapper", withWrapperThinkingHigh(request, modelName), fileTransport, progressCallback, stepLabel);
       } catch (adaptErr) {
         // Wrapper-side upload failed beyond repair — the official API gets a
         // fresh adaptation (own upload or inline), so this is recoverable.
