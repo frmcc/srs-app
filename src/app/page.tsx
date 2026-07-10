@@ -17,13 +17,27 @@ export default async function Page() {
   if (!session?.user && !devOpen) redirect("/login");
 
   // The extra reads kill first-paint flashes: without them the client briefly
-  // rendered German UI for English users and a late-popping pass-rate card
-  // until /api/settings and /api/stats came back.
+  // rendered German UI for English users, a late-popping pass-rate card, a
+  // "Semester 1" sidebar eyebrow and an empty upload module list until
+  // /api/settings and /api/stats came back.
   const [items, config, passRate30] = await Promise.all([
     fetchReviewList(),
-    prisma.appConfig.findUnique({ where: { id: 1 }, select: { language: true } }),
+    prisma.appConfig.findUnique({
+      where: { id: 1 },
+      select: { language: true, currentSemester: true, modulePresets: true, wrapperMode: true, fileTransport: true },
+    }),
     fetchPassRate30(),
   ]);
+
+  // modulePresets is a JSON-string column — parse defensively (a corrupted
+  // column must not take down the page; /api/settings degrades the same way).
+  let modulePresets: string[] = [];
+  try {
+    const parsed: unknown = JSON.parse(config?.modulePresets ?? "[]");
+    if (Array.isArray(parsed)) modulePresets = parsed.filter((p): p is string => typeof p === "string");
+  } catch {
+    /* corrupted column — fall back to [] */
+  }
 
   // Read-only feed token for the calendar-subscription URLs: calendar clients
   // can't log in, so the ICS feeds authenticate via ?token= (middleware accepts
@@ -42,6 +56,10 @@ export default async function Page() {
       userImage={session?.user?.image ?? null}
       userEmail={session?.user?.email ?? null}
       initialLanguage={config?.language ?? "german"}
+      initialSemester={config?.currentSemester ?? 1}
+      initialModulePresets={modulePresets}
+      initialWrapperMode={config?.wrapperMode ?? "all"}
+      initialFileTransport={config?.fileTransport ?? "inline"}
       initialPassRate30={passRate30}
       vapidPublicKey={process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? null}
       calendarToken={calendarToken}

@@ -583,6 +583,10 @@ export default function DashboardClient({
   userImage,
   userEmail,
   initialLanguage = "german",
+  initialSemester = 1,
+  initialModulePresets = [],
+  initialWrapperMode = "all",
+  initialFileTransport = "inline",
   initialPassRate30 = null,
   vapidPublicKey,
   calendarToken,
@@ -594,6 +598,14 @@ export default function DashboardClient({
   userEmail?: string | null;
   /** Server-read UI language — first paint must not flash German at English users. */
   initialLanguage?: string;
+  /** Server-read semester — the sidebar's "Semester N" eyebrow must not flash "Semester 1". */
+  initialSemester?: number;
+  /** Server-read module presets — the upload tab's module select must not flash empty. */
+  initialModulePresets?: string[];
+  /** Server-read AI-wrapper mode — seeds the Settings toggle at first paint. */
+  initialWrapperMode?: string;
+  /** Server-read file transport — seeds the Settings toggle at first paint. */
+  initialFileTransport?: string;
   /** Server-computed 30-day pass rate — the right-rail card must not pop in late. */
   initialPassRate30?: { passed: number; total: number } | null;
   vapidPublicKey?: string | null;
@@ -651,18 +663,22 @@ export default function DashboardClient({
   // Toasts (non-blocking replacement for alert())
   const { toasts, addToast, dismissToast } = useToasts();
 
-  const [subjectInput, setSubjectInput] = useState("");
+  // Pre-selected module: seeded from the server-read presets so the upload
+  // tab's select never flashes the "no modules" fallback (EM-5/PP-3).
+  const [subjectInput, setSubjectInput] = useState(initialModulePresets[0] ?? "");
   const [topicInput, setTopicInput] = useState("");
   const [textInput, setTextInput] = useState("");
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [isDragging, setIsDragging] = useState(false);
 
-  // Semester & Settings State
-  const [currentSemester, setCurrentSemester] = useState<number>(1);
-  const [modulePresets, setModulePresets] = useState<string[]>([]);
+  // Semester & Settings State — seeded from the server page's AppConfig read
+  // (EM-5/PP-3: no "Semester 1"/empty-presets flash), revalidated by the
+  // /api/settings fetch below.
+  const [currentSemester, setCurrentSemester] = useState<number>(initialSemester);
+  const [modulePresets, setModulePresets] = useState<string[]>(initialModulePresets);
   const [language, setLanguage] = useState<string>(initialLanguage);
-  const [wrapperMode, setWrapperMode] = useState<string>("all");
-  const [fileTransport, setFileTransport] = useState<string>("inline");
+  const [wrapperMode, setWrapperMode] = useState<string>(initialWrapperMode);
+  const [fileTransport, setFileTransport] = useState<string>(initialFileTransport);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [newPresetInput, setNewPresetInput] = useState("");
@@ -690,6 +706,7 @@ export default function DashboardClient({
     setResolvedTheme(window.__srsAppearance?.resolve(next.mode) ?? "paper");
   }, []);
 
+  // Revalidation only — first paint is already seeded from the server props.
   useEffect(() => {
     fetch('/api/settings')
       .then(res => res.json())
@@ -701,7 +718,8 @@ export default function DashboardClient({
           if (data.wrapperMode) setWrapperMode(data.wrapperMode);
           if (data.fileTransport) setFileTransport(data.fileTransport);
           if (data.modulePresets && data.modulePresets.length > 0) {
-            setSubjectInput(data.modulePresets[0]);
+            // Fill only if still empty — never stomp the SSR seed or a user edit.
+            setSubjectInput(prev => prev || data.modulePresets[0]);
           }
         }
       })
@@ -734,7 +752,10 @@ export default function DashboardClient({
   // Right-rail pass-rate card (last 30 days) — server-computed and passed as a
   // prop, so it paints WITH the dashboard instead of popping in after a lazy
   // /api/stats round-trip (which shipped a year of logs just for two counts).
-  const passRate30 = initialPassRate30;
+  // PP-6/IA-4 — kept live afterwards: every fetchReviews() (mount, refocus,
+  // post-grade) carries fresh counts back, so the number moves when a grade
+  // just changed it instead of freezing at the SSR snapshot.
+  const [passRate30, setPassRate30] = useState(initialPassRate30);
 
   // ---- Interactive Mode: reads each question aloud (Gemini TTS with browser
   // fallback), then dictates the spoken answer into the box until the user says
@@ -1017,21 +1038,36 @@ export default function DashboardClient({
     }
     fetchInFlightRef.current = true;
     try {
-      const res = await fetch('/api/reviews');
+      // PP-6/IA-4 — send the same 30-day window StatsPanel aggregates with
+      // (local midnight − 30 days) so the rail card and the Stats tab count
+      // identical log sets.
+      const today = startOfLocalDay(new Date());
+      const cutoff30 = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 30);
+      const res = await fetch(`/api/reviews?passRateSince=${encodeURIComponent(cutoff30.toISOString())}`);
       if (!res.ok) throw new Error(`Server returned status ${res.status}`);
       const data = await res.json();
-      if (Array.isArray(data)) {
+      // Response shape: { items, passRate30 } — tolerate the legacy bare array
+      // (a client rendered just before a deploy talking to the old route).
+      const items: unknown = Array.isArray(data) ? data : data?.items;
+      const passRate: { passed: number; total: number } | null =
+        !Array.isArray(data) &&
+        typeof data?.passRate30?.passed === "number" &&
+        typeof data?.passRate30?.total === "number"
+          ? data.passRate30
+          : null;
+      if (Array.isArray(items)) {
         // Drop any items we just deleted optimistically (an in-flight GET that
         // started before the DELETE could otherwise re-add them). Once the
         // server stops returning an id, forget it.
         const deleted = deletedIdsRef.current;
-        const filtered = deleted.size ? data.filter((it: { id: string }) => !deleted.has(it.id)) : data;
+        const filtered = deleted.size ? items.filter((it: { id: string }) => !deleted.has(it.id)) : items;
         for (const id of Array.from(deleted)) {
-          if (!data.some((it: { id: string }) => it.id === id)) deleted.delete(id);
+          if (!items.some((it: { id: string }) => it.id === id)) deleted.delete(id);
         }
         startTransition(() => {
           setUpcomingReviews(formatItems(filtered));
           setRawItems(filtered);
+          if (passRate) setPassRate30(passRate);
           setReviewsError(false);
         });
       }

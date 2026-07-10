@@ -1296,7 +1296,7 @@
 - Verified: Read Toast.tsx in full (117 lines): timer at line 37 fires unconditionally per variant; no pointerenter/focus handlers anywhere in ToastStack; AUTO_DISMISS_MS = 5000 at line 18 shared by success and error. Confirmed error toasts carry raw server messages (DashboardClient 1660, 1789). The manual dismiss X exists but doesn't help a toast that vanishes mid-read.
 
 **EM-5 · P1 · effort:small — Sidebar 'Semester N' eyebrow flashes 'Semester 1' on every load — violating the app's own no-flash first-paint rule**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-10) — page.tsx AppConfig select widened to currentSemester/modulePresets (+wrapperMode/fileTransport), passed as initialSemester/initialModulePresets props and seeded into the useStates exactly like initialLanguage; mount /api/settings fetch kept as revalidation
 - Where: `src/app/DashboardClient.tsx:2044`
 - Evidence: `const [currentSemester, setCurrentSemester] = useState<number>(1)` (line 562) renders in the brand block as `Semester {currentSemester}` (lines 2043–2045) from first paint; the real value only arrives via a client-side `fetch('/api/settings')` effect (lines 594–610). Meanwhile page.tsx documents the standard: 'The extra reads kill first-paint flashes: without them the client briefly rendered German UI for English users and a late-popping pass-rate card' (page.tsx lines 19–21) — and already queries AppConfig server-side, but selects only `language` (line 24), not `currentSemester` or `modulePresets`.
 - Impact: Any student past semester 1 watches the brand mark's eyebrow flip from 'SEMESTER 1' to 'SEMESTER 3' on every single app open — exactly the pop-in class the codebase explicitly fixed for language and pass-rate. The upload tab's 'Modul (Semester 1)' label (line 2667) and 'No modules defined' placeholder (line 2682) flash the same way if reached quickly.
@@ -1759,7 +1759,7 @@
 - Verified: Verified the only two scroll calls in the 5,056-line file via grep; <main> at 2143 is the md+ scroller (md:h-[100dvh] md:overflow-y-auto), un-keyed so it persists across AnimatePresence tab swaps, and globals.css only unlocks the shell below 600px height. window.scrollTo is genuinely inert on md+.
 
 **PP-3 · P1 · effort:small — Sidebar flashes "SEMESTER 1", wrong 'Active' badge, and empty module presets on every load — the server already has this data but doesn't pass it**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-10) — server select now `{ language, currentSemester, modulePresets, wrapperMode, fileTransport }` (modulePresets JSON.parsed defensively), all seeded via initial props; subjectInput pre-seeded to presets[0] and the revalidation fetch only fills it when still empty (never stomps a user edit)
 - Where: `src/app/DashboardClient.tsx:562`
 - Evidence: `const [currentSemester, setCurrentSemester] = useState<number>(1);` and `const [modulePresets, setModulePresets] = useState<string[]>([]);` (562–563) are populated only by a client `fetch('/api/settings')` effect (594–610). The always-visible sidebar renders `Semester {currentSemester}` (line 2044). Meanwhile page.tsx queries appConfig on the server but selects only `{ language: true }` (line 24) — its own comment says "The extra reads kill first-paint flashes" and fixed language + pass-rate, but not semester/presets.
 - Impact: For any user past semester 1, every page load paints "SEMESTER 1" under the wordmark and flips after a network round-trip — persistent chrome, visible on all tabs. The library's "Aktiv" badge (`sem === currentSemester`, lines 2947/2969) sits on the wrong semester for a beat, and the upload tab briefly shows the "Keine Module für Semester N definiert" fallback (line 2681) before presets arrive. This directly violates the codebase's own stated first-paint rule.
@@ -1783,7 +1783,7 @@
 - Verified: Confirmed both states at cited lines, the absence of any memo/useDeferredValue via grep across the file, the auto-expand-everything effect, the per-row Tip/motion cost, and the keydown effect's dep array containing individualAnswers/studentAnswers. Structural claim is accurate; magnitude claim is plausible and scales with library size.
 
 **PP-6 · P1 · effort:medium — Frozen 30-day pass-rate card — the right-rail number never updates after grading**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-10) — GET /api/reviews now returns `{ items, passRate30 }` (fetchPassRate30 piggybacked); passRate30 became state updated inside fetchReviews' startTransition, so mount/refocus/post-grade refetches keep the rail card live; legacy bare-array response still tolerated
 - Where: `src/app/DashboardClient.tsx:638`
 - Duplicate-of/with: IA-4
 - Evidence: `const passRate30 = initialPassRate30;` — a plain alias of the server prop, rendered as the headline `{Math.round((passRate30.passed / passRate30.total) * 100)}%` and its progress bar (lines 2567–2582). Grep shows no setter and no refetch anywhere: handleGrade's `done` handler only calls `fetchReviews()` (line 1784).
@@ -1870,7 +1870,7 @@
 - Verified: CONFIRMED. Read the sidebar card (L2095–2103) and the quiz Tutor toggle (L3582–3591); verified TutorPanel.tsx really ships streaming chat plus /api/tts read-aloud (speakMessage at L139–175, fetch('/api/tts') at L149). The card's own tagline ('beside every quiz') describes exactly where the shipped tutor lives, and the app additionally ships two-way voice via the Interactive mode (L3592–3603) — so 'Coming soon + lock' misstates reality even under the most charitable 'Pro voice tier' reading. The recommendation already handles that nuance.
 
 **IA-4 · P1 · effort:small — The dashboard's 30-day pass-rate card is a frozen SSR snapshot — it silently disagrees with the Stats tab within the same session**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-10) — same mechanism as PP-6, plus window alignment: the client sends StatsPanel's exact local-midnight−30d cutoff as ?passRateSince, fetchPassRate30(since?) counts from it (SSR keeps the rolling fallback until the mount fetch revalidates), so both surfaces count identical log sets
 - Where: `src/app/DashboardClient.tsx:638`
 - Duplicate-of/with: PP-6
 - Evidence: `const passRate30 = initialPassRate30;` (L638) — a server prop passed once from page.tsx (L45) and never refetched; fetchReviews() only resyncs review items. The rail renders `{Math.round((passRate30.passed / passRate30.total) * 100)}%` (L2571). The Stats tab computes the identically-labeled figure ("Pass rate · 30d", StatsPanel.tsx L399) live from /api/stats on every visit, with a local-midnight cutoff (StatsPanel.tsx L198, L240–248, L313) while the server uses a rolling now-minus-30-days window (review-query.ts L86–94).

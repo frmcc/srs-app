@@ -82,13 +82,23 @@ function hasDownloadableSource(content: string | null): boolean {
 /** 30-day pass/total counts for the dashboard's right-rail card — computed
  *  server-side so the card paints with the first render instead of popping in
  *  after a client /api/stats round-trip. Mirrors /api/stats' WHERE
- *  (no "Freies Lernen") narrowed to the last 30 days. */
-export async function fetchPassRate30(): Promise<{ passed: number; total: number }> {
-  const since = new Date();
-  since.setDate(since.getDate() - 30);
+ *  (no "Freies Lernen") narrowed to the last 30 days.
+ *
+ *  `since` (optional): the exact window start. GET /api/reviews passes the
+ *  client's local-midnight-minus-30-days cutoff — the same window StatsPanel
+ *  computes — so the rail card and the Stats tab can never disagree by an
+ *  off-by-one day. Without it (SSR, where the viewer's timezone is unknown)
+ *  we fall back to a rolling now−30d window; the client's mount fetch
+ *  revalidates with the exact cutoff moments later. */
+export async function fetchPassRate30(since?: Date): Promise<{ passed: number; total: number }> {
+  let cutoff = since;
+  if (!cutoff || isNaN(cutoff.getTime())) {
+    cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 30);
+  }
   const [total, passed] = await Promise.all([
-    prisma.reviewLog.count({ where: { subjectMain: { not: "Freies Lernen" }, completedAt: { gte: since } } }),
-    prisma.reviewLog.count({ where: { subjectMain: { not: "Freies Lernen" }, completedAt: { gte: since }, passed: true } }),
+    prisma.reviewLog.count({ where: { subjectMain: { not: "Freies Lernen" }, completedAt: { gte: cutoff } } }),
+    prisma.reviewLog.count({ where: { subjectMain: { not: "Freies Lernen" }, completedAt: { gte: cutoff }, passed: true } }),
   ]);
   return { passed, total };
 }
