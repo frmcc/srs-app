@@ -2786,7 +2786,7 @@ export default function DashboardClient({
                         <button
                           onClick={handleGenerate}
                           disabled={isGenerating || (!textInput.trim() && uploadedFiles.length === 0) || !subjectInput.trim()}
-                          className="btn-primary flex-1 h-[52px] text-sm flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-40"
+                          className="btn-primary flex-none sm:flex-1 h-14 sm:h-[52px] text-[15px] sm:text-sm flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-40"
                         >
                           <SparklesIcon className="w-[18px] h-[18px]" strokeWidth={1.6} />
                           {language === "german" ? "Erstelle mein Quiz-Set" : "Generate my quiz set"}
@@ -3977,7 +3977,7 @@ export default function DashboardClient({
                         })}
 
                         <div className="pt-3">
-                          <div className="flex flex-col sm:flex-row gap-2.5">
+                          <div className="flex flex-col sm:flex-row gap-3 sm:gap-2.5">
                             <select
                               value={gradingModel}
                               onChange={e => setGradingModel(e.target.value)}
@@ -3991,7 +3991,7 @@ export default function DashboardClient({
                               {...pressable}
                               onClick={handleGrade}
                               disabled={isGrading || !parsedTasks.some(task => (individualAnswers[task.id] || "").trim().length > 0 || !!answerSketches[task.id])}
-                              className="btn-primary flex-1 h-12 text-sm flex items-center justify-center gap-2.5 cursor-pointer"
+                              className="btn-primary flex-none sm:flex-1 h-14 sm:h-12 text-[15px] sm:text-sm flex items-center justify-center gap-2.5 cursor-pointer"
                             >
                               <SparklesIcon className="w-[18px] h-[18px]" strokeWidth={1.6} />
                               {language === "german" ? "Zur Bewertung einreichen" : "Submit for grading"}
@@ -4059,7 +4059,7 @@ export default function DashboardClient({
                             />
                           </div>
                         )}
-                        <div className="flex flex-col sm:flex-row gap-2.5">
+                        <div className="flex flex-col sm:flex-row gap-3 sm:gap-2.5">
                           <select
                             value={gradingModel}
                             onChange={e => setGradingModel(e.target.value)}
@@ -4073,7 +4073,7 @@ export default function DashboardClient({
                             {...pressable}
                             onClick={handleGrade}
                             disabled={isGrading || (!studentAnswers.trim() && !answerSketches[FREE_SKETCH_KEY])}
-                            className="btn-primary flex-1 h-12 text-sm flex items-center justify-center gap-2.5 cursor-pointer"
+                            className="btn-primary flex-none sm:flex-1 h-14 sm:h-12 text-[15px] sm:text-sm flex items-center justify-center gap-2.5 cursor-pointer"
                           >
                             <SparklesIcon className="w-[18px] h-[18px]" strokeWidth={1.6} />
                             {language === "german" ? "Zur Bewertung einreichen" : "Submit for grading"}
