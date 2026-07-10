@@ -10,7 +10,8 @@
 | Live browser inspection (both themes, desktop + mobile, all tabs) | ✅ done |
 | Agent review — all 12 dimensions | ✅ done |
 | Adversarial verify pass — all 203 findings below survived | ✅ done 2026-07-10 |
-| Implementation (branch `design-polish`) | 🔨 in progress — status per finding below |
+| Implementation — P0 wave (36/37 fixed, TY-2 deferred) | ✅ done 2026-07-10 — commits 09694c4 · 337cd20 · 1999827 |
+| Implementation — P1 (97) / P2 (69) waves | ⏳ pending — status per finding below |
 
 **Verified totals:** 203 findings — **37 high (P0) · 97 medium (P1) · 69 low (P2)**, plus 11 live-inspection findings (overlaps noted).
 
