@@ -67,9 +67,9 @@ export default function LoginClient({ error, callbackUrl = "/" }: { error?: stri
 
             <motion.div variants={riseChild} className="flex items-center gap-3">
               <div className="brand-tile w-10 h-10">
-                <span className="font-display italic font-semibold text-[21px] text-(--accent-on) -translate-y-px">S</span>
+                <span className="font-display italic font-semibold text-lg text-(--accent-on) -translate-y-px">S</span>
               </div>
-              <h1 className="text-[17px] font-bold tracking-[-0.01em] leading-none text-ink-900 font-sans">SRS <span className="font-display italic text-(--accent-text)" style={{ fontWeight: 560 }}>Master</span></h1>
+              <h1 className="text-base font-bold tracking-[-0.01em] leading-none text-ink-900 font-sans">SRS <span className="font-display italic text-(--accent-text)" style={{ fontWeight: 560 }}>Master</span></h1>
             </motion.div>
 
             <motion.h2 variants={riseChild} className="font-display text-4xl sm:text-[54px] tracking-[-0.022em] text-ink-900 leading-[1.06] mt-11" style={{ fontWeight: 460 }}>
@@ -81,7 +81,7 @@ export default function LoginClient({ error, callbackUrl = "/" }: { error?: stri
               nimmt dein Audio auf und plant jede Wiederholung genau dann, wenn dein Gedächtnis sie braucht.
             </motion.p>
 
-            <motion.ul variants={riseChild} className="flex flex-col gap-3.5 text-[14.5px] text-ink-900 mt-9">
+            <motion.ul variants={riseChild} className="flex flex-col gap-3.5 text-sm text-ink-900 mt-9">
               <li className="flex items-center gap-3">
                 <span className="w-1.5 h-1.5 rounded-full bg-(--a-g2) shrink-0"></span>
                 Quizze, generiert aus deinen eigenen Unterlagen
@@ -109,7 +109,7 @@ export default function LoginClient({ error, callbackUrl = "/" }: { error?: stri
               <h3 className="font-display text-[26px] tracking-[-0.015em] text-ink-900 mt-2.5" style={{ fontWeight: 480 }}>
                 In dein Studienarchiv
               </h3>
-              <p className="text-[13.5px] text-ink-600 leading-[1.55] mt-2">
+              <p className="text-sm text-ink-600 leading-[1.55] mt-2">
                 Melde dich mit Google an, um deine Module, Quizze und deinen Zeitplan zu öffnen.
               </p>
 
@@ -123,7 +123,7 @@ export default function LoginClient({ error, callbackUrl = "/" }: { error?: stri
               <button
                 onClick={handleSignIn}
                 disabled={isSigningIn}
-                className="group relative w-full h-[50px] mt-[26px] bg-paper-1 hover:bg-(--paper-hover) text-ink-900 font-semibold rounded-[14px] px-5 flex items-center justify-center gap-[11px] text-[14.5px] cursor-pointer border border-(--line) shadow-(--shadow-e1) hover:-translate-y-px active:translate-y-0 active:scale-[0.99] disabled:opacity-60 disabled:cursor-wait disabled:hover:translate-y-0"
+                className="group relative w-full h-[50px] mt-[26px] bg-paper-1 hover:bg-(--paper-hover) text-ink-900 font-semibold rounded-[14px] px-5 flex items-center justify-center gap-[11px] text-sm cursor-pointer border border-(--line) shadow-(--shadow-e1) hover:-translate-y-px active:translate-y-0 active:scale-[0.99] disabled:opacity-60 disabled:cursor-wait disabled:hover:translate-y-0"
               >
                 {/* Pre-rendered hover shadow, cross-faded via opacity — box-shadow itself
                     never animates (motion law, same recipe as .card-surface-elevated). */}

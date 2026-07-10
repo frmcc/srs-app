@@ -405,7 +405,7 @@ function renderFeedbackInline(text: string, keyPrefix: string): ReactNode[] {
  * calm typography instead of raw backend output. Dependency-free on purpose.
  */
 function FeedbackBody({ text, size = "base" }: { text: string; size?: "base" | "sm" }) {
-  const bodyCls = size === "sm" ? "text-xs leading-[1.65] text-ink-600" : "text-[14.5px] leading-[1.7] text-ink-900/80";
+  const bodyCls = size === "sm" ? "text-xs leading-[1.65] text-ink-600" : "text-sm leading-[1.7] text-ink-900/80";
   const out: ReactNode[] = [];
   const lines = text.replace(/\r\n/g, "\n").split("\n");
   lines.forEach((raw, i) => {
@@ -2206,7 +2206,7 @@ export default function DashboardClient({
             </div>
             <div className="flex flex-col gap-[3px]">
               <h1 className="text-[15px] font-bold tracking-[-0.01em] leading-none text-ink-900 font-sans">SRS <span className="font-display italic text-(--accent-text)" style={{ fontWeight: 560 }}>Master</span></h1>
-              <div className="text-[10.5px] font-semibold uppercase tracking-[0.13em] text-ink-400">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.13em] text-ink-400">
                 Semester {currentSemester}
               </div>
             </div>
@@ -2263,7 +2263,7 @@ export default function DashboardClient({
             <div className="mt-3 card-surface p-4">
               <SparklesIcon className="w-[17px] h-[17px] text-ink-400 mb-2.5" strokeWidth={1.6} />
               <h3 className="text-sm font-semibold text-ink-900">Live Tutor</h3>
-              <p className="text-[12.5px] leading-normal text-ink-600 mt-1">
+              <p className="text-[13px] leading-normal text-ink-600 mt-1">
                 {language === "german"
                   ? "Öffne ein Quiz und frag ihn — er kennt deine Vorlesung und deine Entwürfe."
                   : "Open a quiz and ask away — it knows your lecture and your drafts."}
@@ -2282,7 +2282,7 @@ export default function DashboardClient({
                 />
               ) : (
                 <div className="w-8 h-8 rounded-full bg-(--accent-wash) flex items-center justify-center shrink-0">
-                  <span className="text-(--accent-text-strong) text-[11.5px] font-bold leading-none tracking-[0.02em]">
+                  <span className="text-(--accent-text-strong) text-[11px] font-bold leading-none tracking-[0.02em]">
                     {userName?.[0]?.toUpperCase() ?? userEmail?.[0]?.toUpperCase() ?? "?"}
                   </span>
                 </div>
@@ -2468,7 +2468,7 @@ export default function DashboardClient({
                               <h3 className="font-display text-[22px] text-ink-900 mt-4" style={{ fontWeight: 470 }}>
                                 {de ? "Hier ist noch nichts" : "Nothing here yet"}
                               </h3>
-                              <p className="text-[13.5px] text-ink-600 leading-relaxed mt-1.5 max-w-sm">
+                              <p className="text-sm text-ink-600 leading-relaxed mt-1.5 max-w-sm">
                                 {de
                                   ? "Deine erste Vorlesung wird in etwa einer Minute zum Quiz — und alles, was du erstellst, wohnt hier."
                                   : "Your first lecture becomes a quiz in about a minute — and everything you make lives here."}
@@ -2487,7 +2487,7 @@ export default function DashboardClient({
                                 <CheckIcon className="w-[18px] h-[18px] text-(--grade-pass-accent)" strokeWidth={2} />
                               </div>
                               <div className="text-base tracking-[-0.011em] text-ink-900 mt-3.5" style={{ fontWeight: 650 }}>{de ? "Alles erledigt." : "All clear."}</div>
-                              <p className="text-[13.5px] leading-relaxed text-ink-600 mt-1.5">
+                              <p className="text-sm leading-relaxed text-ink-600 mt-1.5">
                                 {nextUp
                                   ? (de ? `Das war alles bis ${fmtLong(nextUp)}. Pausen sind Teil der Methode.` : `That's everything until ${fmtLong(nextUp)}. Rest is part of the method.`)
                                   : (de ? "Pausen sind Teil der Methode." : "Rest is part of the method.")}
@@ -2840,7 +2840,7 @@ export default function DashboardClient({
                                 <div className="font-display text-[34px] tracking-[-0.01em] text-ink-900 mt-2 leading-none tnum" style={{ fontWeight: 520 }}>
                                   {Math.round((passRate30.passed / passRate30.total) * 100)}%
                                 </div>
-                                <div className="text-[12.5px] text-ink-600 mt-1.5">
+                                <div className="text-[13px] text-ink-600 mt-1.5">
                                   {de
                                     ? `${passRate30.passed} von ${passRate30.total} Reviews bestanden`
                                     : `${passRate30.passed} of ${passRate30.total} reviews passed`}
@@ -2881,7 +2881,7 @@ export default function DashboardClient({
                     <div className="w-16 h-16 rounded-[18px] bg-(--accent-wash-soft) border border-(--accent-border-soft) flex items-center justify-center mb-6">
                       <ArrowPathIcon className="w-7 h-7 text-(--accent-text-strong) animate-spin" strokeWidth={1.6} />
                     </div>
-                    <h3 className="font-display text-[27px] text-ink-900 mb-2" style={{ fontWeight: 470 }}>{language === 'german' ? 'Dein Modul entsteht' : 'Building your module'}</h3>
+                    <h3 className="font-display text-[26px] text-ink-900 mb-2" style={{ fontWeight: 470 }}>{language === 'german' ? 'Dein Modul entsteht' : 'Building your module'}</h3>
                     <p className="text-ink-600 mb-9 text-sm">{progressMsg}</p>
 
                     <div className="progress-track w-full max-w-[460px] h-1 overflow-hidden">
@@ -3008,7 +3008,7 @@ export default function DashboardClient({
                         <p className="text-ink-900 text-[15px] font-semibold text-center leading-snug">
                           {language === "german" ? "Zieh dein PDF, deine Folien oder Notizen hierher" : "Drop your PDF, slides, or notes here"}
                         </p>
-                        <p className="text-ink-400 text-[12.5px] text-center mt-1.5 mb-4">
+                        <p className="text-ink-400 text-[13px] text-center mt-1.5 mb-4">
                           {language === "german" ? "PDF, DOCX, XLSX, CSV oder TXT · oder füge unten Text ein" : "PDF, DOCX, XLSX, CSV or TXT · or paste text below"}
                         </p>
                         <input
@@ -3081,7 +3081,7 @@ export default function DashboardClient({
                           {language === "german" ? "Erstelle mein Quiz-Set" : "Generate my quiz set"}
                         </button>
                       </div>
-                      <p className="text-[12.5px] text-ink-400 text-center mt-4">
+                      <p className="text-[13px] text-ink-400 text-center mt-4">
                         {language === "german"
                           ? "Sechs Schritte laufen automatisch — Blueprint, erstes Quiz, Tutor-Brief, Audio und Terminierung. Dauert etwa eine Minute."
                           : "Six steps run automatically — blueprint, first quiz, tutor brief, audio, and scheduling. Takes about a minute."}
@@ -3153,7 +3153,7 @@ export default function DashboardClient({
                   <div className="flex items-center justify-end gap-1.5 mb-4 -mt-1">
                     <button
                       onClick={() => { setLibraryEditing(v => !v); setConfirmingDeleteModuleKey(null); }}
-                      className={`text-[12.5px] font-semibold px-2.5 py-1.5 rounded-[10px] transition-colors cursor-pointer press-row ${libraryEditing ? "text-ink-900 bg-paper-2" : "text-ink-600 hover:text-ink-900"}`}
+                      className={`text-[13px] font-semibold px-2.5 py-1.5 rounded-[10px] transition-colors cursor-pointer press-row ${libraryEditing ? "text-ink-900 bg-paper-2" : "text-ink-600 hover:text-ink-900"}`}
                     >
                       {libraryEditing
                         ? (language === "german" ? "Fertig" : "Done")
@@ -3161,7 +3161,7 @@ export default function DashboardClient({
                     </button>
                     <button
                       onClick={toggleAllLibrary}
-                      className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-(--accent-text) hover:text-(--accent-text-strong) px-2.5 py-1.5 rounded-[10px] transition-colors cursor-pointer press-row"
+                      className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-(--accent-text) hover:text-(--accent-text-strong) px-2.5 py-1.5 rounded-[10px] transition-colors cursor-pointer press-row"
                     >
                       <motion.span animate={{ rotate: anyLibraryOpen ? 0 : 180 }} transition={springTactile} className="inline-flex">
                         <ChevronUpIcon className="w-[13px] h-[13px]" strokeWidth={2.2} />
@@ -3257,7 +3257,7 @@ export default function DashboardClient({
                           {sem}
                         </span>
                         {isCurrentSemester && (
-                          <span className="text-[9.5px] uppercase tracking-[0.12em] px-2 py-0.5 rounded-full bg-(--accent-wash-soft) border border-(--accent-border-soft) text-(--accent-text-strong)" style={{ fontWeight: 700 }}>
+                          <span className="text-[10px] uppercase tracking-[0.12em] px-2 py-0.5 rounded-full bg-(--accent-wash-soft) border border-(--accent-border-soft) text-(--accent-text-strong)" style={{ fontWeight: 700 }}>
                             {language === "german" ? "Aktiv" : "Active"}
                           </span>
                         )}
@@ -3541,7 +3541,7 @@ export default function DashboardClient({
                                                                           </span>
                                                                           {fails > 0 ? (
                                                                             <Tip label={language === "german" ? `${fails}× auf diesem Level wiederholt` : `Repeated ${fails}× at this level`}>
-                                                                              <span className="inline-flex items-center gap-0.5 text-[8px] font-bold text-(--grade-fail-text) tnum leading-none">
+                                                                              <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-(--grade-fail-text) tnum leading-none">
                                                                                 <ArrowPathIcon className="w-2 h-2" strokeWidth={2.4} />{fails}
                                                                               </span>
                                                                             </Tip>
@@ -3852,7 +3852,7 @@ export default function DashboardClient({
                         : <>Level {selectedReview.level + 1}</>}
                     </span>
                     {interactive.active && (
-                      <span className="inline-flex items-center gap-1.5 h-[34px] px-[14px] rounded-full bg-(--accent-wash) border border-(--accent-border-soft) text-(--accent-text-strong) text-[12.5px] font-semibold">
+                      <span className="inline-flex items-center gap-1.5 h-[34px] px-[14px] rounded-full bg-(--accent-wash) border border-(--accent-border-soft) text-(--accent-text-strong) text-[13px] font-semibold">
                         <MicrophoneIcon className="w-3.5 h-3.5" strokeWidth={2} />
                         {language === "german" ? "Freihändig" : "Hands-free"}
                       </span>
@@ -3860,7 +3860,7 @@ export default function DashboardClient({
                   </div>
                   <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 sm:gap-6">
                     <div className="min-w-0">
-                      <h1 className="font-display text-[27px] sm:text-[31px] tracking-[-0.018em] leading-[1.1] text-ink-900" style={{ fontWeight: 470 }}>{selectedReview.topic}</h1>
+                      <h1 className="font-display text-[26px] sm:text-3xl tracking-[-0.018em] leading-[1.1] text-ink-900" style={{ fontWeight: 470 }}>{selectedReview.topic}</h1>
                       {parsedTasks.length > 0 && (() => {
                         // "4 tasks · 8 points · untimed" — points summed from task labels ("TASK 1 - 2 POINTS")
                         const totalPoints = parsedTasks.reduce((sum, t) => {
@@ -3939,7 +3939,7 @@ export default function DashboardClient({
                     className="fixed bottom-[calc(4rem_+_env(safe-area-inset-bottom))] md:bottom-[max(1.25rem,env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 z-[60] flex items-center gap-1.5 px-3 py-2 rounded-[18px] bg-paper-1 border border-(--hairline-card)"
                     style={{ boxShadow: "var(--shadow-e3)" }}
                   >
-                    <span className="text-[12px] font-bold text-(--accent-text-strong) tnum px-1.5">{interactive.currentIndex + 1} / {interactive.total}</span>
+                    <span className="text-xs font-bold text-(--accent-text-strong) tnum px-1.5">{interactive.currentIndex + 1} / {interactive.total}</span>
                     <span className="text-[11px] text-ink-400 pr-1.5 min-w-[74px]">
                       {interactive.paused
                         ? (language === "german" ? "Pausiert" : "Paused")
@@ -3996,7 +3996,7 @@ export default function DashboardClient({
                     <div className="w-16 h-16 rounded-[18px] bg-(--accent-wash-soft) border border-(--accent-border-soft) flex items-center justify-center mb-6">
                       <ArrowPathIcon className="w-7 h-7 text-(--accent-text-strong) animate-spin" strokeWidth={1.6} />
                     </div>
-                    <h3 className="font-display text-[27px] text-ink-900 mb-2" style={{ fontWeight: 470 }}>{language === "german" ? "Deine Antworten werden bewertet" : "Grading your answers"}</h3>
+                    <h3 className="font-display text-[26px] text-ink-900 mb-2" style={{ fontWeight: 470 }}>{language === "german" ? "Deine Antworten werden bewertet" : "Grading your answers"}</h3>
                     <p className="text-ink-600 mb-2 text-sm">{gradingMsg}</p>
                     <p className="text-ink-400 mb-9 text-xs">
                       {language === "german"
@@ -4867,7 +4867,7 @@ export default function DashboardClient({
                       );
                     })}
                   </div>
-                  <p className="text-[12.5px] leading-[1.5] text-ink-600 mt-3.5 min-h-5">
+                  <p className="text-[13px] leading-[1.5] text-ink-600 mt-3.5 min-h-5">
                     <span className="text-ink-900" style={{ fontWeight: 650 }}>{ACCENT_COPY[appearance.accent].name}</span>{" "}
                     {language === "german" ? ACCENT_COPY[appearance.accent].de : ACCENT_COPY[appearance.accent].en}
                   </p>

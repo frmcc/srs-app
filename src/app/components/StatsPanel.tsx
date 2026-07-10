@@ -493,7 +493,7 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
         <div className="overflow-x-auto custom-scrollbar pb-1">
           <div className="flex gap-1 min-w-max">
             {/* Weekday gutter (with a spacer matching the month-label row) */}
-            <div className="flex flex-col gap-1 pr-1.5 text-[8px] text-ink-300">
+            <div className="flex flex-col gap-1 pr-1.5 text-[9px] text-ink-300">
               <span className="h-3" aria-hidden="true" />
               <span className="h-[13px] leading-[13px]">{de ? "Mo" : "Mon"}</span>
               <span className="h-[13px]" />
@@ -511,7 +511,7 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
                 transition={{ duration: 0.5, ease: EASE_OUT, delay: 0.15 + w * 0.035 }}
                 className="flex flex-col gap-1"
               >
-                <span className="h-3 text-[8px] text-ink-400 leading-3 whitespace-nowrap">{week.label ?? ""}</span>
+                <span className="h-3 text-[9px] text-ink-400 leading-3 whitespace-nowrap">{week.label ?? ""}</span>
                 {week.days.map((cell) => (
                   <Tip key={cell.key} label={`${cell.date.toLocaleDateString(locale)} — ${cell.count} ${de ? (cell.count === 1 ? "Review" : "Reviews") : (cell.count === 1 ? "review" : "reviews")}`}>
                     <div className={`heat-cell w-[13px] h-[13px] rounded-[3px] ${heatColor(cell.count, cell.future)}`} />
@@ -568,7 +568,7 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
               ))}
             </div>
           )}
-          <p className="text-[11.5px] text-ink-400 mt-[18px]">
+          <p className="text-[11px] text-ink-400 mt-[18px]">
             {de ? "Balken zeigt die Bestehensquote der letzten 12 Monate." : "Bar shows pass rate over the last 12 months."}
           </p>
         </div>
@@ -611,7 +611,7 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
               </Tip>
             ))}
           </div>
-          <p className="text-[11.5px] text-ink-400 mt-3.5">
+          <p className="text-[11px] text-ink-400 mt-3.5">
             {de
               ? "Heute trägt die größte Last — von hier aus wird es leichter."
               : "Today carries the heaviest load — it eases from here."}
@@ -656,7 +656,7 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
               </Tip>
             ))}
           </div>
-          <p className="text-[11.5px] text-ink-400 mt-[18px]">
+          <p className="text-[11px] text-ink-400 mt-[18px]">
             {de
               ? "Jede Vorlesung klettert mit jedem Bestehen vom 1-Tages-Intervall Richtung Jahresintervall."
               : "Each lecture climbs from a 1-day interval toward a yearly one as you keep passing."}

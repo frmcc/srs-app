@@ -363,14 +363,14 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
             {messages.map((msg) => (
               msg.role === "user" ? (
                 <div key={msg.id} className="flex justify-end">
-                  <div className="max-w-[86%] bg-paper-2 rounded-[16px_16px_6px_16px] px-3.5 py-2.5 text-[13.5px] leading-[1.55] text-ink-900 whitespace-pre-wrap break-words">
+                  <div className="max-w-[86%] bg-paper-2 rounded-[16px_16px_6px_16px] px-3.5 py-2.5 text-sm leading-[1.55] text-ink-900 whitespace-pre-wrap break-words">
                     {msg.text}
                   </div>
                 </div>
               ) : (
                 <div key={msg.id} className="pr-2">
                   <div className="flex items-center gap-2 mb-1.5">
-                    <span className="caps-label !text-[10.5px] !tracking-[0.12em]">Tutor</span>
+                    <span className="caps-label !tracking-[0.12em]">Tutor</span>
                     {msg.text && (
                       <Tip label={speakingId === msg.id ? (de ? "Stopp" : "Stop") : (de ? "Vorlesen (Gemini-Stimme)" : "Read aloud (Gemini voice)")}>
                       <button
@@ -389,7 +389,7 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
                       </Tip>
                     )}
                   </div>
-                  <div className="text-[13.5px] leading-[1.62] text-ink-900/85 whitespace-pre-wrap break-words">
+                  <div className="text-sm leading-[1.62] text-ink-900/85 whitespace-pre-wrap break-words">
                     {msg.text || (
                       <span className="inline-flex items-center gap-1.5 text-ink-400">
                         <span className="ember-dot w-1.5 h-1.5 rounded-full bg-amber-500" />
