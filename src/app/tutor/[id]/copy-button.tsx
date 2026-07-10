@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 
-export function CopyButton({ content }: { content: string }) {
+export function CopyButton({ content, language }: { content: string; language: string }) {
   const [copied, setCopied] = useState(false);
+  const de = language !== "english";
 
   const handleCopy = async () => {
     try {
@@ -26,7 +27,10 @@ export function CopyButton({ content }: { content: string }) {
   return (
     <button
       id="copy-tutor-prompt-btn"
-      className="group inline-flex items-center gap-2 rounded-xl border border-(--line) bg-paper-1 px-5 py-2.5 text-sm font-medium text-ink-600 shadow-sm transition hover:border-(--accent-border) hover:bg-(--accent-wash-softer) hover:text-(--accent-text-strong) active:scale-[0.98]"
+      // EL-10: .btn-secondary carries the warm e1 shadow, --line border, hover
+      // fill and press scale — no Tailwind default cool-gray shadow-sm, and no
+      // bare `transition` re-adding box-shadow to the base whitelist.
+      className="btn-secondary inline-flex items-center gap-2 px-5 py-2.5 text-sm cursor-pointer"
       onClick={handleCopy}
     >
       {copied ? (
@@ -38,7 +42,7 @@ export function CopyButton({ content }: { content: string }) {
           <path strokeLinecap="round" strokeLinejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9.75a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184" />
         </svg>
       )}
-      {copied ? "Kopiert!" : "Prompt kopieren"}
+      {copied ? (de ? "Kopiert!" : "Copied!") : (de ? "Prompt kopieren" : "Copy prompt")}
     </button>
   );
 }

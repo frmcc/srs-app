@@ -580,7 +580,7 @@
 - Verified: Verified every cited close-button class string and both divider variants. Corrected the original evidence: settings (4458) is not the same bare button as calendar (4338) — it is a fifth distinct variant (rounded-full + hover fill), which strengthens the drift claim from four variants to five. The no-op hover:bg-paper-2 on resting bg-paper-2 is real at 4122, 4178, and 5037.
 
 **EL-10 · P1 · effort:small — Tutor page copy button ships the only cool-gray shadow in the product: Tailwind default shadow-sm instead of the warm e1 token**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-10) — hand-rolled button replaced with .btn-secondary (warm e1 shadow, --line border, correct press state); shadow-sm and the bare transition utility gone — no cool-gray shadow left in src/
 - Where: `src/app/tutor/[id]/copy-button.tsx:29`
 - Evidence: `className="group inline-flex items-center gap-2 rounded-xl border border-(--line) bg-paper-1 px-5 py-2.5 … shadow-sm transition hover:border-(--accent-border) …"`. Tailwind 4's `--shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)` — pure black at 10%, versus the system's paper e1 `rgba(50, 38, 20, 0.04)` (globals.css 84) under the explicit comment 'Warm-tinted elevation (never gray)' (globals.css 83). The bare `transition` utility also re-adds box-shadow to the transition list the base layer deliberately excludes.
 - Impact: On the warm paper ground the black shadow reads colder and heavier than every other resting element; in ink theme it stays a light-mode gray instead of switching to the theme-tuned dark shadows like all e-tokens do (globals.css 184–199). Because this page is server-rendered and shareable, it's a public-facing surface where the palette discipline visibly slips. This is effectively a hand-rolled .btn-secondary that drifted.
@@ -734,7 +734,7 @@
 - Verified: Confirmed: snooze motion.div at 2315-2318 and delete-confirm motion.button at 2393-2396 sit in raw ternaries with no AnimatePresence; the 5s snooze and 4s delete auto-disarm timers (1192-1210) and the Escape handler (snoozeArmedId/confirmingDeleteId branches, ~1182-1183) all verified — the exit pop happens on three separate triggers.
 
 **MO-10 · P1 · effort:small — Tutor slide-over closes with the entrance curve — EASE_OUT on exit instead of the system's close easing**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-10) — exit gets its own transition {duration: 0.2, ease: EASE_IN_OUT} per the motion law; 240ms EASE_OUT entrance kept
 - Where: `src/app/components/TutorPanel.tsx:297`
 - Evidence: initial={{ x: 24, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: 24, opacity: 0 }} transition={{ duration: 0.24, ease: EASE_OUT }} — one shared transition, so the exit decelerates. motion.ts: "Move/close 200ms EASE_IN_OUT" and "easeInExpo — exits accelerate cleanly away."
 - Impact: The panel leaves the way it arrived — fast start, long lazy settle at the edge — which reads as hesitation instead of a clean dismissal. Felt on every quiz (the panel is force-closed on each startQuiz).
@@ -878,7 +878,7 @@
 - Verified: Verified the full structure at L3001-3079: outer <button> wraps both role="button" spans (idle at L3068-3075 with active:scale-90, armed confirm at L3057-3065 without it); neither span has tabIndex or key handling. Nested-interactive and keyboard-dead claims are accurate.
 
 **IS-10 · P1 · effort:small — One Escape press closes two layers when the Tutor panel is open behind a modal**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-10) — TutorPanel's Escape handler now ignores e.defaultPrevented, and DashboardClient's ordered global chain calls preventDefault() when it consumes a press — one keystroke closes exactly one layer
 - Where: `src/app/components/TutorPanel.tsx:127`
 - Evidence: TutorPanel registers its own listener: `const onKey = (e) => { if (e.key === "Escape") onClose(); }` (L125-132) with no awareness of overlays, while DashboardClient's global Escape handler (L1172-1188) closes the topmost modal and returns. Both listeners fire on the same keydown: with the settings modal (or feedback/prompt modal) open above an open tutor panel, Esc closes the modal AND the tutor panel simultaneously.
 - Impact: The layered-dismissal model the app carefully ordered by z-index ('closes whichever overlay is on top', per the comment at DashboardClient L1167-1171) breaks: users lose their tutor chat pane when they only meant to dismiss the settings sheet.
@@ -1177,7 +1177,7 @@
 - Verified: Read StatsPanel L505-600 and Tooltip.tsx in full: heat cells are bare divs inside Tip (L516-518), Tip's aria-label mirroring confirmed (L51-58), onFocus-only reveal confirmed (L68), no tabIndex anywhere. Forecast bars do print counts as visible text (L586) — the finding correctly concedes this. Grep confirms zero sr-only in StatsPanel. Adjusted line 517→516.
 
 **AX-10 · P1 · effort:medium — TutorPanel slide-over: focus never enters it, streamed replies are silent, and the composer has placeholder-only labeling**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-10) — composer autoFocus on open + focus returned to the opener on close; hidden polite live region announces the completed reply or failure exactly once (never per-token); aria-label on the composer textarea
 - Where: `src/app/components/TutorPanel.tsx:333`
 - Duplicate-of/with: MT-11
 - Evidence: The panel opens as `<motion.aside ... aria-label={de ? "Live Tutor Chat" : "Live tutor chat"}>` (L293-300) portaled to document.body (createPortal, last line of file) — no focus move on open (grep: zero autoFocus/.focus() in the file), no focus return on close, and since it's portaled to the end of body, Tab from the 'Tutor' toggle walks the whole quiz first. The message list `<div ref={scrollRef} className="flex-1 overflow-y-auto ...">` (L333) has no aria-live, so the streamed tutor answer (and the 'denkt nach…' state, L393-397) is never announced. The composer AutoGrowTextarea (L408–418) has only `placeholder={de ? "Frag deinen Tutor…" : "Ask your tutor…"}` — AutoGrowTextarea passes props straight to a bare textarea.
@@ -1312,7 +1312,7 @@
 - Verified: Confirmed the error branch at 349–358 contains only the icon + sentence, no interactive element; the fetch effect at 112–135 has an empty dep array with no exposed reload function. Confirmed the Library error card's retry button at DashboardClient 2910–2915 (`setIsLoadingReviews(true); fetchReviews()`), so the inconsistency claim is accurate.
 
 **EM-7 · P1 · effort:small — No branded 404 or error boundary — tutor-brief links can dead-end on Next's default unstyled pages**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-10) — new src/app/error.tsx (client boundary, unstable_retry per this Next version's docs) + src/app/not-found.tsx (server, reads AppConfig language), both Paper & Ember cards inside the root layout with brand tile, display headline, btn-primary route home; bilingual (error.tsx infers from navigator.language pre-context, not-found reads stored language)
 - Where: `src/app/tutor/[id]/page.tsx:35`
 - Evidence: `if (!item || !item.tutorPromptContent) notFound();` (line 35) — but the app has no not-found.tsx, error.tsx, or global-error.tsx anywhere under src/. The tutor page is a shareable/external artifact — linked from the library (DashboardClient line 3347) and from calendar ICS events (api/calendar/route.ts line 49) — with its own branded header, yet a stale or mistyped id renders Next's default black-on-white '404 This page could not be found', and any server crash renders the default unstyled error screen.
 - Impact: The one place a guest or future-you most plausibly lands from outside the app (an old calendar entry after the item was deleted) is the only surface with zero 'Paper & Ember' — no warm paper, no brand tile, no route home. For a design system this deliberate, the system pages are part of the product.
@@ -1320,7 +1320,7 @@
 - Verified: Ran `find src -name "not-found*" -o -name "error*"` — zero matches; src/app contains only the routes listed. Confirmed notFound() at tutor/[id]/page.tsx:35, and that the page IS externally reachable: linked from the library at DashboardClient:3347 and embedded in calendar events at api/calendar/route.ts:49 — exactly the stale-link scenario claimed.
 
 **EM-8 · P1 · effort:medium — Installable PWA with zero offline handling — service worker has no fetch handler or fallback page**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-10) — sw.js fetch handler: network-first navigations falling back to precached branded /offline.html (self-contained Paper & Ember, theme-aware via the app's localStorage key, DE/EN via navigator.language); cache-first only for immutable /_next/static/ + icons; /api never touched; versioned cache purged on activate
 - Where: `public/sw.js:1`
 - Duplicate-of/with: MT-9, PP-8
 - Evidence: sw.js handles only `push`, `notificationclick`, `install`, `activate` — there is no `fetch` listener, no precache, no offline fallback (whole file, 47 lines). Yet the app ships a full manifest.json (`display: standalone`) and actively instructs users to install it: 'Auf dem iPhone/iPad zuerst über Teilen → Zum Home-Bildschirm hinzufügen…' (DashboardClient lines 814–817).
@@ -1329,7 +1329,7 @@
 - Verified: Read sw.js in full (47 lines): exactly four listeners (push, notificationclick, install, activate), no fetch handler, no caches API usage anywhere. Read manifest.json: display standalone, start_url '/'. Confirmed the install instruction toast at DashboardClient 814–817. Searched src for any offline page — none exists.
 
 **EM-9 · P1 · effort:small — Tutor 'Read aloud' fails silently — spinner disappears and nothing happens**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-10) — TTS catch now sets a 5s inline note beside the speaker button ('Vorlesen gerade nicht möglich' / 'Read-aloud is unavailable right now') so the tap is acknowledged
 - Where: `src/app/components/TutorPanel.tsx:169`
 - Evidence: `speakMessage`'s catch block is `console.error("[tutor] TTS failed:", err); setSpeakingId(null);` and `finally { setTtsLoadingId(null); }` (lines 169–174). No toast, no inline hint, no fallback to `speechSynthesis` — unlike the interactive quiz, which falls back to browser voices (useInteractiveQuiz playQuestion lines 684–687) AND surfaces 'Sprachausgabe fehlgeschlagen — das Diktat startet trotzdem' (lines 613–649).
 - Impact: User taps the speaker icon, sees the tiny spinner for a beat, then nothing. No explanation, no retry cue — it reads as a broken button, and TTS via a rate-limited preview model is exactly the call that WILL intermittently fail. The same app already solved this failure gracefully one component over.
@@ -1337,7 +1337,7 @@
 - Verified: Read TutorPanel.tsx in full: speakMessage (139–175) catches at 169–174 with only console.error + state resets — no user-facing signal of any kind, and TutorPanel receives no toast function in its props. Confirmed the interactive hook's contrasting graceful path: TTS failure → speakWithSynthesis fallback (playQuestion 684–687) with an error message only when both engines fail (641, 649).
 
 **EM-10 · P1 · effort:small — Tutor connection errors masquerade as tutor speech — with a raw ⚠️ emoji, persisted into chat history**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-10) — failures are now a distinct role:'error' system row (clay wash, ExclamationTriangleIcon, 'Erneut senden' retry that prunes the failed exchange), excluded from saveHistory and historyForApi, loadHistory filters legacy rows, emoji dropped; a partially-streamed reply that errors is no longer persisted as if complete
 - Where: `src/app/components/TutorPanel.tsx:236`
 - Evidence: On stream failure the error text is written INTO the model message: `acc = acc || (de ? `⚠️ Der Tutor ist gerade nicht erreichbar (${msg.slice(0,120)}). …` : …)` (lines 236–238), rendered with the normal 'Tutor' caps-label byline and body styling (lines 371–399), then committed via `saveHistory(streamItemId, next)` in the finally block (lines 247–255) so it replays from sessionStorage on every reopen. It even gets a working 'Read aloud' button (shown whenever `msg.text` is non-empty, line 374). The design system elsewhere never uses emoji — errors are ExclamationTriangleIcon on clay washes (e.g. Toast.tsx line 68).
 - Impact: A network hiccup becomes a permanent, first-person 'utterance' in the study thread — visually indistinguishable from tutoring content, decorated with an emoji the visual language forbids, and re-shown later as if the tutor said it. It also pollutes the history sent back to the model on the next turn (`historyForApi = [...messages, userMsg]`, line 196).
@@ -1446,7 +1446,7 @@
 - Verified: Grepped LIB_LEVEL_FULL: used at exactly lines 3139 and 3229, both inside otherwise-localized tooltip templates; the constant at line 71 is German-only ('Tag N'). Confirmed the English mastery tooltip at line 3198 uses 'Day 365', so the English vocabulary exists in the same component but not for the dots/stepper. No English variant of the array exists anywhere in the repo.
 
 **MC-5 · P1 · effort:medium — Login screen is entirely German (including all auth error messages) yet ends on an English tagline**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-10) — whole login page bilingual (headline, value props, auth card, button states, footer tagline); ERROR_MESSAGES now {de,en} pairs; language inferred from navigator.language with German default, applied post-mount so SSR markup matches first client render
 - Where: `src/app/login/LoginClient.tsx:15`
 - Evidence: ERROR_MESSAGES (lines 14–21) are German-only, e.g. `AccessDenied: "Dieses Google-Konto ist für diesen privaten Lernbereich nicht freigeschaltet."`; headline 'Lerne weniger. Behalte mehr.' (76–78), button 'Mit Google anmelden' (136) — no language branching anywhere. Then the footer (line 160) switches to English: `© {year} SRS Master · Built for serious students`.
 - Impact: An English-mode user who signs out or gets AccessDenied lands on a fully German page and must decode a German error to recover — the app's bilingual promise breaks at its front door. Meanwhile German users get an untranslated English brand tagline as the page's last word, which reads as an oversight rather than a choice.
@@ -1454,7 +1454,7 @@
 - Verified: Read LoginClient.tsx in full: zero occurrences of any language check — ERROR_MESSAGES (14–21), headline, value props, auth card, and button copy are all German; the footer at line 160 is the sole English string. The finding's caveat is fair: the app language lives in server-side AppConfig behind auth, so pre-auth localization genuinely requires navigator.language/Accept-Language as recommended. Not addressed anywhere else (login/page.tsx just passes error/callbackUrl).
 
 **MC-6 · P1 · effort:medium — Tutor-brief page is German-only and exposes the raw database ID in user-facing copy**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-10) — page + CopyButton + metadata fully bilingual via the same AppConfig language the root layout reads (cached query, safe build-time fallback); raw ID dropped from the footer; back link uses ArrowLeftIcon with the app-wide hover slide
 - Where: `src/app/tutor/[id]/page.tsx:92`
 - Evidence: Footer: `Erstellt am {item.createdAt.toLocaleDateString("de-DE", …)} {" · "}ID: {item.id}` (lines 92–95) — hardcoded de-DE locale plus a raw item ID. Back link is `← Zurück` (line 57, a text arrow instead of the ArrowLeftIcon affordance used app-wide, e.g. DashboardClient:3541). CopyButton: `{copied ? "Kopiert!" : "Prompt kopieren"}` (copy-button.tsx:41). notFound metadata: `title: "Nicht gefunden"` (line 25).
 - Impact: English users reach this page from the localized 'Tutor brief' chip (DashboardClient:3353) and land in German with German date formatting. 'ID: cmb3x…' is developer debris on an otherwise beautifully composed page — no student needs a CUID, and no other screen in the app leaks internals like this.
@@ -1639,7 +1639,7 @@
 - Verified: Confirmed 2408 verbatim. Verified both iPad comments in ScribbleCanvas (lines 19, 173) and counted 11 `@media (hover: hover)` blocks in globals.css — the capability-gating convention claim is real. One correction applied: the footer container's stopPropagation (2353) means a blind tap wouldn't launch the quiz, so I softened the original 'impossible without launching a review' wording; the invisible-affordance core stands.
 
 **MT-8 · P1 · effort:small — Hands-free interactive mode never requests a screen wake lock — the phone sleeps mid-quiz**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-10) — navigator.wakeLock.request('screen') inside the start() user gesture (best-effort, denial never blocks), re-acquired on visibilitychange while active, released in cleanup()
 - Where: `src/app/useInteractiveQuiz.ts:118`
 - Evidence: The hook's contract (docblock ~117-122): 'Drives "interactive mode": reads each question aloud (Gemini TTS...), then captures the spoken answer' — an explicitly hands-free flow (the quiz header badges it 'Freihändig / Hands-free', DashboardClient.tsx:3557-3559). `grep -rn wakeLock src/ public/` returns nothing; no navigator.wakeLock, no fallback.
 - Impact: The whole point of the mode is that the phone lies on the desk while the student talks. iOS auto-locks after 30s–2min of no touch; during the long 'speaking' (TTS playback) and 'loading' phases nothing prevents it. The screen dims, the PWA suspends, audio/mic dies mid-task — the flagship delight feature reliably self-destructs unless the user pokes the screen or changes system settings. Safari has supported the Screen Wake Lock API since 16.4.
@@ -1647,7 +1647,7 @@
 - Verified: Grepped src/ and public/ for wakeLock/WakeLock/wake-lock — zero hits, absence confirmed. Verified the hands-free contract in the docblock, the 'Freihändig' badge at DashboardClient 3557-3559, start() at 804 with the silentWavUri() unlock at 816-818 (the exact user-gesture site the fix needs), and stop() at 739 for release.
 
 **MT-9 · P1 · effort:medium — The installed PWA has no offline story — sw.js handles push only, offline launch shows a browser error page**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-10) — see EM-8: fetch handler + branded precached offline fallback; zero-staleness kept (HTML never cached)
 - Where: `public/sw.js:1`
 - Duplicate-of/with: EM-8, PP-8
 - Evidence: // Service Worker for Push Notifications — the file registers `push`, `notificationclick`, `install` (skipWaiting) and `activate` listeners only. There is no `fetch` handler, no precache, no offline fallback route anywhere; the only SW registration is layout.tsx:126 `navigator.serviceWorker.register('/sw.js')` and no next-pwa/workbox exists in the repo.
@@ -1664,7 +1664,7 @@
 - Verified: Grepped all of src/app for `history.` and `popstate`: the single replaceState at 1549 is the only hit, and it strips a query param (doesn't add entries). Confirmed quiz exit is the in-page text button at 3531-3545. Corrected the modal count from 9 to 7 (grep `fixed inset-0` + overlayMotion usages: 4108, 4160, 4324, 4437, 4903, 4952, 5008).
 
 **MT-11 · P1 · effort:medium — Tutor chat on iPhone: fixed full-height panel with no keyboard handling and no scroll containment**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-10) — overscroll-contain added to the messages scroller (matches modal convention); panel top/height driven off visualViewport resize/scroll listeners so the pinned composer rides above the iOS keyboard (instant layout response, no animated properties)
 - Where: `src/app/components/TutorPanel.tsx:333`
 - Duplicate-of/with: AX-10
 - Evidence: Messages scroller: <div ref={scrollRef} className="flex-1 overflow-y-auto custom-scrollbar px-5 py-5 space-y-5"> — no `overscroll-contain`, though every modal scroller in DashboardClient has it (4128, 4209, 4330, 4443, 4927, 4989, 5045). The panel itself is `fixed inset-y-0 right-0 z-[70] w-full sm:w-[376px]` (line 299) with the composer pinned at the bottom (406), and there is no visualViewport listener anywhere in the file or the codebase.
@@ -1800,7 +1800,7 @@
 - Verified: Confirmed no display option in the Fraunces() call, the 'swap' default in the repo's own shipped Next docs (per AGENTS.md's instruction to trust those docs), and both cited hero usages at 34–54px. Scoped the impact to cold loads since next/font preloads and caches the files.
 
 **PP-8 · P1 · effort:medium — Service worker provides zero load-time benefit — the installed PWA has no offline shell and every cold home-screen launch is full-network**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-10) — see EM-8: cache-first for content-hashed /_next/static/ assets + icons makes warm launches near-instant; HTML/api stay network-first so no staleness
 - Where: `public/sw.js:1`
 - Duplicate-of/with: EM-8, MT-9
 - Evidence: sw.js (47 lines) contains only `push`, `notificationclick`, `install` (skipWaiting) and `activate` (clients.claim) listeners — no `fetch` handler, no Cache API usage at all. Yet the app is explicitly built as an installed PWA: manifest.json `"display": "standalone"`, `appleWebApp` metadata in layout.tsx (lines 24–30), and subscribeToPush instructs users to add it to the Home Screen (DashboardClient ~814–819).

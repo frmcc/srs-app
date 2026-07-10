@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { cache } from "react";
+import { ArrowLeftIcon } from "@heroicons/react/24/outline";
 import { CopyButton } from "./copy-button";
 
 type Params = Promise<{ id: string }>;
@@ -19,20 +20,37 @@ const getItem = cache(async (id: string) => {
   return prisma.sRSItem.findFirst({ where: { tutorPromptDocId: id } });
 });
 
+/**
+ * UI language for this server-rendered, shareable page (MC-6) — the same
+ * appConfig row the root layout reads for <html lang>.
+ */
+const getLanguage = cache(async () => {
+  try {
+    const config = await prisma.appConfig.findUnique({ where: { id: 1 }, select: { language: true } });
+    return config?.language ?? "german";
+  } catch {
+    return "german"; // no DB yet (fresh checkout / build-time prerender)
+  }
+});
+
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { id } = await params;
-  const item = await getItem(id);
-  if (!item) return { title: "Nicht gefunden" };
+  const [item, language] = await Promise.all([getItem(id), getLanguage()]);
+  const de = language !== "english";
+  if (!item) return { title: de ? "Nicht gefunden" : "Not found" };
   return {
     title: `Tutor Prompt – ${item.subjectMain}`,
-    description: `KI-Tutor Systemprompt für ${item.subjectMain} – ${item.subjectSub}`,
+    description: de
+      ? `KI-Tutor Systemprompt für ${item.subjectMain} – ${item.subjectSub}`
+      : `AI tutor system prompt for ${item.subjectMain} – ${item.subjectSub}`,
   };
 }
 
 export default async function TutorPage({ params }: { params: Params }) {
   const { id } = await params;
-  const item = await getItem(id);
+  const [item, language] = await Promise.all([getItem(id), getLanguage()]);
   if (!item || !item.tutorPromptContent) notFound();
+  const de = language !== "english";
 
   return (
     <main className="min-h-screen bg-transparent">
@@ -52,9 +70,10 @@ export default async function TutorPage({ params }: { params: Params }) {
           </div>
           <Link
             href="/"
-            className="rounded-lg border border-(--line-soft) bg-paper-2 px-4 py-2 text-sm font-medium text-ink-600 transition hover:bg-paper-2 hover:text-ink-900"
+            className="group inline-flex items-center gap-2 rounded-lg border border-(--line-soft) bg-paper-2 px-4 py-2 text-sm font-medium text-ink-600 transition hover:bg-paper-2 hover:text-ink-900"
           >
-            ← Zurück
+            <ArrowLeftIcon className="w-4 h-4 transition-transform duration-200 group-hover:-translate-x-0.5" strokeWidth={1.8} />
+            {de ? "Zurück" : "Back"}
           </Link>
         </div>
       </header>
@@ -85,13 +104,13 @@ export default async function TutorPage({ params }: { params: Params }) {
 
         {/* Copy button */}
         <div className="mt-8 flex justify-center">
-          <CopyButton content={item.tutorPromptContent} />
+          <CopyButton content={item.tutorPromptContent} language={language} />
         </div>
 
-        {/* Footer info */}
+        {/* Footer info — no raw database id: nobody studying needs a CUID (MC-6). */}
         <p className="mt-10 text-center text-xs text-ink-400">
-          Erstellt am {item.createdAt.toLocaleDateString("de-DE", { day: "2-digit", month: "long", year: "numeric" })}
-          {" · "}ID: {item.id}
+          {de ? "Erstellt am " : "Created on "}
+          {item.createdAt.toLocaleDateString(de ? "de-DE" : "en-GB", { day: "2-digit", month: "long", year: "numeric" })}
         </p>
       </article>
     </main>

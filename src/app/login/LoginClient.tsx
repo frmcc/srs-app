@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { signIn } from "next-auth/react";
 import { motion, MotionConfig } from "framer-motion";
 import { riseChild, staggerContainer, EASE_OUT, DUR } from "@/lib/motion";
@@ -10,14 +10,32 @@ import {
   LockClosedIcon,
 } from "@heroicons/react/24/outline";
 
-/** Human-readable messages for NextAuth's ?error= codes. */
-const ERROR_MESSAGES: Record<string, string> = {
-  AccessDenied: "Dieses Google-Konto ist für diesen privaten Lernbereich nicht freigeschaltet.",
-  OAuthAccountNotLinked: "Diese E-Mail ist bereits mit einer anderen Anmeldemethode verknüpft.",
-  OAuthSignin: "Die Anmeldung bei Google konnte nicht gestartet werden. Bitte erneut versuchen.",
-  OAuthCallback: "Google hat die Anmeldung abgebrochen. Bitte erneut versuchen.",
-  Configuration: "Anmeldung derzeit nicht verfügbar. Bitte später erneut versuchen.",
-  Default: "Anmeldung fehlgeschlagen. Bitte erneut versuchen.",
+/** Human-readable messages for NextAuth's ?error= codes (MC-5: bilingual). */
+const ERROR_MESSAGES: Record<string, { de: string; en: string }> = {
+  AccessDenied: {
+    de: "Dieses Google-Konto ist für diesen privaten Lernbereich nicht freigeschaltet.",
+    en: "This Google account isn't approved for this private study space.",
+  },
+  OAuthAccountNotLinked: {
+    de: "Diese E-Mail ist bereits mit einer anderen Anmeldemethode verknüpft.",
+    en: "This email is already linked to a different sign-in method.",
+  },
+  OAuthSignin: {
+    de: "Die Anmeldung bei Google konnte nicht gestartet werden. Bitte erneut versuchen.",
+    en: "Sign-in with Google couldn't be started. Please try again.",
+  },
+  OAuthCallback: {
+    de: "Google hat die Anmeldung abgebrochen. Bitte erneut versuchen.",
+    en: "Google cancelled the sign-in. Please try again.",
+  },
+  Configuration: {
+    de: "Anmeldung derzeit nicht verfügbar. Bitte später erneut versuchen.",
+    en: "Sign-in is currently unavailable. Please try again later.",
+  },
+  Default: {
+    de: "Anmeldung fehlgeschlagen. Bitte erneut versuchen.",
+    en: "Sign-in failed. Please try again.",
+  },
 };
 
 /** Official multi-colour Google "G" mark. */
@@ -34,6 +52,17 @@ function GoogleMark() {
 
 export default function LoginClient({ error, callbackUrl = "/" }: { error?: string; callbackUrl?: string }) {
   const [isSigningIn, setIsSigningIn] = useState(false);
+  // MC-5: pre-auth there is no stored AppConfig language, so infer it from the
+  // browser with the app's German default. Applied after mount so the SSR
+  // markup (German) always matches the first client render.
+  const [de, setDe] = useState(true);
+
+  useEffect(() => {
+    if ((navigator.language || "").toLowerCase().startsWith("en")) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- browser locale only exists after mount
+      setDe(false);
+    }
+  }, []);
 
   const handleSignIn = () => {
     if (isSigningIn) return;
@@ -42,7 +71,8 @@ export default function LoginClient({ error, callbackUrl = "/" }: { error?: stri
     signIn("google", { callbackUrl }).catch(() => setIsSigningIn(false));
   };
 
-  const errorMessage = error ? (ERROR_MESSAGES[error] ?? ERROR_MESSAGES.Default) : null;
+  const errorEntry = error ? (ERROR_MESSAGES[error] ?? ERROR_MESSAGES.Default) : null;
+  const errorMessage = errorEntry ? (de ? errorEntry.de : errorEntry.en) : null;
 
   return (
     <MotionConfig reducedMotion="user">
@@ -73,26 +103,27 @@ export default function LoginClient({ error, callbackUrl = "/" }: { error?: stri
             </motion.div>
 
             <motion.h2 variants={riseChild} className="font-display text-4xl sm:text-[54px] tracking-[-0.022em] text-ink-900 leading-[1.06] mt-11" style={{ fontWeight: 460 }}>
-              Lerne weniger.<br />
-              Behalte <em className="font-display italic text-(--accent-text)">mehr</em>.
+              {de ? <>Lerne weniger.<br />Behalte <em className="font-display italic text-(--accent-text)">mehr</em>.</>
+                  : <>Study less.<br />Retain <em className="font-display italic text-(--accent-text)">more</em>.</>}
             </motion.h2>
             <motion.p variants={riseChild} className="text-ink-600 text-[15px] sm:text-base leading-[1.6] max-w-[440px] mt-5">
-              Lade deine Vorlesungsunterlagen hoch — die KI schreibt deine Quizze, brieft deinen Tutor,
-              nimmt dein Audio auf und plant jede Wiederholung genau dann, wenn dein Gedächtnis sie braucht.
+              {de
+                ? "Lade deine Vorlesungsunterlagen hoch — die KI schreibt deine Quizze, brieft deinen Tutor, nimmt dein Audio auf und plant jede Wiederholung genau dann, wenn dein Gedächtnis sie braucht."
+                : "Upload your lecture materials — the AI writes your quizzes, briefs your tutor, records your audio, and schedules every review exactly when your memory needs it."}
             </motion.p>
 
             <motion.ul variants={riseChild} className="flex flex-col gap-3.5 text-sm text-ink-900 mt-9">
               <li className="flex items-center gap-3">
                 <span className="w-1.5 h-1.5 rounded-full bg-(--a-g2) shrink-0"></span>
-                Quizze, generiert aus deinen eigenen Unterlagen
+                {de ? "Quizze, generiert aus deinen eigenen Unterlagen" : "Quizzes generated from your own materials"}
               </li>
               <li className="flex items-center gap-3">
                 <span className="w-1.5 h-1.5 rounded-full bg-(--a-g2) shrink-0"></span>
-                Wiederholungen über Monate verteilt, mit Kalender-Sync
+                {de ? "Wiederholungen über Monate verteilt, mit Kalender-Sync" : "Reviews spread across months, with calendar sync"}
               </li>
               <li className="flex items-center gap-3">
                 <span className="w-1.5 h-1.5 rounded-full bg-(--a-g2) shrink-0"></span>
-                Tutor und Audio-Begleiter neben jedem Quiz
+                {de ? "Tutor und Audio-Begleiter neben jedem Quiz" : "A tutor and audio companion beside every quiz"}
               </li>
             </motion.ul>
           </motion.section>
@@ -105,12 +136,14 @@ export default function LoginClient({ error, callbackUrl = "/" }: { error?: stri
             className="w-full max-w-[420px] mx-auto lg:mx-0 lg:justify-self-end"
           >
             <div className="card-glass px-[34px] py-9 border border-(--hairline-card)">
-              <p className="caps-label tracking-[0.13em]">Willkommen zurück</p>
+              <p className="caps-label tracking-[0.13em]">{de ? "Willkommen zurück" : "Welcome back"}</p>
               <h3 className="font-display text-[26px] tracking-[-0.015em] text-ink-900 mt-2.5" style={{ fontWeight: 480 }}>
-                In dein Studienarchiv
+                {de ? "In dein Studienarchiv" : "Into your study archive"}
               </h3>
               <p className="text-sm text-ink-600 leading-[1.55] mt-2">
-                Melde dich mit Google an, um deine Module, Quizze und deinen Zeitplan zu öffnen.
+                {de
+                  ? "Melde dich mit Google an, um deine Module, Quizze und deinen Zeitplan zu öffnen."
+                  : "Sign in with Google to open your modules, quizzes, and schedule."}
               </p>
 
               {errorMessage && (
@@ -134,27 +167,30 @@ export default function LoginClient({ error, callbackUrl = "/" }: { error?: stri
                 {isSigningIn ? (
                   <>
                     <ArrowPathIcon className="w-[19px] h-[19px] animate-spin text-ink-400" strokeWidth={1.6} />
-                    Verbinde mit Google…
+                    {de ? "Verbinde mit Google…" : "Connecting to Google…"}
                   </>
                 ) : (
                   <>
                     <GoogleMark />
-                    {error === "AccessDenied" ? "Mit anderem Konto versuchen" : "Mit Google anmelden"}
+                    {error === "AccessDenied"
+                      ? (de ? "Mit anderem Konto versuchen" : "Try a different account")
+                      : (de ? "Mit Google anmelden" : "Sign in with Google")}
                   </>
                 )}
               </button>
 
               <div className="flex items-center gap-3 my-7">
                 <div className="flex-1 h-px bg-(--hairline-card)"></div>
-                <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-ink-400">Privat</span>
+                <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-ink-400">{de ? "Privat" : "Private"}</span>
                 <div className="flex-1 h-px bg-(--hairline-card)"></div>
               </div>
 
               <p className="text-xs text-ink-600 leading-relaxed flex items-start gap-2">
                 <LockClosedIcon className="w-3.5 h-3.5 shrink-0 mt-0.5 text-(--accent-text)" strokeWidth={1.7} />
                 <span>
-                  Privater Lernbereich — nur freigeschaltete Google-Konten können sich anmelden.
-                  Google bestätigt deine Identität, mehr nicht.
+                  {de
+                    ? "Privater Lernbereich — nur freigeschaltete Google-Konten können sich anmelden. Google bestätigt deine Identität, mehr nicht."
+                    : "A private study space — only approved Google accounts can sign in. Google confirms your identity, nothing more."}
                 </span>
               </p>
             </div>
@@ -163,7 +199,7 @@ export default function LoginClient({ error, callbackUrl = "/" }: { error?: stri
       </div>
 
       <footer className="py-6 text-center text-xs text-ink-400 relative z-10">
-        © {new Date().getFullYear()} SRS Master · Für ernsthafte Studierende gebaut
+        © {new Date().getFullYear()} SRS Master · {de ? "Für ernsthafte Studierende gebaut" : "Built for serious students"}
       </footer>
     </main>
     </MotionConfig>

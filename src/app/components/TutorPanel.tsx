@@ -3,9 +3,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { EASE_OUT, springTactile } from "@/lib/motion";
+import { EASE_OUT, EASE_IN_OUT, springTactile } from "@/lib/motion";
 import {
   ArrowPathIcon,
+  ExclamationTriangleIcon,
   PaperAirplaneIcon,
   SparklesIcon,
   SpeakerWaveIcon,
@@ -35,8 +36,14 @@ interface TutorTask {
 
 interface TutorMessage {
   id: string;
-  role: "user" | "model";
+  /** "error" is a transient system row (connection failure) — never persisted, never sent to the model. */
+  role: "user" | "model" | "error";
   text: string;
+  /** role:"error" only — the failed prompt, so "Erneut senden" can retry it. */
+  retryText?: string;
+  /** role:"error" only — ids of the failed exchange's user/model rows, pruned on retry. */
+  retryUserId?: string;
+  retryModelId?: string;
 }
 
 interface TutorPanelProps {
@@ -59,7 +66,8 @@ function loadHistory(itemId: string): TutorMessage[] {
     const raw = sessionStorage.getItem(storageKey(itemId));
     if (!raw) return [];
     const parsed = JSON.parse(raw) as TutorMessage[];
-    return Array.isArray(parsed) ? parsed.slice(-HISTORY_CAP) : [];
+    // Error rows are transient UI — never replay one as if the tutor said it.
+    return Array.isArray(parsed) ? parsed.filter((m) => m && m.role !== "error").slice(-HISTORY_CAP) : [];
   } catch {
     return [];
   }
@@ -80,15 +88,22 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
   const [messages, setMessages] = useState<TutorMessage[]>(() => loadHistory(itemId));
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
+  // AX-10: completed replies (or failures) are announced once via a hidden
+  // polite live region — never every streamed token.
+  const [liveNote, setLiveNote] = useState("");
 
   // TTS playback (one message at a time)
   const [speakingId, setSpeakingId] = useState<string | null>(null);
   const [ttsLoadingId, setTtsLoadingId] = useState<string | null>(null);
+  // EM-9: acknowledge a failed "Read aloud" tap with a short inline note.
+  const [ttsFailedId, setTtsFailedId] = useState<string | null>(null);
+  const ttsFailedTimerRef = useRef<number | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const ttsUrlCacheRef = useRef<Map<string, string>>(new Map());
 
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const panelRef = useRef<HTMLElement | null>(null);
   const mountedRef = useRef(false);
   // Tracks the CURRENTLY displayed module so an in-flight stream can tell whether
   // the user has since switched away (and must not persist into the wrong thread).
@@ -110,10 +125,43 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
       mountedRef.current = false;
       abortRef.current?.abort();
       audioRef.current?.pause();
+      if (ttsFailedTimerRef.current !== null) window.clearTimeout(ttsFailedTimerRef.current);
       urlCache.forEach((url) => URL.revokeObjectURL(url));
       urlCache.clear();
     };
   }, []);
+
+  // AX-10: the panel is portaled to the end of <body>, so focus never reaches
+  // it naturally. The composer autofocuses on open (below); on close, hand
+  // focus back to whatever opened the panel (the Tutor toggle).
+  useEffect(() => {
+    if (!open) return;
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    return () => opener?.focus();
+  }, [open]);
+
+  // MT-11: iOS (especially standalone) does not shrink the layout viewport when
+  // the keyboard opens, so a `fixed inset-y-0` panel leaves the pinned composer
+  // behind the keys. Size and offset the panel off the visualViewport instead —
+  // instantaneous layout response to keyboard/pinch, no animated properties.
+  useEffect(() => {
+    if (!open || typeof window === "undefined") return;
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const apply = () => {
+      const el = panelRef.current;
+      if (!el) return;
+      el.style.top = `${vv.offsetTop}px`;
+      el.style.height = `${vv.height}px`;
+    };
+    apply();
+    vv.addEventListener("resize", apply);
+    vv.addEventListener("scroll", apply);
+    return () => {
+      vv.removeEventListener("resize", apply);
+      vv.removeEventListener("scroll", apply);
+    };
+  }, [open]);
 
   // Follow the stream: keep the newest content in view.
   useEffect(() => {
@@ -125,7 +173,9 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      // IS-10: if a higher overlay consumed this press (the dashboard's ordered
+      // Escape chain calls preventDefault), one keystroke must close ONE layer.
+      if (e.key === "Escape" && !e.defaultPrevented) onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -142,6 +192,7 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
       return;
     }
     stopSpeaking();
+    setTtsFailedId(null);
     try {
       let url = ttsUrlCacheRef.current.get(msg.id);
       if (!url) {
@@ -169,6 +220,10 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
     } catch (err) {
       console.error("[tutor] TTS failed:", err);
       setSpeakingId(null);
+      // EM-9: acknowledge the tap — a vanished spinner reads as a broken button.
+      setTtsFailedId(msg.id);
+      if (ttsFailedTimerRef.current !== null) window.clearTimeout(ttsFailedTimerRef.current);
+      ttsFailedTimerRef.current = window.setTimeout(() => setTtsFailedId(null), 5000);
     } finally {
       setTtsLoadingId(null);
     }
@@ -183,7 +238,7 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
     return parts.join("\n\n");
   }, [tasks, getDraft]);
 
-  const send = useCallback(async (rawText: string) => {
+  const send = useCallback(async (rawText: string, base?: TutorMessage[]) => {
     const text = rawText.trim();
     if (!text || streaming) return;
 
@@ -193,15 +248,21 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
     const userMsg: TutorMessage = { id: `u-${crypto.randomUUID()}`, role: "user", text };
     const modelMsg: TutorMessage = { id: `m-${crypto.randomUUID()}`, role: "model", text: "" };
     const streamItemId = itemId; // the module this exchange belongs to
-    const historyForApi = [...messages, userMsg].map((m) => ({ role: m.role, text: m.text }));
+    // `base` lets "Erneut senden" resend on a thread with the failed exchange
+    // pruned. Error rows never reach the model (EM-10).
+    const thread = base ?? messages;
+    const historyForApi = [...thread, userMsg]
+      .filter((m) => m.role !== "error")
+      .map((m) => ({ role: m.role, text: m.text }));
 
-    setMessages((prev) => [...prev, userMsg, modelMsg]);
+    setMessages([...thread, userMsg, modelMsg]);
     setInput("");
     setStreaming(true);
 
     const ctrl = new AbortController();
     abortRef.current = ctrl;
     let acc = "";
+    let failure: string | null = null;
 
     try {
       const res = await fetch("/api/tutor/chat", {
@@ -233,9 +294,7 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
       if (!(err instanceof DOMException && err.name === "AbortError")) {
         console.error("[tutor] chat failed:", err);
         const msg = err instanceof Error ? err.message : String(err);
-        acc = acc || (de
-          ? `⚠️ Der Tutor ist gerade nicht erreichbar (${msg.slice(0, 120)}). Versuch es gleich noch einmal.`
-          : `⚠️ The tutor is unavailable right now (${msg.slice(0, 120)}). Please try again in a moment.`);
+        failure = msg.slice(0, 120);
       }
     } finally {
       abortRef.current = null;
@@ -245,18 +304,48 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
         // OTHER module's messages — persisting here would overwrite that thread.
         // Only commit/persist when we're still on the module this exchange began.
         if (itemIdRef.current === streamItemId) {
+          const finalText = acc.trim();
+          // EM-10: failures are a distinct system row, not tutor speech.
+          const failureText = failure !== null
+            ? (de
+                ? `Der Tutor ist gerade nicht erreichbar (${failure}).`
+                : `The tutor is unavailable right now (${failure}).`)
+            : null;
           setMessages((prev) => {
-            const finalText = acc.trim();
-            const next = finalText
+            let next = finalText
               ? prev.map((m) => (m.id === modelMsg.id ? { ...m, text: finalText } : m))
-              : prev.filter((m) => m.id !== modelMsg.id); // aborted before any content
-            saveHistory(streamItemId, next);
+              : prev.filter((m) => m.id !== modelMsg.id); // aborted (or failed) before any content
+            if (failureText) {
+              next = [...next, {
+                id: `e-${crypto.randomUUID()}`,
+                role: "error" as const,
+                text: failureText,
+                retryText: text,
+                retryUserId: userMsg.id,
+                retryModelId: modelMsg.id,
+              }];
+            }
+            // Never persist error rows — and never persist a partial reply that
+            // errored as if the tutor completed it.
+            saveHistory(streamItemId, next.filter((m) => m.role !== "error" && !(failureText && m.id === modelMsg.id)));
             return next;
           });
+          // AX-10: announce the completed reply (or the failure) exactly once.
+          const announce = failureText ?? finalText;
+          if (announce) setLiveNote(announce);
         }
       }
     }
   }, [messages, streaming, itemId, de, buildDrafts]);
+
+  /** "Erneut senden" on an error row: prune the failed exchange, resend the same text. */
+  const retrySend = useCallback((errRow: TutorMessage) => {
+    if (!errRow.retryText) return;
+    const pruned = messages.filter(
+      (m) => m.id !== errRow.id && m.id !== errRow.retryUserId && m.id !== errRow.retryModelId,
+    );
+    send(errRow.retryText, pruned);
+  }, [messages, send]);
 
   const clearThread = useCallback(() => {
     abortRef.current?.abort();
@@ -292,9 +381,12 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
       {open && (
         <motion.aside
           key="tutor-panel"
+          ref={panelRef}
           initial={{ x: 24, opacity: 0 }}
           animate={{ x: 0, opacity: 1 }}
-          exit={{ x: 24, opacity: 0 }}
+          // MO-10: exits accelerate away (motion law "Move/close 200ms EASE_IN_OUT")
+          // instead of reusing the decelerating entrance curve.
+          exit={{ x: 24, opacity: 0, transition: { duration: 0.2, ease: EASE_IN_OUT } }}
           transition={{ duration: 0.24, ease: EASE_OUT }}
           className="fixed inset-y-0 right-0 z-[70] w-full sm:w-[376px] bg-(--paper-tutor) border-l border-(--hairline-card) flex flex-col print:hidden shadow-(--shadow-e3) xl:shadow-none"
           aria-label={de ? "Live Tutor Chat" : "Live tutor chat"}
@@ -329,8 +421,13 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
             </Tip>
           </div>
 
+          {/* AX-10: hidden polite live region — completed replies/failures only. */}
+          <div aria-live="polite" role="status" className="sr-only">
+            {liveNote}
+          </div>
+
           {/* Messages */}
-          <div ref={scrollRef} className="flex-1 overflow-y-auto custom-scrollbar px-5 py-5 space-y-5">
+          <div ref={scrollRef} className="flex-1 overflow-y-auto overscroll-contain custom-scrollbar px-5 py-5 space-y-5">
             {messages.length === 0 && (
               <div className="flex flex-col items-center text-center pt-10 px-2">
                 <div className="w-12 h-12 rounded-2xl bg-(--accent-wash-soft) border border-(--accent-border-soft) flex items-center justify-center mb-4">
@@ -367,6 +464,24 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
                     {msg.text}
                   </div>
                 </div>
+              ) : msg.role === "error" ? (
+                /* EM-10: connection failures are a system row (clay wash, warning
+                   icon, retry) — visually distinct from tutor speech, no emoji. */
+                <div key={msg.id} className="flex items-start gap-2.5 rounded-xl bg-(--grade-fail-wash) border border-(--grade-fail-border) px-3.5 py-3 text-[13px] leading-relaxed text-(--grade-fail-text)">
+                  <ExclamationTriangleIcon className="w-[18px] h-[18px] shrink-0 mt-0.5 text-(--grade-fail-accent)" strokeWidth={1.6} />
+                  <div className="min-w-0 flex-1">
+                    <p className="break-words">{msg.text}</p>
+                    {msg.retryText && (
+                      <button
+                        onClick={() => retrySend(msg)}
+                        disabled={streaming}
+                        className="mt-1.5 font-semibold underline underline-offset-2 hover:text-(--grade-fail-accent) cursor-pointer disabled:cursor-default"
+                      >
+                        {de ? "Erneut senden" : "Send again"}
+                      </button>
+                    )}
+                  </div>
+                </div>
               ) : (
                 <div key={msg.id} className="pr-2">
                   <div className="flex items-center gap-2 mb-1.5">
@@ -387,6 +502,12 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
                         )}
                       </button>
                       </Tip>
+                    )}
+                    {ttsFailedId === msg.id && (
+                      /* EM-9: the tap is acknowledged instead of failing silently. */
+                      <span className="text-[11px] text-(--grade-fail-text)">
+                        {de ? "Vorlesen gerade nicht möglich" : "Read-aloud is unavailable right now"}
+                      </span>
                     )}
                   </div>
                   <div className="text-sm leading-[1.62] text-ink-900/85 whitespace-pre-wrap break-words">
@@ -414,6 +535,10 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
                     send(input);
                   }
                 }}
+                // AX-10: focus moves into the portaled panel on open; the label
+                // survives once typed text hides the placeholder.
+                autoFocus
+                aria-label={de ? "Frag deinen Tutor" : "Ask your tutor"}
                 placeholder={de ? "Frag deinen Tutor…" : "Ask your tutor…"}
                 className="input-dark flex-1 px-4 py-3 text-sm leading-relaxed resize-none overflow-hidden min-h-[2.9rem] max-h-40 !bg-paper-1"
               />

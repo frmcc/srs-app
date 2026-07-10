@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="de" data-theme="paper">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Offline — SRS Master</title>
+<!--
+  Branded offline fallback (EM-8/MT-9/PP-8), precached by /sw.js and served for
+  navigations when the network fails. Fully self-contained: Paper & Ember token
+  values are inlined (no /_next assets), the display serif falls back to Georgia.
+-->
+<style>
+  :root {
+    --paper-0: #f6f3ec;
+    --paper-1: #fffefb;
+    --ink-900: #211b12;
+    --ink-600: #6e6455;
+    --ink-400: #7d7365;
+    --hairline-card: rgba(33, 27, 18, 0.08);
+    --a-g1: #f7bc5a;
+    --a-g2: #ef9f1f;
+    --a-g3: #de850b;
+    --accent-on: #2a1d07;
+    --accent-glow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 5px 12px -3px rgba(217, 125, 6, 0.45);
+    --shadow-e2: 0 1px 2px rgba(50, 38, 20, 0.05), 0 14px 36px -22px rgba(50, 38, 20, 0.2);
+  }
+  html[data-theme="ink"] {
+    --paper-0: #1b1713;
+    --paper-1: #252019;
+    --ink-900: #f1ebdf;
+    --ink-600: #b3a896;
+    --ink-400: #8e8271;
+    --hairline-card: rgba(241, 235, 223, 0.1);
+    --shadow-e2: 0 1px 2px rgba(0, 0, 0, 0.3), 0 14px 36px -22px rgba(0, 0, 0, 0.5);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    background: var(--paper-0);
+    color: var(--ink-900);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: max(20px, env(safe-area-inset-top)) 20px max(20px, env(safe-area-inset-bottom));
+    -webkit-font-smoothing: antialiased;
+  }
+  .card {
+    background: var(--paper-1);
+    border: 1px solid var(--hairline-card);
+    border-radius: 18px;
+    box-shadow: var(--shadow-e2);
+    max-width: 440px;
+    width: 100%;
+    padding: 48px 32px;
+    text-align: center;
+  }
+  .tile {
+    width: 48px;
+    height: 48px;
+    margin: 0 auto 28px;
+    border-radius: 10px;
+    background: linear-gradient(165deg, var(--a-g1) 0%, var(--a-g2) 58%, var(--a-g3) 100%);
+    box-shadow: var(--accent-glow);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .tile span {
+    font-family: Georgia, "Times New Roman", serif;
+    font-style: italic;
+    font-weight: 600;
+    font-size: 20px;
+    color: var(--accent-on);
+    transform: translateY(-1px);
+  }
+  .caps {
+    font-size: 11px;
+    font-weight: 650;
+    text-transform: uppercase;
+    letter-spacing: 0.11em;
+    color: var(--ink-400);
+    margin-bottom: 12px;
+  }
+  h1 {
+    font-family: Georgia, "Times New Roman", serif;
+    font-weight: 500;
+    font-size: 28px;
+    letter-spacing: -0.015em;
+    line-height: 1.2;
+  }
+  .body {
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--ink-600);
+    margin: 12px auto 0;
+    max-width: 320px;
+  }
+  button {
+    margin-top: 32px;
+    height: 44px;
+    padding: 0 24px;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 650;
+    color: var(--accent-on);
+    background: linear-gradient(165deg, var(--a-g1) 0%, var(--a-g2) 58%, var(--a-g3) 100%);
+    border: 1px solid rgba(255, 255, 255, 0.55);
+    border-radius: 14px;
+    box-shadow: var(--accent-glow);
+    cursor: pointer;
+    transition: transform 150ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  @media (hover: hover) {
+    button:hover { transform: translateY(-1px); }
+  }
+  button:active { transform: scale(0.985); }
+</style>
+<script>
+  // Mirror the app's appearance preference (same localStorage key + logic as
+  // the root layout's no-flash script) so the offline page keeps the theme.
+  (function () {
+    try {
+      var s = JSON.parse(localStorage.getItem("srsAppearance") || "{}") || {};
+      var mode = s.mode === "ink" || s.mode === "auto" || s.mode === "paper" ? s.mode : "paper";
+      var theme = mode === "auto"
+        ? (matchMedia("(prefers-color-scheme: dark)").matches ? "ink" : "paper")
+        : mode;
+      document.documentElement.setAttribute("data-theme", theme);
+    } catch (e) { /* keep paper */ }
+  })();
+</script>
+</head>
+<body>
+  <main class="card">
+    <div class="tile" aria-hidden="true"><span>S</span></div>
+    <p class="caps">Offline</p>
+    <h1 data-en="You&rsquo;re offline.">Du bist offline.</h1>
+    <p class="body" data-en="Your reviews are waiting &mdash; as soon as you&rsquo;re back online, this picks up right where you left off.">
+      Deine Reviews warten — sobald du wieder verbunden bist, geht es genau hier weiter.
+    </p>
+    <button onclick="location.reload()" data-en="Try again">Erneut versuchen</button>
+  </main>
+  <script>
+    // Pre-auth/offline there is no stored app language — infer from the
+    // browser with the app's German default (matches the login screen).
+    (function () {
+      if ((navigator.language || "").toLowerCase().indexOf("en") !== 0) return;
+      document.documentElement.lang = "en";
+      document.title = "Offline — SRS Master";
+      document.querySelectorAll("[data-en]").forEach(function (el) {
+        el.innerHTML = el.getAttribute("data-en");
+      });
+    })();
+  </script>
+</body>
+</html>

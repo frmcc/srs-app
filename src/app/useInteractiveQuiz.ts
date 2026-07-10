@@ -44,6 +44,20 @@ function getSpeechRecognitionCtor(): SpeechRecognitionCtor | null {
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
 }
 
+// --- Minimal Screen Wake Lock typings (same spirit as the SpeechRecognition ones above) ---
+interface WakeLockSentinelLike {
+  release(): Promise<void>;
+  addEventListener(type: "release", listener: () => void): void;
+}
+
+function getWakeLock(): { request(type: "screen"): Promise<WakeLockSentinelLike> } | null {
+  if (typeof navigator === "undefined") return null;
+  const n = navigator as unknown as {
+    wakeLock?: { request(type: "screen"): Promise<WakeLockSentinelLike> };
+  };
+  return n.wakeLock ?? null;
+}
+
 /** A short silent WAV data-URI, played inside the start gesture to unlock HTMLAudio on iOS. */
 function silentWavUri(): string {
   const dataLen = 256;
@@ -167,6 +181,9 @@ export function useInteractiveQuiz({ tasks, language = "German", dictationMode =
   // Keep the active utterance referenced — Chrome garbage-collects it mid-speech otherwise.
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
+  // --- screen wake lock (MT-8): hands-free mode must survive the phone's auto-lock ---
+  const wakeLockRef = useRef<WakeLockSentinelLike | null>(null);
+
   // --- recorder (hybrid + gemini) ---
   const micPromiseRef = useRef<Promise<MediaStream | null> | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -210,6 +227,48 @@ export function useInteractiveQuiz({ tasks, language = "German", dictationMode =
     phaseRef.current = p;
     setPhaseState(p);
   }, []);
+
+  /**
+   * MT-8: the whole point of interactive mode is that the phone lies on the
+   * desk while the student talks — without a wake lock, iOS auto-locks during
+   * the long TTS/loading phases and kills audio + mic mid-task. Best-effort:
+   * a denied request (battery saver, unsupported browser) never blocks the quiz.
+   */
+  const requestWakeLock = useCallback(() => {
+    const wl = getWakeLock();
+    if (!wl) return;
+    wl.request("screen")
+      .then((sentinel) => {
+        if (!activeRef.current) {
+          sentinel.release().catch(() => {});
+          return;
+        }
+        wakeLockRef.current = sentinel;
+        sentinel.addEventListener("release", () => {
+          if (wakeLockRef.current === sentinel) wakeLockRef.current = null;
+        });
+      })
+      .catch(() => {
+        /* denied — the session still works, the screen may just sleep */
+      });
+  }, []);
+
+  const releaseWakeLock = useCallback(() => {
+    wakeLockRef.current?.release().catch(() => {});
+    wakeLockRef.current = null;
+  }, []);
+
+  // The OS silently releases the lock whenever the app is backgrounded —
+  // re-acquire when the student returns to a still-running session.
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.visibilityState === "visible" && activeRef.current && !wakeLockRef.current) {
+        requestWakeLock();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, [requestWakeLock]);
 
   const cancelSynthesis = useCallback(() => {
     if (typeof window !== "undefined" && "speechSynthesis" in window) {
@@ -745,6 +804,7 @@ export function useInteractiveQuiz({ tasks, language = "German", dictationMode =
   const cleanup = useCallback(() => {
     stopListening();
     cancelSynthesis();
+    releaseWakeLock();
     // Abort in-flight TTS fetches so their .then doesn't push a blob URL into the
     // now-cleared array (leak) after the session ended.
     ttsControllersRef.current.forEach((c) => c.abort());
@@ -769,7 +829,7 @@ export function useInteractiveQuiz({ tasks, language = "German", dictationMode =
     lastListenTaskRef.current = -1;
     degradedRef.current = false;
     lastCombinedRef.current = "";
-  }, [stopListening, cancelSynthesis]);
+  }, [stopListening, cancelSynthesis, releaseWakeLock]);
 
   const stop = useCallback(() => {
     activeRef.current = false;
@@ -848,6 +908,9 @@ export function useInteractiveQuiz({ tasks, language = "German", dictationMode =
     setPaused(false);
     setCurrentIndex(0);
 
+    // MT-8: request the wake lock inside the same user gesture that unlocks audio.
+    requestWakeLock();
+
     // iOS: unlock HTMLAudio inside the user gesture with a silent clip.
     const a = new Audio();
     a.src = silentWavUri();
@@ -874,7 +937,7 @@ export function useInteractiveQuiz({ tasks, language = "German", dictationMode =
     // Only question 1 — playQuestion prefetches each following question
     // one-ahead, sequentially, to stay under the TTS model's rate limit.
     playRef.current(0);
-  }, []);
+  }, [requestWakeLock]);
 
   const togglePause = useCallback(() => {
     if (!activeRef.current) return;
