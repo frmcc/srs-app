@@ -73,7 +73,7 @@
 
     --ink-900: #211b12;
     --ink-600: #6e6455;
-    --ink-400: #a89d8b;
+    --ink-400: #7d7365; /* tertiary labels: 4.2–4.6:1 on paper surfaces (CC-2) */
     --ink-300: #c4baa9;
 
     --hairline: rgba(33, 27, 18, 0.07);
@@ -102,9 +102,12 @@
     --a-g3: #de850b;
     --a-lamp: rgba(239, 159, 31, 0.09);
     --accent-100: #fbd38d;                       /* pale tint (strike-throughs etc.) */
-    --accent-text: #c97706;                      /* quiet links, wordmark italic */
+    --accent-text: #a15e03;                      /* quiet links, wordmark italic — == accent-text-strong so amber passes AA like the other four accents (CC-4) */
     --accent-text-strong: #a15e03;               /* text on washes, active states */
     --accent-on: #2a1d07;                        /* text ON the accent gradient */
+    /* Accent text on the INVERTED ink-900 pill (undo toast): the pill flips per
+       theme, so this comes from the OPPOSITE theme's accent tuning (CC-1). */
+    --accent-on-surface-inverse: #f0ac42;        /* amber ink tuning — 8.69:1 on #211b12 */
     --accent-wash: rgba(239, 159, 31, 0.14);     /* avatar / stronger chip fill */
     --accent-glow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 5px 12px -3px rgba(217, 125, 6, 0.45);
 
@@ -174,7 +177,7 @@
 
     --ink-900: #f1ebdf;
     --ink-600: #b3a896;
-    --ink-400: #7c7160;
+    --ink-400: #8e8271; /* tertiary labels: 4.3–4.9:1 on ink surfaces (CC-2) */
     --ink-300: #5c5344;
 
     --hairline: rgba(241, 235, 223, 0.08);
@@ -217,6 +220,7 @@
     --accent-100: #f2d5a4;
     --accent-text: #f0ac42;
     --accent-text-strong: #f0ac42;
+    --accent-on-surface-inverse: #a15e03;        /* amber paper tuning — 4.30:1 on the cream pill (CC-1) */
     --accent-wash: rgba(242, 166, 46, 0.15);
     --accent-glow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 6px 16px -5px rgba(242, 166, 46, 0.38);
   }
@@ -227,6 +231,7 @@
     --a-lamp: rgba(110, 143, 180, 0.11);
     --accent-100: #c3d4e6;
     --accent-text: #47698f; --accent-text-strong: #47698f; --accent-on: #142638;
+    --accent-on-surface-inverse: #a9c4e0; /* ink tuning — on the dark undo pill (CC-1) */
     --accent-wash: rgba(110, 143, 180, 0.16);
     --accent-glow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 5px 12px -3px rgba(85, 119, 157, 0.42);
   }
@@ -235,6 +240,7 @@
     --a-lamp: rgba(97, 159, 136, 0.11);
     --accent-100: #bcdccf;
     --accent-text: #3c7a63; --accent-text-strong: #3c7a63; --accent-on: #0e241c;
+    --accent-on-surface-inverse: #97cbb5; /* ink tuning — on the dark undo pill (CC-1) */
     --accent-wash: rgba(97, 159, 136, 0.16);
     --accent-glow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 5px 12px -3px rgba(74, 135, 112, 0.42);
   }
@@ -243,6 +249,7 @@
     --a-lamp: rgba(156, 126, 182, 0.11);
     --accent-100: #d8c8e4;
     --accent-text: #75589a; --accent-text-strong: #75589a; --accent-on: #241533;
+    --accent-on-surface-inverse: #c3a9da; /* ink tuning — on the dark undo pill (CC-1) */
     --accent-wash: rgba(156, 126, 182, 0.16);
     --accent-glow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 5px 12px -3px rgba(131, 101, 159, 0.42);
   }
@@ -251,6 +258,7 @@
     --a-lamp: rgba(78, 70, 56, 0.07);
     --accent-100: #d4ccbd;
     --accent-text: #4e4638; --accent-text-strong: #4e4638; --accent-on: #f6f3ec;
+    --accent-on-surface-inverse: #ded5c3; /* ink tuning — on the dark undo pill (CC-1) */
     --accent-wash: rgba(78, 70, 56, 0.12);
     --accent-glow: inset 0 1px 0 rgba(255, 255, 255, 0.16), 0 5px 12px -3px rgba(55, 49, 42, 0.5);
   }
@@ -261,6 +269,7 @@
     --a-lamp: rgba(139, 170, 204, 0.08);
     --accent-100: #cdddee;
     --accent-text: #a9c4e0; --accent-text-strong: #a9c4e0; --accent-on: #142638;
+    --accent-on-surface-inverse: #47698f; /* paper tuning — on the cream undo pill (CC-1) */
     --accent-wash: rgba(139, 170, 204, 0.16);
     --accent-glow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 6px 16px -5px rgba(139, 170, 204, 0.32);
   }
@@ -269,6 +278,7 @@
     --a-lamp: rgba(128, 182, 159, 0.08);
     --accent-100: #c6e3d6;
     --accent-text: #97cbb5; --accent-text-strong: #97cbb5; --accent-on: #0e241c;
+    --accent-on-surface-inverse: #3c7a63; /* paper tuning — on the cream undo pill (CC-1) */
     --accent-wash: rgba(128, 182, 159, 0.16);
     --accent-glow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 6px 16px -5px rgba(128, 182, 159, 0.32);
   }
@@ -277,6 +287,7 @@
     --a-lamp: rgba(172, 144, 198, 0.08);
     --accent-100: #ddcfe9;
     --accent-text: #c3a9da; --accent-text-strong: #c3a9da; --accent-on: #241533;
+    --accent-on-surface-inverse: #75589a; /* paper tuning — on the cream undo pill (CC-1) */
     --accent-wash: rgba(172, 144, 198, 0.16);
     --accent-glow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 6px 16px -5px rgba(172, 144, 198, 0.32);
   }
@@ -286,6 +297,7 @@
     --a-lamp: rgba(222, 213, 195, 0.05);
     --accent-100: #efe8da;
     --accent-text: #ded5c3; --accent-text-strong: #ded5c3; --accent-on: #211b12;
+    --accent-on-surface-inverse: #4e4638; /* paper tuning — on the cream undo pill (CC-1) */
     --accent-wash: rgba(222, 213, 195, 0.14);
     --accent-glow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 6px 16px -5px rgba(222, 213, 195, 0.28);
   }
@@ -319,9 +331,14 @@
   }
 
   /* Long unbroken strings (URLs, German compound words) wrap instead of forcing
-     horizontal overflow on narrow screens. */
+     horizontal overflow on narrow screens. hyphens:auto (TY-5/LIVE-2) lets
+     German compounds break at dictionary points — with a hyphen — before
+     break-word snaps them at an arbitrary character; it relies on the html
+     lang attribute, which layout.tsx now sets from the stored language. */
   p, span, a, h1, h2, h3, h4, h5, h6, li, button, label, div {
     overflow-wrap: break-word;
+    -webkit-hyphens: auto;
+    hyphens: auto;
   }
 
   h1, h2, h3 {
@@ -501,7 +518,15 @@
   }
   .btn-primary:disabled {
     cursor: not-allowed;
-    opacity: 0.55;
+    /* Neutral disabled treatment (LIVE-7): the 55%-opacity amber gradient read
+       half-enabled. Paper fill + tertiary ink, no glow; border stays 1px so
+       the box never shifts. opacity:1 defuses ad-hoc disabled:opacity-*
+       utilities at call sites so the neutral face stays fully legible. */
+    background: var(--paper-2);
+    color: var(--ink-400);
+    border-color: var(--hairline-card);
+    box-shadow: none;
+    opacity: 1;
   }
 
   .btn-secondary {
@@ -770,6 +795,25 @@
     border-color: color-mix(in srgb, var(--accent-on) 22%, transparent);
     box-shadow: none;
   }
+  /* Keyboard hints assume a hardware keyboard — never render them on
+     touch-only devices (LIVE-3). Desktops and trackpad laptops (fine pointer
+     or hover) keep them. Kept as separate rules so the :has() selectors can't
+     invalidate the plain chip rule in older engines. */
+  @media (hover: none) and (pointer: coarse) {
+    .kbd,
+    .kbd-invert {
+      display: none;
+    }
+    /* Also collapse the hint wrapper (chip + label, e.g. "↵ senden") and the
+       classed " · " separator span directly before such a hint, so no orphan
+       labels or punctuation remain. */
+    span:has(> .kbd) {
+      display: none;
+    }
+    span[class]:has(+ span > .kbd) {
+      display: none;
+    }
+  }
 
   /* ---------- Press states (CRAFT.md §5) ---------- */
 
@@ -947,7 +991,7 @@ html {
     --paper-2: #f1ece2;
     --ink-900: #211b12;
     --ink-600: #6e6455;
-    --ink-400: #a89d8b;
+    --ink-400: #7d7365; /* keep in sync with the paper tuning (CC-2) */
     --ink-300: #c4baa9;
     --hairline: rgba(33, 27, 18, 0.07);
     --hairline-card: rgba(33, 27, 18, 0.08);

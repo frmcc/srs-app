@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Fraunces, Inter } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/Providers";
+import { prisma } from "@/lib/db";
 
 const fraunces = Fraunces({
   variable: "--font-fraunces",
@@ -44,14 +45,28 @@ export const viewport: Viewport = {
   themeColor: "#F6F3EC",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // html lang mirrors the stored UI language (the same appConfig row page.tsx
+  // reads for initialLanguage; German is the app default). Screen readers pick
+  // their speech engine from lang, and CSS hyphens:auto (globals.css) needs it
+  // to load the right hyphenation dictionary (AX-3/TY-5).
+  let language = "german";
+  try {
+    const config = await prisma.appConfig.findUnique({
+      where: { id: 1 },
+      select: { language: true },
+    });
+    if (config?.language) language = config.language;
+  } catch {
+    // No DB yet (fresh checkout / build-time prerender): keep the German default.
+  }
   return (
     <html
-      lang="en"
+      lang={language === "german" ? "de" : "en"}
       className={`${fraunces.variable} ${inter.variable} h-full`}
       suppressHydrationWarning
     >
