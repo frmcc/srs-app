@@ -251,7 +251,7 @@
 
 **LIVE-3 · P1 — Keyboard hints (`↵` kbd chips) render on touch devices** (primary CTA, tutor footer). Hide under `(pointer: coarse)`. — Status: ✅ fixed (design-polish 2026-07-10)
 
-**LIVE-4 · P1 — Eucalyptus accent (#619f88) ≈ sage pass-green (#5e7d58)** — accent and pass-semantic become indistinguishable when that accent is chosen. Re-tune one of them.
+**LIVE-4 · P1 — Eucalyptus accent (#619f88) ≈ sage pass-green (#5e7d58)** — accent and pass-semantic become indistinguishable when that accent is chosen. Re-tune one of them. — Status: ✅ fixed (design-polish 2026-07-10) — eucalyptus ramp rotated from hue ~158° to ~173° (cool mint/teal; sage sits ~110°, separation now 63°), same lightness/saturation structure so contrast tunings hold. Paper: g1 #8fc0ba · g2 #619f98 · g3 #4a8780 · accent-100 #bcdcd8 · accent-text #397972 (5.01:1 paper-1, 4.56:1 paper-0) · accent-on #0e2421 (5.35:1 on g2). Ink: g1 #a5d2cd · g2 #80b6b0 · g3 #649d96 · accent-100 #c6e3e0 · accent-text #97cbc5 (8.98:1 on #252019). Undo-pill inverses swapped accordingly (#97cbc5 / #397972, 9.48:1 and 4.26:1 — parity with old). Settings preview swatches in DashboardClient (ACCENT_PREVIEW_DOT / ACCENT_SWATCH) updated to match.
 
 **LIVE-5 · P1 — Mobile nav: top-right hamburger + full-screen menu for 5 items** (see MT-1: bottom tab bar). Dead space, teaser card in prime thumb zone.
 
@@ -263,7 +263,7 @@
 
 **LIVE-9 · P2 — Settings modal mixes poetry with proxy plumbing** — KI-Verbindung/PDF-Übertragung/Diktat belong behind an "Erweitert" disclosure.
 
-**LIVE-10 · P2 — Zero-streak presented as failure stat** ("Tage-Streak: 0") — design the zero moment.
+**LIVE-10 · P2 — Zero-streak presented as failure stat** ("Tage-Streak: 0") — design the zero moment. — Status: ✅ fixed (design-polish 2026-07-10) — streak 0 now renders "Heute zählt / Today counts" in the value slot (same line box, no reflow) with the live due count in the sub-line ("N Wiederholungen warten auf dich", singular handled; falls back to "dein nächstes Review startet die Serie" when nothing is due); idle flame icon raised ink-300→ink-400
 
 **LIVE-11 · P2 — Login footer tagline is English on a German page** (also in IA/login bilingual finding). — Status: ✅ fixed (design-polish 2026-07-10)
 
@@ -343,7 +343,7 @@
 - Verified: Read every cited badge in the working tree — all specs quoted exactly: 9.5px/0.12em/inline-700 'Aktiv' (2970), 9px/0.12em due badges (3023, 3131), 9px/0.12em pass/repeat pills (3302, 4967), 10px/0.08em Mastery (3199), 10px font-semibold non-caps Level pill (4246). The adjacency claims match the component structure (same module header / expanded item).
 
 **TY-9 · P1 · effort:small — 8px chart labels in the stats heatmap sit below any legible floor of the scale**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-10) — heatmap weekday gutter and month labels raised to text-[10px], gutter color ink-300→ink-400; the DashboardClient ×N repeat markers were already lifted 8→9px by the TY-2 type-scale sweep
 - Where: `src/app/components/StatsPanel.tsx:496`
 - Evidence: Weekday gutter: `<div className="flex flex-col gap-1 pr-1.5 text-[8px] text-ink-300">` (L496) and month labels `text-[8px] text-ink-400` (L514). The library stepper's repeat markers also use `text-[8px]` (DashboardClient L3246). These are the only three 8px sites in the app; nothing else goes below 9px.
 - Impact: 8px ink-300 on paper-0 is under the practical legibility floor (GitHub's equivalent heatmap gutter is ~10px); on a 13px cell grid there is room for 9–10px. Users squint at 'Mo/Do/So' and month names — the one place in the app where type is genuinely hard to read, compounded by the weekday gutter using near-invisible ink-300.
@@ -444,7 +444,7 @@
 - Verified: Read the stated rule at globals.css 9–10 and opened every cited violation line — all real. Corrected two characterizations: 4141 is an icon in the archive modal's 'Watch' secondary button (not a modal header), and 4732/4818 are lock warnings (not section eyebrows). Confirmed the fail-flow audio link renders only under !gradingResult.isPass (guard at 3845), the teaser sparkle at 2096, chip-amber selection at StatsPanel 437/448, the tutor toggle's amber active state at 3586, and that nav-item-active/segmented-item[data-active] use paper+ink with no accent (globals 655–660, 673–679).
 
 **CC-6 · P1 · effort:small — --ink-300 (1.73–1.90:1 on paper) is used for real words and for idle icon buttons, not just decoration**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-10) — 'Noch keine Daten.' → ink-600 (matches sibling empty states), heatmap gutter → ink-400 (with TY-9); DashboardClient word captions ('kein Brief', stepper/comprehension footnotes, 'Automatisch übersetzt', brief-history note) → ink-400; .btn-ghost-icon idle was already raised in the P0 wave; ink-300 now only remains on decorative marks (dashes, idle chevrons/icons, locked stepper numerals)
 - Where: `src/app/components/StatsPanel.tsx:542`
 - Evidence: `<p className="text-ink-300 text-sm">{de ? "Noch keine Daten." : "No data yet."}</p>` — #c4baa9 on paper-1 = 1.90:1, on paper-0 = 1.73:1. Also words at 8–10px: weekday gutter `text-[8px] text-ink-300` (StatsPanel 496), 'kein Brief / no brief' at 9px (DashboardClient 4260), timeline footnotes at text-[10px] (3260, 3315) and 'Auto-translated' (4288). And .btn-ghost-icon's idle color is var(--ink-300) (globals.css:528) — interactive glyphs need 3:1 (WCAG 1.4.11), have 1.73–1.90 (ink theme: 2.14–2.36).
 - Impact: An entire empty-state message and several status captions are borderline invisible on paper; close/trash/expand ghost buttons don't read as present until hovered — users miss that a control exists at all.
@@ -452,7 +452,7 @@
 - Verified: Opened every cited line: StatsPanel 542 ('Noch keine Daten.' in text-ink-300 while the sibling empty states at 355/370 use text-ink-600 — inconsistency confirmed), StatsPanel 496 gutter, DashboardClient 4260/3260/3315/4288 captions, and globals.css 528 (.btn-ghost-icon color: var(--ink-300)). Recomputed ratios: #c4baa9 = 1.90/1.73:1 paper, ink #5c5344 = 2.36/2.14:1 — all match the claims.
 
 **CC-7 · P1 · effort:small — The 50–79% pass-rate band bar (--grade-mid #e0a43a) is nearly invisible: 1.87:1 against its track**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-10) — paper --grade-mid darkened #e0a43a→#b87f1e (~2.9:1 vs paper-2 track, 3.4:1 vs card) per the verified fix; ink-theme value untouched (already 9.11:1)
 - Where: `src/app/components/StatsPanel.tsx:563`
 - Evidence: `mod.passRate >= 50 ? "bg-(--grade-mid)" : ...` fills a 7px bar inside a `bg-paper-2` track (line 555). Recomputed against the actual track paper-2 #f1ece2: #e0a43a = 1.87:1 (and 2.18:1 vs the paper-1 card) — under the 3:1 required for meaningful graphics (WCAG 1.4.11). The neighbors pass: sage #5e7d58 = 3.92:1, clay #b06a4e = 3.55:1 vs the same track. Ink theme is fine (#e3ac4c = 9.11:1 vs ink paper-2 #161210).
 - Impact: The warning band — exactly the modules a student should worry about — is the one bar you can barely see on paper theme. A module at 65% reads at a glance like an empty track next to crisp sage and clay bars; the three-tier encoding silently degrades to two tiers.
@@ -469,7 +469,7 @@
 - Verified: Grep across src/: 'ink-500' appears exactly once, at DashboardClient 3241. Read globals.css @theme (lines 31–34): only 900/600/400/300 are registered, so Tailwind 4 emits no CSS for the class — confirmed no-op. No ancestor in the stepper sets a text color, so the span inherits body's ink-900 foreground, which inverts the passed/current hierarchy as claimed. (Note: the typography batch reports the same defect — flagging for cross-batch dedup, but it is unique within this batch.)
 
 **CC-9 · P1 · effort:small — Heatmap level 1 is indistinguishable from an empty day: 1.00:1 luminance against --chart-zero on paper**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-10) — non-zero cells (and their legend swatches) carry a hairline `color-mix(var(--a-g3) 35%)` border so activity is encoded beyond hue; paper --chart-zero darkened #ece6da→#e6e0d2; --accent-heat-1 steepened 28%→40%
 - Where: `src/app/components/StatsPanel.tsx:307`
 - Evidence: heatColor: `if (count === 1) return "bg-(--accent-heat-1)"` where --accent-heat-1 = 28% of --a-g2 (globals.css:119). Composited over the paper-1 card: #fbe3bd vs empty cell --chart-zero #ece6da = 1.00:1 — identical luminance, hue-only difference. Graphite accent: #cdcac4 vs #ece6da = 1.32:1 (gray vs gray-beige, nearly no hue delta either). Ink theme heat-1 = 1.73:1 vs #2a241c. The legend swatches (526–530) sit adjacent and are equally close.
 - Impact: 'Studied once' vs 'didn't study' — the single most motivating distinction in a streak heatmap — is invisible to anyone with reduced color vision and genuinely squint-inducing for everyone on paper theme; under graphite it effectively disappears. Fails WCAG 1.4.11 for meaningful graphics (3:1).
@@ -538,7 +538,7 @@
 - Verified: Verified all three z values and both createPortal(…, document.body) calls; verified the settings nav button opens the modal from any tab and that no code path closes the tutor panel or stops interactive mode when the modal opens. Geometry recomputed: max-w-[560px] centered on 1280px → right edge 920px; panel sm:w-[376px] → left edge 904px → 16px overlap. Equal-z paint-order argument holds because the portal nodes are appended to body after the app root.
 
 **EL-5 · P1 · effort:small — Stats stat-cards hand-roll an e2 surface instead of using card-surface-elevated — and the loading skeleton renders the same grid at e1 with a different gap, so the page visibly shifts on load**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-10) — loaded stat cards now use `card-surface-elevated p-5` (inert, so no hover response post-EL-7); skeleton uses the identical class + gap-3.5; dead animationDelay deleted (see LS-7 for the full skeleton mirror)
 - Where: `src/app/components/StatsPanel.tsx:461`
 - Evidence: Loaded: `className="bg-paper-1 border border-hairline-card rounded-[18px] p-5 shadow-(--shadow-e2)"` inside a `gap-3.5` grid (457). Skeleton for the same four cards: `className="card-surface p-5"` (325) inside `grid … gap-4` (323) — card-surface is e1, and the comment at 319 claims the skeleton 'mirrors the final layout, so nothing jumps'. The skeleton also carries `style={{ animationDelay: `${i * 120}ms` }}` with no animation defined anywhere — a dead remnant of a staggered pulse that never runs.
 - Impact: Every visit to Stats: cards materialize at a different elevation (e1→e2) and the grid gutter shrinks 16px→14px, a small but perceptible reflow that contradicts the skeleton's stated purpose. Once loaded, these are the only e2 surfaces in the app without the elevated-card behavior (no hover border response, no ::after cross-fade layer), so the elevation ladder's one bespoke clone drifts from the system.
@@ -555,7 +555,7 @@
 - Verified: Verified the exact class string at 3867–3873, the state-driven toggle on interactive.currentIndex, and that Tailwind 4 rings compose into box-shadow (so transition-all does interpolate it). Ad-hoc shadow value confirmed absent from the token ladder; 300ms confirmed off the DUR scale. NOTE for aggregation: the motion dimension carries an equivalent finding at the same line — merge; this copy adds the off-ladder shadow-token point.
 
 **EL-7 · P1 · effort:medium — Hover affordance is baked into all card surfaces, so static cards (All-clear, grading progress, upload form, results, quiz answer cards, tutor brief, Stats charts) respond like buttons**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-10) — both :hover rules gated on `:is(a, button, [role="button"], .cursor-pointer)`; the due card (role="button" + cursor-pointer) keeps its response, all inert consumers go still, no component edits needed
 - Where: `src/app/globals.css:406`
 - Evidence: `.card-surface:hover { border-color: var(--line); }` (406–410) and `.card-surface-elevated:hover { border-color: var(--line) } / :hover::after { opacity: 1 }` (432–439) apply unconditionally to every consumer. Non-interactive consumers verified: the 'All clear' card (DashboardClient 2249), grading-progress hero (3697), upload form card (2663), results card (3760), quiz answer cards (3867), tutor brief page (tutor/[id]/page.tsx 64), and every Stats chart card (StatsPanel 486, 537, 577, 623) all darken their border and/or deepen their shadow on hover.
 - Impact: The one card where hover genuinely means 'you can tap me' — the due card — shares its hover language with a dozen inert surfaces, so the affordance carries no information. Mousing across the dashboard makes empty-state and chart panels twitch their borders, which feels busy against the system's own 'invisible until touched' philosophy (motion.ts 6) where 'touched' should mean actionable.
@@ -563,7 +563,7 @@
 - Verified: Verified both unconditional :hover rules in globals.css (correctly gated behind @media (hover:hover), so desktop-only — impact statement remains fair) and spot-checked every listed consumer line: all are genuinely non-interactive surfaces carrying the class. No opt-out mechanism exists in the codebase.
 
 **EL-8 · P1 · effort:small — ember-pulse — the app's one sanctioned ambient loop — animates box-shadow spread in a keyframe, violating the transform/opacity-only rule inside the token file itself**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-10) — ember-pulse now beats opacity only; the sonar ring is a `.ember-dot::after` border ring animating transform scale(1→1.8) + opacity 1→0 (ember-ring keyframes), disabled with the dot under reduced motion
 - Where: `src/app/globals.css:866`
 - Evidence: `@keyframes ember-pulse { 0%,100% { opacity:1; box-shadow: 0 0 0 0 color-mix(in srgb, var(--a-g2) 35%, transparent); } 50% { opacity:0.75; box-shadow: 0 0 0 5px transparent; } }` (866–875) — an infinite 2s box-shadow interpolation via `.ember-dot` (734–735), used on upload/grading step indicators (DashboardClient 2652, 3733), the dashboard's in-progress dot (2478), and the tutor 'thinking' dot (TutorPanel 395), sometimes running for a minute-plus while grading.
 - Impact: Every frame of the pulse repaints a shadow rather than compositing a transform — precisely the cost the motion rules exist to avoid, and it runs during the two longest waits in the product (upload pipeline, grading) when the main thread is already busy streaming progress. Rule-breaking in globals.css also licenses call sites to do the same (see the other box-shadow findings).
@@ -702,7 +702,7 @@
 - Verified: Confirmed: `) : gradingResult ? (<div className="space-y-5">` at 3758-3759 is a plain ternary inside the long-mounted quiz tab — no motion wrapper, no AnimatePresence, no key change. The amber thread at 3806-3811 is verifiably the only animated element in the result reveal.
 
 **MO-6 · P1 · effort:small — Stats heatmap staggers 26 columns at 35ms with 500ms fades — ignores the system's 30ms/cap-~8 stagger rule**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-10) — heatmap columns now `delay: 0.15 + Math.min(w, 8) * 0.03`, duration DUR.gentle (0.32), rise y:8; module/forecast/level bar durations aligned 0.5→DUR.gentle; entrance plays only on the session's first reveal (see PP-4)
 - Where: `src/app/components/StatsPanel.tsx:511`
 - Evidence: transition={{ duration: 0.5, ease: EASE_OUT, delay: 0.15 + w * 0.035 }} for 26 week columns (the loop is hardcoded `for (let w = 0; w < 26; w++)`, line 226) → last column starts at 1.03s, finishes ~1.53s. motion.ts: "Enter 240ms EASE_OUT rise 8px, stagger 30ms (cap ~8 items)." The module bars (line 561) and forecast bars (line 594) correctly cap with Math.min(i, 8) but also use off-token duration 0.5; the heatmap's y:6 offset is a third rise value alongside the system's 8 and 10.
 - Impact: The activity chart is still trickling in a second and a half after the rest of the stats page has settled — the longest uninterruptible entrance in the app, replayed on every visit to the Stats tab (the tab unmounts/remounts under AnimatePresence mode="wait").
@@ -886,7 +886,7 @@
 - Verified: Verified both handlers: TutorPanel L125-132 unconditionally calls onClose() on Escape while open; the global ordered chain at DashboardClient L1172-1188 handles modals but never checks/coordinates with the tutor panel, and neither uses preventDefault/defaultPrevented. The sidebar settings button remains reachable while the tutor panel is open, so the collision scenario is real.
 
 **IS-11 · P1 · effort:small — Multiple touch targets far below 44px: toast dismiss ~20px, tutor TTS 24px, file-chip remove 28px, snooze pills 28px**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-10) — Toast.tsx scope (this batch owns only Toast.tsx): card-toast close grown 20px→40px via `p-3 -m-2.5`, undo-bar close 22px→38px via `p-3 -m-2` — visual footprint unchanged. Remaining targets (tutor TTS, file-chip remove, snooze pills, sign-out) live in TutorPanel/DashboardClient and belong to those batches
 - Where: `src/app/components/Toast.tsx:73`
 - Evidence: Toast close: `className="shrink-0 … cursor-pointer p-0.5"` around a `w-4 h-4` icon = 2+16+2 = 20px square (Toast.tsx:71-77; the undo bar's close at L103-109 is similar with p-1 = ~22px). TutorPanel speak button `w-6 h-6` = 24px (TutorPanel.tsx:376-379). Upload file-chip remove `w-7 h-7` = 28px (DashboardClient.tsx:2755-2758). Snooze pills `h-7 px-2.5` = 28px tall and auto-dismiss after 5s (DashboardClient.tsx:2327, timer at L1205-1209). Sign-out `w-9 h-9` = 36px (L2131).
 - Impact: On phones, dismissing an error toast or hitting a time-limited snooze pill is a precision task; missing the 20px toast X taps whatever is underneath. All are below both Apple's 44pt guideline and a 44px bar.
@@ -990,7 +990,7 @@
 - Verified: Re-derived the math from lines 2008–2035: menu button p-2 + 24px icon = 40px row; bar pt-[max(0.75rem,safe-area)] pb-3 border-b = ~65px total; spacer duplicates paddings but inner div is h-7 (28px) = ~52px; sidebar hardcodes calc(100dvh - 61px). All three numbers disagree — confirmed. Corrected the original impact's 'menu 4px taller / rubber-band' claim: with the 52px spacer the real symptom is the menu tucking 13px under the translucent bar, not overflow.
 
 **LS-5 · P1 · effort:small — Success/error toasts ignore the safe area while the undo stack ten lines away handles it — toasts sit behind the iPhone home indicator**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-10) — card-toast stack anchored `bottom-[max(1.25rem,env(safe-area-inset-bottom))] right-[max(1.25rem,env(safe-area-inset-right))]` (right inset covers landscape notches), matching the undo bar; verified in DOM
 - Where: `src/app/components/Toast.tsx:49`
 - Duplicate-of/with: MT-6
 - Evidence: Card toasts: "fixed bottom-5 right-5 z-[100] …" (line 49). Undo toasts in the same component: "fixed bottom-[max(1.25rem,env(safe-area-inset-bottom))] left-1/2 …" (line 84). The app explicitly targets standalone iOS PWA (layout.tsx sets viewportFit: "cover" at line 43 and statusBarStyle "black-translucent" at line 28).
@@ -1007,7 +1007,7 @@
 - Verified: All five max-width classes confirmed at the cited lines, and AnimatePresence mode="wait" confirmed at line 2144. Re-did the shift math: (1024−980)/2 = 22px and (980−768)/2 = 106px — correct for viewports wider than the container. Header lockup pattern verified identical across tabs (caps-label + 34/40px display h1).
 
 **LS-7 · P1 · effort:small — Stats skeleton claims to 'mirror the final layout, so nothing jumps' but uses different gaps than the loaded state — the page visibly shifts on load**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-10) — skeleton wrapper gap-6→gap-4, stat grid gap-4→gap-3.5 + card-surface-elevated, card paddings mirror the loaded `p-5 md:px-6 md:py-[22px]`, placeholder sections added for the module/forecast/level cards (5 sections like the loaded state), dead animationDelay deleted
 - Where: `src/app/components/StatsPanel.tsx:322`
 - Duplicate-of/with: PP-12
 - Evidence: Skeleton (comment line 319: "Loading skeleton (mirrors the final layout, so nothing jumps)"): root "flex flex-col gap-6" (322), grid "grid-cols-2 lg:grid-cols-4 gap-4" (323). Loaded: root "flex flex-col gap-4" (423), grid "gap-3.5" (457). The skeleton also renders only 3 sections vs 5+ loaded, and carries a dead style={{ animationDelay: `${i * 120}ms` }} (325) with no animation defined.
@@ -1016,7 +1016,7 @@
 - Verified: Confirmed skeleton root gap-6 (322) + grid gap-4 (323) under the 'nothing jumps' comment (319), vs loaded root gap-4 (423) + grid gap-3.5 (457); skeleton has 3 sections vs 5+ loaded (semester filter, stat grid, heatmap, forecast, level charts…). Overlaps the elevation-shadows batch's stat-card finding only on the grid-gap detail; this finding's core (root gap + missing sections + broken comment) is distinct, so kept.
 
 **LS-8 · P1 · effort:small — Activity heatmap scroller opens at the oldest week — on phones 'today' is off-screen with no auto-scroll and no edge fade**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-10) — useLayoutEffect anchors the scroller to today (scrollLeft=scrollWidth) on reveal; opacity-only edge-fade overlays (paper-1 gradient) appear per side while more weeks hide, driven by onScroll; weekday gutter made sticky left-0 so Mo/Do/So survive the anchor; verified on 375px viewport (opens at Apr–Jul, left fade visible)
 - Where: `src/app/components/StatsPanel.tsx:493`
 - Duplicate-of/with: MT-14
 - Evidence: <div className="overflow-x-auto custom-scrollbar pb-1"> wrapping "flex gap-1 min-w-max" of 26 week columns built oldest→newest (loop at 226: firstMonday = thisMonday − 25 weeks, w=0 rendered first). 26×13px cells + 25×4px gaps + weekday gutter ≈ 460px. No code sets scrollLeft anywhere in src/ (grep verified), and no mask-image/gradient fade exists on the container.
@@ -1153,7 +1153,7 @@
 - Verified: Grepped data-active: 10 call sites (L4663-4836), all CSS-only per globals.css L655. Read sidebar nav L2050-2069: class-switching only, grep confirms zero aria-current/aria-checked/role="switch" in the file. Theme/accent pickers (L4481, L4539-4556) use border/boxShadow + CheckIcon for selection. StatsPanel aria-pressed at L436/446 confirmed. Fully accurate.
 
 **AX-7 · P1 · effort:small — Keyboard focus is invisible on the grading-model selects: global CSS strips select outlines but .btn-secondary defines no replacement**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-10) — added `select:focus-visible:not(.input-dark):not(.input-inset)` rule restoring the global accent outline; ring-carrying input classes keep their own focus treatment
 - Where: `src/app/globals.css:358`
 - Evidence: globals.css L358-362: `input:focus-visible, textarea:focus-visible, select:focus-visible { outline: none; }` — the replacement ring only exists on `.input-dark:focus` / `.input-inset:focus` (L556–575). But the quiz tab's model pickers are `<select value={gradingModel} ... className="btn-secondary sm:w-[200px] h-12 ...">` (DashboardClient L3981–3984 and L4063–4066), and `.btn-secondary` (L507-525) has no :focus rule at all. The upload tab's select correctly uses input-dark (L2674) — proving the drift.
 - Impact: Tabbing to the model select on the quiz screen produces zero visible focus indication — a keyboard user loses their place right next to the primary submit button. WCAG 2.4.7 failure on a control that sits in the main task flow.
@@ -1161,7 +1161,7 @@
 - Verified: Read globals.css L340-380 (outline-strip rule at L358-362) and the full .btn-secondary block (L507-525: background, border, shadow, hover, active — no :focus). Both quiz selects confirmed as btn-secondary (L3981, L4063); upload select is input-dark (L2674) with its own focus ring at L556. The working-tree diff touches the surrounding gaps but not the selects. Fully accurate.
 
 **AX-8 · P1 · effort:medium — ink-400 (2.65:1) and ink-300 (1.9:1) are used for meaningful text throughout — far below AA contrast**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-10) — token layer: --ink-400 was already retuned to AA in the P0 wave (#7d7365 paper / #8e8271 ink, CC-2); this pass raised .btn-ghost-icon idle from ink-300 to ink-400 (interactive glyphs, WCAG 1.4.11); the remaining ink-300 word call sites in DashboardClient/StatsPanel are owned by CC-6 (still open)
 - Where: `src/app/globals.css:76`
 - Evidence: `--ink-400: #a89d8b` (L76) on paper-1 #fffefb = 2.65:1, on paper-0 #f6f3ec = 2.41:1; `--ink-300: #c4baa9` (L77) = 1.90:1 / 1.73:1 (AA requires 4.5:1 at these sizes). These aren't decoration: caps-label section headers are ink-400 at 11px (globals L468/477), library footnotes are `text-[10px] text-ink-300` (DashboardClient L3260), review-history 'kein Brief / no brief' is text-ink-300 at 9px (L4260), heatmap weekday labels are 8px ink-300 (StatsPanel L496), plus the quiz '⌘↵ to submit' hint tier. Ink theme is also sub-AA: ink-400 #7c7160 on #252019 = 3.38:1.
 - Impact: Users with moderate low vision (and anyone on a dim screen in daylight) cannot read the layer of the UI that carries schedule dates, section labels, keyboard hints, and status footnotes. The quiet-paper aesthetic is achievable at compliant ratios — right now the whole 'whisper' tier is illegible for a real slice of users.
@@ -1169,7 +1169,7 @@
 - Verified: Recomputed all ratios with WCAG relative luminance: ink-400/paper-1 = 2.65:1, ink-400/paper-0 = 2.41:1, ink-300/paper-1 = 1.90:1, ink-theme ink-400 = 3.38:1 — all match the claims. Verified token hexes (globals L74-77, L175-178) and every cited call site (caps-label L468/477, DashboardClient L3260/L4260, StatsPanel L496). Corrected line to 76. Note: overlaps the color-contrast dimension's ink-400/ink-300 findings — flag for cross-batch dedupe.
 
 **AX-9 · P1 · effort:medium — Stats heatmap and chart data live only in hover tooltips on non-focusable divs (and Tip puts aria-label on generic divs, which ARIA ignores)**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-10) — heatmap card gets a visually-hidden bilingual summary ('An N von M Tagen gelernt. Stärkster Tag: … mit K Reviews.' / zero-state variant) computed from the same data; Tip now mirrors aria-label only onto interactive/labelable elements (a,button,input,select,textarea,summary,[role],[tabindex]); the decorative grid + legend are aria-hidden. Forecast/level charts keep their visible text counts (per the finding, they already survive)
 - Where: `src/app/components/StatsPanel.tsx:516`
 - Evidence: `<Tip key={cell.key} label={`${cell.date.toLocaleDateString(locale)} — ${cell.count} ...`}><div className="heat-cell w-[13px] h-[13px] rounded-[3px] ..." /></Tip>` (L516-518) — Tip shows on focus (Tooltip.tsx L68 onFocus) but the div has no tabIndex so focus never lands there; Tip also mirrors the label into `aria-label` on the div (Tooltip.tsx L51–58), which is prohibited/ignored on a generic role. Same pattern for the 14-day forecast bars (L584-585) and the 7-dot level indicators in the library (DashboardClient L3139–3149). Cell intensity is conveyed by color alone (heatColor classes).
 - Impact: Keyboard and screen-reader users get no access to six months of per-day activity or per-day forecast details; low-vision users can't distinguish the amber intensity steps. The forecast/level charts survive because counts are printed as text — the heatmap has no text alternative at all (grep: no sr-only in StatsPanel).
@@ -1194,7 +1194,7 @@
 - Verified: Read L2660-2770 (upload form), L3900-3935 (quiz answer), L2830-2850 (library search): all labels are bare `<label>` elements without htmlFor, fields have no id/aria-label; the quiz label is a span; the one wired label (htmlFor="file-upload") confirmed at L2744. AutoGrowTextarea adds no labeling. Fully accurate.
 
 **AX-12 · P1 · effort:small — Toast close buttons are hardcoded aria-label="Close" in a bilingual app, and toasts auto-dismiss on a fixed 5s timer with no pause**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-10) — ToastStack takes a `language` prop (DashboardClient passes it); both close buttons say 'Schließen'/'Close'; auto-dismiss moved from useToasts into per-toast pausable timers (pointerenter/focus pauses, leave resumes with remaining time, ≥800ms grace); undo toasts extended 6s→10s; close hit areas grown (see IS-11)
 - Where: `src/app/components/Toast.tsx:74`
 - Duplicate-of/with: MC-18
 - Evidence: `<button onClick={() => onDismiss(toast.id)} className="shrink-0 text-ink-600 ... p-0.5" aria-label="Close">` (L71-77, and L106 on the undo bar) — English-only while every other label in the app is language-switched; ToastStack's props are only `{ toasts, onDismiss }` (L44), it never receives `language`. Dismissal: `window.setTimeout(() => dismissToast(id), variant === "undo" ? UNDO_DISMISS_MS : AUTO_DISMISS_MS)` (L37, 6000/5000ms) — no pause on hover/focus, and the undo action vanishes after 6s regardless.
@@ -1288,7 +1288,7 @@
 - Verified: Read useInteractiveQuiz.ts end-to-end: all eight cited setError lines (306, 478, 508, 548, 575, 589, 618, 641, 649) are German literals with no language branch, while rec.lang (278) and the /api/transcribe lang param (419, 470) ARE localized from the same prop. Confirmed DashboardClient toasts interactive.error verbatim at 704 and passes language at 693. The bilingual convention elsewhere is real (e.g. push errors at 806, 815–817 both have en branches).
 
 **EM-4 · P1 · effort:small — Error toasts auto-dismiss after a fixed 5s with no hover-pause — long server errors are unreadable**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-10) — error toasts now hold 12s (success stays 5s), and all toast timers pause on pointerenter/focus and resume with the remaining time on leave (usePausableDismiss in Toast.tsx); dismiss-on-click unchanged
 - Where: `src/app/components/Toast.tsx:37`
 - Evidence: `window.setTimeout(() => dismissToast(id), variant === "undo" ? UNDO_DISMISS_MS : AUTO_DISMISS_MS)` (line 37) — errors and successes share the same 5000ms (line 18). Nothing pauses the timer on hover/focus, and error toasts carry raw backend messages, e.g. `addToast("error", `Generierungsfehler: ${msg}`)` (DashboardClient line 1660) where `msg` is an arbitrary pipeline error.
 - Impact: A two-line German API error at ~200 wpm needs more than 5 seconds; the moment a user moves the pointer to read (or screenshot) it, it can vanish mid-read. For the upload flow the toast is currently the ONLY failure record, compounding the severity. Success toasts disappearing fast is right; errors disappearing fast is a craft failure.
@@ -1304,7 +1304,7 @@
 - Verified: Confirmed useState(1) at 562, client-only /api/settings fetch at 594–610, sidebar render at 2043–2045, upload-tab label at 2667 and placeholder at 2682. Read page.tsx in full: the no-flash comment is at lines 19–21 and the AppConfig select at line 24 fetches `{ language: true }` only — the fix pattern (initialLanguage prop, line 44) exists and simply wasn't extended.
 
 **EM-6 · P1 · effort:small — Stats error state is a dead end — no retry affordance, unlike the Library's matching error state**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-10) — error card now carries the same `btn-primary h-11 px-6` 'Erneut versuchen / Try again' as the Library; the fetch effect is keyed on a reloadKey the button bumps (resets loading/error and re-fetches)
 - Where: `src/app/components/StatsPanel.tsx:349`
 - Evidence: The error branch renders only an icon and 'Statistiken konnten nicht geladen werden.' / 'Couldn't load statistics.' (lines 349–358) — no button, and the fetch effect runs once on mount (`useEffect(..., [])`, lines 112–135), so the only recovery is leaving and re-entering the tab. The Library's equivalent failure state ships a `btn-primary` 'Erneut versuchen / Try again' that re-triggers the fetch (DashboardClient lines 2910–2915).
 - Impact: A transient network blip strands the user on a dead-end card with no visible way out; the inconsistency with the Library's designed recovery makes the Stats tab feel like the unfinished sibling. Actionability is the difference between an error state and an error message.
@@ -1345,7 +1345,7 @@
 - Verified: Confirmed every link in the chain by reading TutorPanel.tsx in full: ⚠️ literal at 236–238; the message renders through the ordinary model-message branch (371–399) with the Tutor byline and a Read-aloud button gated only on msg.text (374); finally block persists via saveHistory at 253; historyForApi (196) maps ALL messages including the persisted error. Confirmed Toast.tsx uses ExclamationTriangleIcon (line 68) and no emoji appears elsewhere in the UI code. Extra nuance: `acc = acc ||` means a partially-streamed reply that then errors keeps the truncated text with NO error indicator at all.
 
 **EM-11 · P1 · effort:medium — Stats tab forgets everything between visits — skeleton flash and count-up-from-zero replay on every tab switch**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-10) — module-level StatsResponse cache hydrates remounts instantly (stale-while-revalidate; a failed background revalidation keeps cached data instead of the error card); count-up and entrance choreography gated to the session's first reveal. Verified: tab roundtrip renders final values with no skeleton (see PP-4 for the shared mechanism)
 - Where: `src/app/components/StatsPanel.tsx:108`
 - Evidence: `const [loading, setLoading] = useState(true)` (line 108) and the `fetch("/api/stats")` effect (lines 112–135) run on every mount, and StatsPanel is unmounted whenever `activeTab !== "stats"` (DashboardClient lines 3498–3519). `AnimatedNumber` keeps `display` in useState(0) (line 72), so on remount it counts up from 0 again over 1.1s (lines 85–89), and the heatmap columns re-stagger (`delay: 0.15 + w * 0.035`, line 511).
 - Impact: Check stats, glance at the library, come back five seconds later: full skeleton flash, then all four stat numbers count up from 0 again and the heatmap re-cascades. Data the app held moments ago is theatrically re-loaded — entrance choreography that delights once becomes jank on the third viewing and makes the app feel amnesiac.
@@ -1604,7 +1604,7 @@
 - Verified: Confirmed at 2031-2035: motion.aside with mount-only initial/animate; visibility driven purely by hidden/flex class swap, which framer-motion never re-animates. Main at 2143 confirmed hidden/block. motion.ts line 11 states the 240ms enter law verbatim. Scroll-loss mechanism is sound: display:none on main collapses document height, clamping window scroll on mobile's natural page scroll (comment at 2141-2142).
 
 **MT-4 · P1 · effort:medium — Data-bearing tooltips are mouse-only — the stats heatmap and charts go mute on touch**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-10) — Tip gained a coarse-pointer mode: onPointerDown with pointerType touch/pen shows the bubble immediately (mouse presses keep the old dismiss behavior); a document-level capture listener dismisses on the next outside tap or any scroll. Verified via synthetic touch pointerdown on a heat cell (bubble shows day data, outside tap dismisses). The optional tap-to-pin readout row / 16px mobile cells were not added — the Tip fix restores the data on touch and the cells stay unchanged
 - Where: `src/app/components/Tooltip.tsx:65`
 - Evidence: The Tip wrapper binds only `onMouseEnter={schedule} onMouseLeave={hide} onMouseDown={hide} onFocus={show}` — no touch/press path. It's used where the tooltip IS the data: heatmap day counts (StatsPanel.tsx:516 `label={`${cell.date.toLocaleDateString(locale)} — ${cell.count} … reviews`}` on a 13×13px div), per-module details (547), the 14-day forecast (583), and level distribution (629).
 - Impact: On iPhone the entire per-day activity history, module review counts, and forecast dates are simply unreachable — the heatmap becomes decoration. The cells are also 13px squares, far below any touch threshold, so even a tap-to-show implementation would need bigger hit areas. Perfectionist detail: iOS buttons don't focus on tap, so the icon-button tips never appear on touch either (harmless there thanks to aria-labels, but it confirms nothing in the Tip system works on the platform the PWA targets).
@@ -1621,7 +1621,7 @@
 - Verified: Confirmed due card at 2292-2299 has whileHover only (a suspiciously blank line at 2297 where a spread might once have been); upcoming row at 2517-2520 has hover:bg only. Verified globals.css tap-highlight suppression with the quoted comment (~line 301), hoverLift with whileTap in motion.ts (135-139), and press-row genuinely used at 3007/3107/4241 via grep — so the inconsistency claim is accurate, not invented.
 
 **MT-6 · P1 · effort:small — Success/error toasts ignore the home-indicator safe area — the undo bar in the same file gets it right**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-10) — same change as LS-5 (safe-area max() anchoring on the card stack) plus the ≥38–40px close hit areas via padding+negative margin (IS-11)
 - Where: `src/app/components/Toast.tsx:49`
 - Duplicate-of/with: LS-5
 - Evidence: Card toasts: <div className="fixed bottom-5 right-5 z-[100] ..."> — a hard 20px. Thirty-five lines later the undo bar reads `fixed bottom-[max(1.25rem,env(safe-area-inset-bottom))]` (line 84), the pattern also used by the interactive voice bar (DashboardClient.tsx:3641).
@@ -1673,7 +1673,7 @@
 - Verified: Read TutorPanel 290-446: line 299 fixed inset-y-0 w-full and line 333 scroller without overscroll-contain confirmed verbatim; composer at 406. Grepped the repo for visualViewport/100dvh/interactive-widget in the panel — nothing. Verified the contrast claim: 8 overscroll-contain scrollers exist in DashboardClient modals, so this is a genuine internal inconsistency, not generic advice.
 
 **MT-12 · P1 · effort:small — Touch-target sweep: a family of recurring controls sits well under 44px**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-10) — globals.css layer: under `@media (pointer: coarse)`, interactive chips (button.chip/a.chip), nav rows (nav-item-active/idle) and btn-ghost-icon buttons get an invisible centered ≥44px `::before` hit area (visual sizes unchanged). NOTE: the bespoke inline-class controls (snooze pills h-7, due-card footer text links, TTS speaker w-6, scribble Undo/Clear) still need the negative-margin treatment in their component files — outside this batch's file surface
 - Where: `src/app/globals.css:594`
 - Evidence: .chip { ... height: 30px; } — chips are tappable links/buttons (semester filter StatsPanel.tsx:437/448, Tutor-brief link DashboardClient.tsx:3350). Also: sidebar/mobile-menu nav items `h-[38px]` (DashboardClient.tsx:2050–2076 — these ARE the mobile menu rows), snooze pills `h-7` = 28px (2327), due-card footer links bare `text-xs` ≈ 17px tall (2363, 2374 'Materialien'/'Letztes Feedback'), snooze/delete icon buttons `w-8 h-8` = 32px (2339, 2408), TTS speaker `w-6 h-6` = 24px (TutorPanel.tsx:379), scribble Undo/Clear `px-2.5 py-1` ≈ 24px (ScribbleCanvas.tsx:238, 246).
 - Impact: Apple's HIG floor is 44pt; most of the app's secondary actions are 24–38px. The ones that hurt: snooze pills (28px, appear under time pressure after arming), the scribble Undo button (24px, used mid-handwriting with a finger), the TTS speaker (24px), and footer text-links on due cards (~17px, adjacent to a card whose tap starts a quiz — a miss costs an unwanted navigation).
@@ -1767,7 +1767,7 @@
 - Verified: Confirmed all four cited render sites (sidebar 2044, badge 2947/2969, upload fallback 2681) read the client-fetched state, page.tsx:24 selects only language, and prisma schema has currentSemester/modulePresets/wrapperMode/fileTransport — so the recommended fix is directly feasible.
 
 **PP-4 · P1 · effort:medium — Stats tab replays its entire loading choreography on every visit — skeleton, 1.1s count-up, ~1.1s heatmap stagger, zero caching**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-10) — module-level `statsCache`/`statsRevealed`: remounts render cached data immediately (loading starts false) and revalidate in the background; `appear` (captured per mount) gates the root stagger, heatmap columns, bar scale-ins and AnimatedNumber start value, so revisits render settled while in-place value changes still animate. Bonus fix: rows mounted after the reveal (module expander, semester filter) now render settled via an `entranceDone` flag — late children of the settled variant tree never played their mount animation and sat invisible at scaleX(0) (pre-existing, surfaced by IA-10's expander; verified fixed in-browser)
 - Where: `src/app/components/StatsPanel.tsx:112`
 - Evidence: StatsPanel is conditionally mounted per tab (`{activeTab === "stats" && … <StatsPanel/>}`, DashboardClient lines 3498/3518) and fetches on every mount with `loading` starting true: `useEffect(() => { … fetch("/api/stats") … }, []);` (lines 112–135, `useState(true)` at 108). On success it plays `AnimatedNumber` from a `useState(0)` display with `duration: 1.1` (lines 72, 86) and staggers heatmap columns at `delay: 0.15 + w * 0.035` (line 511) — the last of ~26 columns starts at ~1.06s.
 - Impact: Visit Stats, flip to Library, flip back ten seconds later: full skeleton again, all four headline numbers count from zero again, the heatmap fades in column-by-column again. What reads as delight once reads as slowness every time after; the tab never feels 'already there' even though the data hasn't changed.
@@ -1792,7 +1792,7 @@
 - Verified: Grep for passRate/initialPassRate confirms the prop is aliased once (638), rendered (2567–2582), and never updated; the grading done handler (1770–1785) only calls fetchReviews(), which touches upcomingReviews/rawItems only. StatsPanel's own pass-rate is a separate component and doesn't feed this card.
 
 **PP-7 · P1 · effort:small — Fraunces loads with default display:swap — the 44–54px serif hero visibly morphs on cold loads**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-10) — Fraunces set to `display: "optional"`; Inter stays on swap
 - Where: `src/app/layout.tsx:6`
 - Evidence: `const fraunces = Fraunces({ variable: "--font-fraunces", subsets: ["latin"], style: ["normal", "italic"], axes: ["opsz"] });` — no `display` option. The shipped Next docs confirm the default: "with default value of 'swap'" (node_modules/next/dist/docs/01-app/03-api-reference/02-components/font.md line 174). The face is used at 34–44px for the dashboard greeting (DashboardClient line 2175) and at up to 54px for the login headline "Lerne weniger. Behalte mehr." (LoginClient line 75).
 - Impact: On a cold PWA start or slow first visit, the greeting and the login hero paint in the size-adjusted serif fallback and then swap to Fraunces' high-contrast letterforms mid-view. adjustFontFallback suppresses most CLS but not the glyph morph — and it hits the largest, most branded element on every screen, at the exact moment the app should feel composed. Warm loads are unaffected (font cached), so this is a first-impression/cold-start flaw.
@@ -1919,7 +1919,7 @@
 - Verified: CONFIRMED. Read the collapsed row (L3100–3168): dot strip (hidden below sm) at L3137–3151 and the L{n} text at L3152–3154 are literally adjacent siblings, both driven by currentLevel; counted the row's other signals (icon, title, comprehension %, Due badge/dot, ×N marker, chevron). Verified the expanded stepper re-encodes it a third time (L3212–3257) and that the dots use hardcoded bg-amber-500 (not the accent token), so they stay amber even under non-amber accents — worse for the 'amber = due' contract than the finding claims.
 
 **IA-10 · P1 · effort:small — Stats' 'Pass rate by module' is sorted by review volume and silently truncated to 8 — the chart cannot answer the question its title asks**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-10) — sorted riskiest-first (ascending pass rate, reviews desc tiebreak; no-review modules last), silent slice replaced by a '+N weitere Module / Weniger anzeigen' text toggle (singular handled), footnote now states the order ('— niedrigste zuerst / lowest first')
 - Where: `src/app/components/StatsPanel.tsx:273`
 - Evidence: `.sort((a, b) => b.reviews - a.reviews || b.items - a.items)` (L273) orders modules by review count, and `computed.modules.slice(0, 8).map(…)` (L545) drops the rest with no 'show more' affordance. The bars themselves are risk-colored (`passRate >= 80 ? grade-pass-accent : >= 50 ? grade-mid : grade-fail-accent`, L563) under the heading "Pass rate by module" (L539).
 - Impact: The one chart that should answer 'what's at risk?' buries it: a struggling module with few reviews (which is exactly what struggling looks like — avoidance) sorts to the bottom and can fall off the top-8 cliff entirely, invisible with no indication anything was cut. The red/amber/green encoding shows risk only for whichever modules happen to be most-reviewed — an inverted hierarchy for a study-health panel.

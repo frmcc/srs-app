@@ -88,7 +88,7 @@
 
     /* Chart & misc neutrals (ink theme re-tunes these) */
     --chip-hover: #e9e2d4;
-    --chart-zero: #ece6da;   /* heatmap empty cells */
+    --chart-zero: #e6e0d2;   /* heatmap empty cells — darkened so heat-1 separates (CC-9) */
     --chart-stub: #e4dccd;   /* zero-day bar stubs */
     --track: #ebe5d8;        /* progress tracks */
     --icon-folder: #c4b7a0;
@@ -119,7 +119,7 @@
     --accent-border-strong: color-mix(in srgb, var(--a-g2) 55%, transparent);
     --accent-ring: color-mix(in srgb, var(--a-g2) 18%, transparent);
     --accent-ring-soft: color-mix(in srgb, var(--a-g2) 30%, transparent);
-    --accent-heat-1: color-mix(in srgb, var(--a-g2) 28%, transparent);
+    --accent-heat-1: color-mix(in srgb, var(--a-g2) 40%, transparent); /* steepened from 28% (CC-9) */
     --accent-heat-2: color-mix(in srgb, var(--a-g2) 50%, transparent);
     --accent-heat-3: color-mix(in srgb, var(--a-g2) 72%, transparent);
     --grade-pass-wash-strong: color-mix(in srgb, var(--grade-pass-accent) 22%, transparent);
@@ -137,7 +137,7 @@
     --grade-fail-accent: #b06a4e;
     --grade-fail-wash: rgba(176, 106, 78, 0.12);
     --grade-fail-border: rgba(176, 106, 78, 0.25);
-    --grade-mid: #e0a43a;                        /* 50–79% pass-rate band */
+    --grade-mid: #b87f1e;                        /* 50–79% pass-rate band — ~2.9:1 vs paper-2 track, 3.4:1 vs card (CC-7) */
 
     /* Legacy aliases (older call sites) */
     --ember-300: var(--accent-100);
@@ -235,14 +235,17 @@
     --accent-wash: rgba(110, 143, 180, 0.16);
     --accent-glow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 5px 12px -3px rgba(85, 119, 157, 0.42);
   }
+  /* Cool mint/teal at hue ~173° (LIVE-4): the old ~158° ramp sat next to the
+     sage pass-green (~110°) and collapsed accent-vs-passed semantics. Same
+     lightness/saturation structure as before, so the contrast tunings hold. */
   [data-accent="eucalyptus"] {
-    --a-g1: #8fc0ac; --a-g2: #619f88; --a-g3: #4a8770;
-    --a-lamp: rgba(97, 159, 136, 0.11);
-    --accent-100: #bcdccf;
-    --accent-text: #3c7a63; --accent-text-strong: #3c7a63; --accent-on: #0e241c;
-    --accent-on-surface-inverse: #97cbb5; /* ink tuning — on the dark undo pill (CC-1) */
-    --accent-wash: rgba(97, 159, 136, 0.16);
-    --accent-glow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 5px 12px -3px rgba(74, 135, 112, 0.42);
+    --a-g1: #8fc0ba; --a-g2: #619f98; --a-g3: #4a8780;
+    --a-lamp: rgba(97, 159, 152, 0.11);
+    --accent-100: #bcdcd8;
+    --accent-text: #397972; --accent-text-strong: #397972; --accent-on: #0e2421;
+    --accent-on-surface-inverse: #97cbc5; /* ink tuning — on the dark undo pill (CC-1) */
+    --accent-wash: rgba(97, 159, 152, 0.16);
+    --accent-glow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 5px 12px -3px rgba(74, 135, 128, 0.42);
   }
   [data-accent="heather"] {
     --a-g1: #bba2ce; --a-g2: #9c7eb6; --a-g3: #83659f;
@@ -274,13 +277,14 @@
     --accent-glow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 6px 16px -5px rgba(139, 170, 204, 0.32);
   }
   [data-theme="ink"][data-accent="eucalyptus"] {
-    --a-g1: #a5d2bf; --a-g2: #80b69f; --a-g3: #649d86;
-    --a-lamp: rgba(128, 182, 159, 0.08);
-    --accent-100: #c6e3d6;
-    --accent-text: #97cbb5; --accent-text-strong: #97cbb5; --accent-on: #0e241c;
-    --accent-on-surface-inverse: #3c7a63; /* paper tuning — on the cream undo pill (CC-1) */
-    --accent-wash: rgba(128, 182, 159, 0.16);
-    --accent-glow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 6px 16px -5px rgba(128, 182, 159, 0.32);
+    /* Cool mint/teal, hue ~173° — see the paper tuning note (LIVE-4). */
+    --a-g1: #a5d2cd; --a-g2: #80b6b0; --a-g3: #649d96;
+    --a-lamp: rgba(128, 182, 176, 0.08);
+    --accent-100: #c6e3e0;
+    --accent-text: #97cbc5; --accent-text-strong: #97cbc5; --accent-on: #0e2421;
+    --accent-on-surface-inverse: #397972; /* paper tuning — on the cream undo pill (CC-1) */
+    --accent-wash: rgba(128, 182, 176, 0.16);
+    --accent-glow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 6px 16px -5px rgba(128, 182, 176, 0.32);
   }
   [data-theme="ink"][data-accent="heather"] {
     --a-g1: #cbb4dd; --a-g2: #ac90c6; --a-g3: #9174ab;
@@ -377,6 +381,13 @@
   select:focus-visible {
     outline: none;
   }
+  /* AX-7 — selects styled as buttons (.btn-secondary on the quiz model
+     pickers) define no focus ring of their own: any select outside the
+     ring-carrying input classes keeps the global keyboard outline. */
+  select:focus-visible:not(.input-dark):not(.input-inset) {
+    outline: 2px solid color-mix(in srgb, var(--a-g2) 60%, transparent);
+    outline-offset: 2px;
+  }
 
   /* Selection, caret, autofill, placeholder — the paper world everywhere (CRAFT.md §1) */
   ::selection {
@@ -420,8 +431,12 @@
     box-shadow: var(--shadow-e1);
     transition: border-color 150ms var(--ease-cinematic);
   }
+  /* Hover response only where the card itself is the tap target (EL-7):
+     inert surfaces (charts, forms, results, empty states) stay still so the
+     due card's answer keeps meaning "you can tap me". Interactive cards are
+     a/button/[role=button] wrappers or carry cursor-pointer (the due card). */
   @media (hover: hover) {
-    .card-surface:hover {
+    :is(a, button, [role="button"], .cursor-pointer).card-surface:hover {
       border-color: var(--line);
     }
   }
@@ -446,11 +461,12 @@
     transition: opacity 200ms var(--ease-cinematic);
     pointer-events: none;
   }
+  /* Same interactivity gate as .card-surface (EL-7). */
   @media (hover: hover) {
-    .card-surface-elevated:hover {
+    :is(a, button, [role="button"], .cursor-pointer).card-surface-elevated:hover {
       border-color: var(--line);
     }
-    .card-surface-elevated:hover::after {
+    :is(a, button, [role="button"], .cursor-pointer).card-surface-elevated:hover::after {
       opacity: 1;
     }
   }
@@ -548,9 +564,10 @@
     transition-duration: 120ms;
   }
 
-  /* Quiet icon-only button */
+  /* Quiet icon-only button. Idle color is ink-400, not ink-300: these are
+     interactive glyphs, so they must clear WCAG 1.4.11's 3:1 (AX-8/CC-6). */
   .btn-ghost-icon {
-    color: var(--ink-300);
+    color: var(--ink-400);
     border-radius: 10px;
     transition: background-color 150ms var(--ease-cinematic), color 150ms var(--ease-cinematic);
   }
@@ -757,7 +774,23 @@
   /* ---------- Live pulse (the ONLY ambient loop, for in-progress states) ---------- */
 
   .ember-dot {
+    position: relative;
     animation: ember-pulse 2s ease-in-out infinite;
+  }
+  /* Sonar ring (EL-8): a pre-rendered pseudo-element ring that scales and
+     fades — compositor-only transform/opacity, never a box-shadow tween.
+     scale 1.8 lands the ring's reach where the old 5px shadow spread did
+     on the small in-progress dots. Base opacity 0 keeps it invisible when
+     the animation is disabled (reduced motion). */
+  .ember-dot::after {
+    content: "";
+    position: absolute;
+    inset: -2px;
+    border-radius: inherit;
+    border: 2px solid color-mix(in srgb, var(--a-g2) 35%, transparent);
+    opacity: 0;
+    animation: ember-ring 2s ease-out infinite;
+    pointer-events: none;
   }
 
   /* Listening equalizer bars (interactive voice mode) */
@@ -827,6 +860,34 @@
   /* List rows darken instead of scaling */
   .press-row:active {
     background: var(--paper-2) !important;
+  }
+
+  /* ---------- Touch-target floor (MT-12) ---------- */
+  /* Visual sizes stay untouched; on coarse pointers the recurring small
+     controls (30px chips, 38px nav rows, 24–40px ghost icon buttons) answer
+     to an invisible, centered ≥44px hit area. Scoped to a/button so inert
+     chip-dashed spans never swallow a neighbour's tap. */
+  @media (pointer: coarse) {
+    button.chip,
+    a.chip,
+    button.nav-item-active,
+    button.nav-item-idle,
+    button.btn-ghost-icon {
+      position: relative;
+    }
+    button.chip::before,
+    a.chip::before,
+    button.nav-item-active::before,
+    button.nav-item-idle::before,
+    button.btn-ghost-icon::before {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: max(100%, 44px);
+      height: max(100%, 44px);
+      transform: translate(-50%, -50%);
+    }
   }
 
   /* Hovered heatmap cell answers with an ink outline (CRAFT.md §9) */
@@ -907,14 +968,24 @@
     --a-lamp 400ms cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 
+/* Opacity beat only — the expanding ring lives on .ember-dot::after (EL-8). */
 @keyframes ember-pulse {
   0%, 100% {
     opacity: 1;
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--a-g2) 35%, transparent);
   }
   50% {
     opacity: 0.75;
-    box-shadow: 0 0 0 5px transparent;
+  }
+}
+
+@keyframes ember-ring {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  70%, 100% {
+    transform: scale(1.8);
+    opacity: 0;
   }
 }
 
@@ -965,6 +1036,7 @@ html {
 
 @media (prefers-reduced-motion: reduce) {
   .ember-dot,
+  .ember-dot::after,
   .eq-bar {
     animation: none;
   }

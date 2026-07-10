@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { motion, animate, useReducedMotion } from "framer-motion";
-import { staggerContainer, riseChild, EASE_OUT } from "@/lib/motion";
+import { staggerContainer, riseChild, EASE_OUT, DUR } from "@/lib/motion";
 import {
   FireIcon,
   CheckCircleIcon,
@@ -47,6 +47,15 @@ export interface StatsItemSlim {
 
 const LEVEL_LABELS = ["T1", "T3", "T7", "T21", "T60", "T180", "T365"] as const;
 
+/**
+ * Session cache (PP-4/EM-11): StatsPanel unmounts on every tab switch, so the
+ * last response is kept at module level and rendered instantly on remount
+ * (stale-while-revalidate). The entrance choreography (skeleton, count-up,
+ * heatmap stagger) plays only on the session's first reveal.
+ */
+let statsCache: StatsResponse | null = null;
+let statsRevealed = false;
+
 /** Local-timezone day key (YYYY-MM-DD). */
 function dayKey(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -67,9 +76,12 @@ function addDays(d: Date, days: number): Date {
  * instead of being suddenly there. Falls back to the static value when the
  * user prefers reduced motion.
  */
-function AnimatedNumber({ value }: { value: number }) {
+function AnimatedNumber({ value, appear }: { value: number; appear: boolean }) {
   const reduceMotion = useReducedMotion();
-  const [display, setDisplay] = useState(0);
+  // On revisits (appear=false) the number starts at its real value — the
+  // count-up-from-zero plays only on the session's first reveal (PP-4/EM-11).
+  // Mid-session value changes (semester filter, completed reviews) still animate.
+  const [display, setDisplay] = useState(appear ? 0 : value);
 
   useEffect(() => {
     // Reduced motion: skip the count-up but STILL reflect value changes — this
@@ -103,15 +115,39 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
   const de = language === "german";
   const locale = de ? "de-DE" : "en-GB"; // app-wide date locales (see DashboardClient)
 
-  const [data, setData] = useState<StatsResponse | null>(null);
+  const [data, setData] = useState<StatsResponse | null>(statsCache);
   const [error, setError] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(statsCache === null);
+  /** Bumped by the error state's retry button — re-runs the fetch effect (EM-6). */
+  const [reloadKey, setReloadKey] = useState(0);
   /** Semester filter — "all" (default) or a semester number present in `items`. */
   const [semesterFilter, setSemesterFilter] = useState<number | "all">("all");
+  /** IA-10: the module chart truncates to 8 — this expands it in place. */
+  const [showAllModules, setShowAllModules] = useState(false);
+
+  // Entrance choreography plays only on the session's first reveal (PP-4/EM-11).
+  // Captured once per mount (useState initializer, never set again).
+  const [appear] = useState(!statsRevealed);
+  // True once the first data commit has painted. Module-bar rows that mount
+  // LATER (expander, semester filter) must skip the scaleX entrance: children
+  // added to an already-settled variant tree never play their mount animation
+  // (framer quirk) and would sit invisible at scaleX(0).
+  const [entranceDone, setEntranceDone] = useState(!appear);
+  useEffect(() => {
+    if (loading || error) return;
+    statsRevealed = true;
+    if (entranceDone) return;
+    // Async flip (post-paint): rows of the first data commit keep their
+    // entrance; anything mounted afterwards renders settled.
+    const t = window.setTimeout(() => setEntranceDone(true), 0);
+    return () => window.clearTimeout(t);
+  }, [loading, error, entranceDone]);
 
   useEffect(() => {
     let cancelled = false;
-    // `loading` starts true — no synchronous setState needed here.
+    // With a cached response already on screen this is a silent background
+    // revalidation; `loading` is only true on a cold start or a retry, where
+    // the skeleton shows.
     fetch("/api/stats")
       .then((res) => {
         if (!res.ok) throw new Error(`status ${res.status}`);
@@ -119,12 +155,15 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
       })
       .then((json: StatsResponse) => {
         if (cancelled) return;
+        statsCache = json;
         setData(json);
         setError(false);
       })
       .catch((err) => {
         console.error("Failed to load stats:", err);
-        if (!cancelled) setError(true);
+        // A failed background revalidation keeps showing cached data — only a
+        // cold start with nothing to render falls into the error state.
+        if (!cancelled && statsCache === null) setError(true);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -132,7 +171,7 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [reloadKey]);
 
   // ---- Semester filter ------------------------------------------------------
   // Semesters offered by the selector: those present on active items.
@@ -270,7 +309,16 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
         items: m.items,
         avgLevel: m.items > 0 ? m.levelSum / m.items : 0,
       }))
-      .sort((a, b) => b.reviews - a.reviews || b.items - a.items);
+      // IA-10: riskiest first — the chart's job is "which module needs me?",
+      // and a struggling, avoided module must not sort out of sight. Modules
+      // without any reviews (no pass rate yet) go last.
+      .sort((a, b) => {
+        if (a.passRate === null || b.passRate === null) {
+          if (a.passRate === b.passRate) return b.items - a.items;
+          return a.passRate === null ? 1 : -1;
+        }
+        return a.passRate - b.passRate || b.reviews - a.reviews;
+      });
 
     // Due forecast: overdue collapses into "today", then 13 more days.
     const forecast: { date: Date; count: number; isToday: boolean }[] = Array.from({ length: 14 }, (_, i) => ({
@@ -295,34 +343,86 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
     const maxForecast = Math.max(1, ...forecast.map((f) => f.count));
     const maxLevel = Math.max(1, ...levelDist);
 
-    return { streak, weeks, recent, recentPassed, modules, forecast, levelDist, dueToday, maxForecast, maxLevel };
+    // AX-9: numbers for the heatmap's text alternative — the per-day data
+    // otherwise lives only in hover tooltips, invisible to AT.
+    let activeDays = 0;
+    let pastDays = 0;
+    let busiestDay: { date: Date; count: number } | null = null;
+    for (const week of weeks) {
+      for (const day of week.days) {
+        if (day.future) continue;
+        pastDays += 1;
+        if (day.count === 0) continue;
+        activeDays += 1;
+        if (busiestDay === null || day.count > busiestDay.count) busiestDay = { date: day.date, count: day.count };
+      }
+    }
+
+    return { streak, weeks, recent, recentPassed, modules, forecast, levelDist, dueToday, maxForecast, maxLevel, activeDays, pastDays, busiestDay };
     // dayStamp: recompute when the local day rolls over (see effect above).
   }, [filtered, locale, dayStamp]);
 
-  /* Heatmap ramp per Stats.dc.html: zero = var(--chart-zero), then amber-500 washes
-     0.28 → 0.5 → 0.72 → solid var(--a-g2). No glow — quiet until touched. */
+  /* Heatmap ramp per Stats.dc.html: zero = var(--chart-zero), then amber washes
+     0.4 → 0.5 → 0.72 → solid var(--a-g2). Non-zero cells also carry a hairline
+     accent border: luminance alone can't separate "studied once" from an empty
+     day (CC-9, WCAG 1.4.11), so activity is encoded with more than hue.
+     No glow — quiet until touched. */
+  const HEAT_RING = "border border-[color-mix(in_srgb,var(--a-g3)_35%,transparent)]";
   const heatColor = (count: number, future: boolean): string => {
     if (future) return "bg-transparent border border-(--heat-future-border)";
     if (count === 0) return "bg-(--chart-zero)";
-    if (count === 1) return "bg-(--accent-heat-1)";
-    if (count <= 2) return "bg-(--accent-heat-2)";
-    if (count <= 4) return "bg-(--accent-heat-3)";
-    return "bg-(--a-g2)";
+    if (count === 1) return `bg-(--accent-heat-1) ${HEAT_RING}`;
+    if (count <= 2) return `bg-(--accent-heat-2) ${HEAT_RING}`;
+    if (count <= 4) return `bg-(--accent-heat-3) ${HEAT_RING}`;
+    return `bg-(--a-g2) ${HEAT_RING}`;
   };
 
+  // LS-8: the heatmap opens anchored to today (the rightmost column) and shows
+  // edge fades while more weeks hide inside the scroller. Opacity-only motion.
+  const heatScrollRef = useRef<HTMLDivElement | null>(null);
+  const [heatFade, setHeatFade] = useState({ left: false, right: false });
+  const updateHeatFade = useCallback(() => {
+    const el = heatScrollRef.current;
+    if (!el) return;
+    const max = el.scrollWidth - el.clientWidth;
+    setHeatFade((prev) => {
+      const next = { left: el.scrollLeft > 2, right: el.scrollLeft < max - 2 };
+      return prev.left === next.left && prev.right === next.right ? prev : next;
+    });
+  }, []);
+  useLayoutEffect(() => {
+    const el = heatScrollRef.current;
+    if (!el) return;
+    el.scrollLeft = el.scrollWidth;
+    updateHeatFade();
+  }, [loading, error, updateHeatFade]);
+
   const passRate30 = computed.recent > 0 ? Math.round((computed.recentPassed / computed.recent) * 100) : null;
+
+  // AX-9: the heatmap's visually-hidden summary sentence.
+  const busiest = computed.busiestDay;
+  const heatSummary =
+    busiest === null
+      ? de
+        ? "Noch keine Reviews in den letzten 6 Monaten."
+        : "No reviews in the last 6 months."
+      : de
+        ? `An ${computed.activeDays} von ${computed.pastDays} Tagen gelernt. Stärkster Tag: ${busiest.date.toLocaleDateString(locale, { day: "numeric", month: "long" })} mit ${busiest.count} ${busiest.count === 1 ? "Review" : "Reviews"}.`
+        : `Studied on ${computed.activeDays} of the last ${computed.pastDays} days. Busiest day: ${busiest.date.toLocaleDateString(locale, { day: "numeric", month: "long" })} with ${busiest.count} ${busiest.count === 1 ? "review" : "reviews"}.`;
   // All-time totals only exist unfiltered (server-side count). With a semester
   // selected we count the filtered logs instead — they span the last 12 months,
   // so the card's sub-label switches to say exactly that.
   const totalReviews = semesterFilter === "all" ? (data?.totals.total ?? 0) : filtered.logs.length;
 
-  // ---- Loading skeleton (mirrors the final layout, so nothing jumps) --------
+  // ---- Loading skeleton --------------------------------------------------
+  // Mirrors the final layout EXACTLY — same wrapper gaps, same surfaces, same
+  // section count — so nothing shifts at the skeleton→data handoff (LS-7/EL-5).
   if (loading) {
     return (
-      <div className="flex flex-col gap-6" aria-busy="true" aria-label={de ? "Statistiken werden geladen" : "Loading statistics"}>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="flex flex-col gap-4" aria-busy="true" aria-label={de ? "Statistiken werden geladen" : "Loading statistics"}>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
           {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="card-surface p-5" style={{ animationDelay: `${i * 120}ms` }}>
+            <div key={i} className="card-surface-elevated p-5">
               <div className="w-5 h-5 rounded-md bg-paper-2 mb-4" />
               <div className="w-14 h-8 rounded-lg bg-paper-2 mb-3" />
               <div className="w-24 h-2.5 rounded-full bg-paper-2 mb-2" />
@@ -330,17 +430,38 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
             </div>
           ))}
         </div>
-        <div className="card-surface p-6">
+        <div className="card-surface p-5 md:px-6 md:py-[22px]">
           <div className="w-56 h-3 rounded-full bg-paper-2 mb-6" />
-          <div className="flex items-end gap-2 h-32">
-            {[35, 60, 20, 80, 45, 25, 70, 40, 55, 30, 65, 22, 50, 38].map((h, i) => (
-              <div key={i} className="flex-1 rounded-t-md bg-paper-2" style={{ height: `${h}%` }} />
-            ))}
+          <div className="h-28 rounded-xl bg-paper-0" />
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5">
+          <div className="card-surface p-5 md:px-6 md:py-[22px]">
+            <div className="w-48 h-3 rounded-full bg-paper-2 mb-6" />
+            <div className="flex flex-col gap-4">
+              {[0, 1, 2, 3, 4].map((i) => (
+                <div key={i}>
+                  <div className="w-32 h-2.5 rounded-full bg-paper-2 mb-2" />
+                  <div className="w-full h-[7px] rounded-full bg-paper-2" />
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="card-surface p-5 md:px-6 md:py-[22px]">
+            <div className="w-48 h-3 rounded-full bg-paper-2 mb-6" />
+            <div className="flex items-end gap-1.5 h-[150px]">
+              {[35, 60, 20, 80, 45, 25, 70, 40, 55, 30, 65, 22, 50, 38].map((h, i) => (
+                <div key={i} className="flex-1 rounded-t-md bg-paper-2" style={{ height: `${h}%` }} />
+              ))}
+            </div>
           </div>
         </div>
-        <div className="card-surface p-6">
+        <div className="card-surface p-5 md:px-6 md:py-[22px]">
           <div className="w-48 h-3 rounded-full bg-paper-2 mb-6" />
-          <div className="h-28 rounded-xl bg-paper-0" />
+          <div className="flex items-end gap-3 sm:gap-3.5 h-[130px]">
+            {[40, 65, 85, 55, 30, 20, 12].map((h, i) => (
+              <div key={i} className="flex-1 rounded-t-lg bg-paper-2" style={{ height: `${h}%` }} />
+            ))}
+          </div>
         </div>
       </div>
     );
@@ -353,6 +474,19 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
           <ExclamationTriangleIcon className="w-6 h-6 text-(--grade-fail-text)" />
         </div>
         <p className="text-ink-600 text-sm">{de ? "Statistiken konnten nicht geladen werden." : "Couldn't load statistics."}</p>
+        {/* EM-6: an error state without a way out is just an error message —
+            same recovery affordance as the Library's failure card. */}
+        <button
+          type="button"
+          onClick={() => {
+            setError(false);
+            setLoading(true);
+            setReloadKey((k) => k + 1);
+          }}
+          className="btn-primary h-11 px-6 text-sm mt-7 cursor-pointer"
+        >
+          {de ? "Erneut versuchen" : "Try again"}
+        </button>
       </div>
     );
   }
@@ -374,12 +508,38 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
     );
   }
 
-  const statCards = [
+  const statCards: {
+    icon: ReactNode;
+    label: string;
+    value: number | null;
+    suffix?: string;
+    /** LIVE-10: a phrase that replaces the value — the zero moment as invitation. */
+    zeroText?: string;
+    sub: string;
+  }[] = [
     {
-      icon: <FireIcon className={`w-4 h-4 ${computed.streak > 0 ? "text-amber-500" : "text-ink-300"}`} strokeWidth={1.7} />,
+      icon: <FireIcon className={`w-4 h-4 ${computed.streak > 0 ? "text-amber-500" : "text-ink-400"}`} strokeWidth={1.7} />,
       label: de ? "Tage-Streak" : "Day streak",
       value: computed.streak,
-      sub: de ? "Tage in Folge gelernt" : "consecutive study days",
+      // LIVE-10: a zero streak is an invitation, not a failure stat — lead
+      // with today instead of the bare zero.
+      zeroText: computed.streak === 0 ? (de ? "Heute zählt" : "Today counts") : undefined,
+      sub:
+        computed.streak > 0
+          ? de
+            ? "Tage in Folge gelernt"
+            : "consecutive study days"
+          : computed.dueToday > 0
+            ? de
+              ? computed.dueToday === 1
+                ? "eine Wiederholung wartet auf dich"
+                : `${computed.dueToday} Wiederholungen warten auf dich`
+              : computed.dueToday === 1
+                ? "one review is waiting for you"
+                : `${computed.dueToday} reviews are waiting for you`
+            : de
+              ? "dein nächstes Review startet die Serie"
+              : "your next review starts the streak",
     },
     {
       icon: <ClockIcon className="w-4 h-4 text-ink-400" strokeWidth={1.7} />,
@@ -420,7 +580,7 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
   ];
 
   return (
-    <motion.div variants={staggerContainer} initial="initial" animate="animate" className="flex flex-col gap-4">
+    <motion.div variants={staggerContainer} initial={appear ? "initial" : false} animate="animate" className="flex flex-col gap-4">
       {/* ── Semester filter ── (only shown once a second semester exists) */}
       {semesters.length > 1 && (
         <motion.div
@@ -456,10 +616,7 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
       {/* ── Stat cards ── */}
       <motion.div variants={riseChild} className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
         {statCards.map((card) => (
-          <div
-            key={card.label}
-            className="bg-paper-1 border border-hairline-card rounded-[18px] p-5 shadow-(--shadow-e2)"
-          >
+          <div key={card.label} className="card-surface-elevated p-5">
             <div className="flex items-center gap-2">
               {card.icon}
               <span className="caps-label tracking-[0.1em]">{card.label}</span>
@@ -468,9 +625,15 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
               className="font-display text-[34px] lg:text-[40px] leading-none tracking-[-0.01em] tabular-nums text-ink-900 mt-2.5"
               style={{ fontWeight: 520 }}
             >
-              {typeof card.value === "number" ? (
+              {card.zeroText ? (
+                /* LIVE-10: same line box as the numerals (the container's
+                   font-size keeps the strut), so the card doesn't reflow. */
+                <span className="text-[22px] tracking-[-0.005em]" style={{ fontWeight: 480 }}>
+                  {card.zeroText}
+                </span>
+              ) : typeof card.value === "number" ? (
                 <>
-                  <AnimatedNumber value={card.value} />
+                  <AnimatedNumber value={card.value} appear={appear} />
                   {card.suffix ? <span className="text-2xl text-ink-600">{card.suffix}</span> : null}
                 </>
               ) : (
@@ -490,44 +653,57 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
           </h4>
           <span className="text-xs text-ink-400">{de ? "Letzte 6 Monate" : "Last 6 months"}</span>
         </div>
-        <div className="overflow-x-auto custom-scrollbar pb-1">
-          <div className="flex gap-1 min-w-max">
-            {/* Weekday gutter (with a spacer matching the month-label row) */}
-            <div className="flex flex-col gap-1 pr-1.5 text-[9px] text-ink-300">
-              <span className="h-3" aria-hidden="true" />
-              <span className="h-[13px] leading-[13px]">{de ? "Mo" : "Mon"}</span>
-              <span className="h-[13px]" />
-              <span className="h-[13px]" />
-              <span className="h-[13px] leading-[13px]">{de ? "Do" : "Thu"}</span>
-              <span className="h-[13px]" />
-              <span className="h-[13px]" />
-              <span className="h-[13px] leading-[13px]">{de ? "So" : "Sun"}</span>
+        {/* AX-9: the per-day data lives in hover tooltips on plain divs — this
+            sentence is the grid's text alternative for AT. */}
+        <p className="sr-only">{heatSummary}</p>
+        <div className="relative">
+          <div ref={heatScrollRef} onScroll={updateHeatFade} className="overflow-x-auto custom-scrollbar pb-1">
+            <div className="flex gap-1 min-w-max" aria-hidden="true">
+              {/* Weekday gutter (with a spacer matching the month-label row).
+                  Sticky so the labels survive the auto-scroll to "today" (LS-8). */}
+              <div className="flex flex-col gap-1 pr-1.5 text-[10px] text-ink-400 sticky left-0 z-[1] bg-paper-1">
+                <span className="h-3" aria-hidden="true" />
+                <span className="h-[13px] leading-[13px]">{de ? "Mo" : "Mon"}</span>
+                <span className="h-[13px]" />
+                <span className="h-[13px]" />
+                <span className="h-[13px] leading-[13px]">{de ? "Do" : "Thu"}</span>
+                <span className="h-[13px]" />
+                <span className="h-[13px]" />
+                <span className="h-[13px] leading-[13px]">{de ? "So" : "Sun"}</span>
+              </div>
+              {computed.weeks.map((week, w) => (
+                <motion.div
+                  key={w}
+                  initial={appear ? { opacity: 0, y: 8 } : false}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: DUR.gentle, ease: EASE_OUT, delay: 0.15 + Math.min(w, 8) * 0.03 }}
+                  className="flex flex-col gap-1"
+                >
+                  <span className="h-3 text-[10px] text-ink-400 leading-3 whitespace-nowrap">{week.label ?? ""}</span>
+                  {week.days.map((cell) => (
+                    <Tip key={cell.key} label={`${cell.date.toLocaleDateString(locale)} — ${cell.count} ${de ? (cell.count === 1 ? "Review" : "Reviews") : (cell.count === 1 ? "review" : "reviews")}`}>
+                      <div className={`heat-cell w-[13px] h-[13px] rounded-[3px] ${heatColor(cell.count, cell.future)}`} />
+                    </Tip>
+                  ))}
+                </motion.div>
+              ))}
             </div>
-            {computed.weeks.map((week, w) => (
-              <motion.div
-                key={w}
-                initial={{ opacity: 0, y: 6 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5, ease: EASE_OUT, delay: 0.15 + w * 0.035 }}
-                className="flex flex-col gap-1"
-              >
-                <span className="h-3 text-[9px] text-ink-400 leading-3 whitespace-nowrap">{week.label ?? ""}</span>
-                {week.days.map((cell) => (
-                  <Tip key={cell.key} label={`${cell.date.toLocaleDateString(locale)} — ${cell.count} ${de ? (cell.count === 1 ? "Review" : "Reviews") : (cell.count === 1 ? "review" : "reviews")}`}>
-                    <div className={`heat-cell w-[13px] h-[13px] rounded-[3px] ${heatColor(cell.count, cell.future)}`} />
-                  </Tip>
-                ))}
-              </motion.div>
-            ))}
           </div>
+          {/* LS-8: edge fades so truncation reads as "more here" (opacity-only). */}
+          <div
+            className={`pointer-events-none absolute inset-y-0 left-0 w-8 bg-gradient-to-r from-paper-1 to-transparent transition-opacity duration-150 ${heatFade.left ? "opacity-100" : "opacity-0"}`}
+          />
+          <div
+            className={`pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-paper-1 to-transparent transition-opacity duration-150 ${heatFade.right ? "opacity-100" : "opacity-0"}`}
+          />
         </div>
-        <div className="flex items-center justify-end gap-1.5 mt-4 text-[10px] text-ink-400">
+        <div className="flex items-center justify-end gap-1.5 mt-4 text-[10px] text-ink-400" aria-hidden="true">
           {de ? "Weniger" : "Less"}
           <div className="w-3 h-3 rounded-[3px] bg-(--chart-zero)" />
-          <div className="w-3 h-3 rounded-[3px] bg-(--accent-heat-1)" />
-          <div className="w-3 h-3 rounded-[3px] bg-(--accent-heat-2)" />
-          <div className="w-3 h-3 rounded-[3px] bg-(--accent-heat-3)" />
-          <div className="w-3 h-3 rounded-[3px] bg-(--a-g2)" />
+          <div className={`w-3 h-3 rounded-[3px] bg-(--accent-heat-1) ${HEAT_RING}`} />
+          <div className={`w-3 h-3 rounded-[3px] bg-(--accent-heat-2) ${HEAT_RING}`} />
+          <div className={`w-3 h-3 rounded-[3px] bg-(--accent-heat-3) ${HEAT_RING}`} />
+          <div className={`w-3 h-3 rounded-[3px] bg-(--a-g2) ${HEAT_RING}`} />
           {de ? "Mehr" : "More"}
         </div>
       </motion.div>
@@ -539,10 +715,10 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
             {de ? "Bestehensquote nach Modul" : "Pass rate by module"}
           </h4>
           {computed.modules.length === 0 ? (
-            <p className="text-ink-300 text-sm">{de ? "Noch keine Daten." : "No data yet."}</p>
+            <p className="text-ink-600 text-sm">{de ? "Noch keine Daten." : "No data yet."}</p>
           ) : (
             <div className="flex flex-col gap-4">
-              {computed.modules.slice(0, 8).map((mod, i) => (
+              {(showAllModules ? computed.modules : computed.modules.slice(0, 8)).map((mod, i) => (
                 <div key={mod.name}>
                   <Tip label={`${mod.reviews} ${de ? "Reviews" : "reviews"}${mod.items > 0 ? ` · ${mod.items} ${de ? "Vorl." : "lect."} · Ø L${(mod.avgLevel + 1).toLocaleString(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}` : ""}`}>
                   <div className="flex justify-between gap-3 text-[13px] mb-[7px]">
@@ -556,9 +732,9 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
                     {/* Fill scales via transform — box width stays constant */}
                     <div className="h-full" style={{ width: `${mod.passRate ?? 0}%` }}>
                       <motion.div
-                        initial={{ scaleX: 0 }}
+                        initial={appear && !entranceDone ? { scaleX: 0 } : false}
                         animate={{ scaleX: 1 }}
-                        transition={{ duration: 0.5, ease: EASE_OUT, delay: 0.15 + Math.min(i, 8) * 0.03 }}
+                        transition={{ duration: DUR.gentle, ease: EASE_OUT, delay: 0.15 + Math.min(i, 8) * 0.03 }}
                         style={{ transformOrigin: "left" }}
                         className={`h-full w-full rounded-full ${mod.passRate !== null && mod.passRate >= 80 ? "bg-(--grade-pass-accent)" : mod.passRate !== null && mod.passRate >= 50 ? "bg-(--grade-mid)" : "bg-(--grade-fail-accent)"}`}
                       />
@@ -566,10 +742,31 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
                   </div>
                 </div>
               ))}
+              {/* IA-10: never truncate silently — the cut is visible and reversible. */}
+              {computed.modules.length > 8 && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllModules((v) => !v)}
+                  className="self-start text-[13px] text-ink-600 hover:text-ink-900 transition-colors cursor-pointer"
+                  style={{ fontWeight: 550 }}
+                >
+                  {showAllModules
+                    ? de ? "Weniger anzeigen" : "Show fewer"
+                    : de
+                      ? computed.modules.length - 8 === 1
+                        ? "+1 weiteres Modul"
+                        : `+${computed.modules.length - 8} weitere Module`
+                      : computed.modules.length - 8 === 1
+                        ? "+1 more module"
+                        : `+${computed.modules.length - 8} more modules`}
+                </button>
+              )}
             </div>
           )}
           <p className="text-[11px] text-ink-400 mt-[18px]">
-            {de ? "Balken zeigt die Bestehensquote der letzten 12 Monate." : "Bar shows pass rate over the last 12 months."}
+            {de
+              ? "Balken zeigen die Bestehensquote der letzten 12 Monate — niedrigste zuerst."
+              : "Bars show pass rate over the last 12 months — lowest first."}
           </p>
         </div>
 
@@ -589,9 +786,9 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
                   style={{ height: day.count === 0 ? "4px" : `${Math.max(4, (day.count / computed.maxForecast) * 100)}%` }}
                 >
                   <motion.div
-                    initial={{ scaleY: 0 }}
+                    initial={appear ? { scaleY: 0 } : false}
                     animate={{ scaleY: 1 }}
-                    transition={{ duration: 0.5, ease: EASE_OUT, delay: 0.1 + Math.min(i, 8) * 0.03 }}
+                    transition={{ duration: DUR.gentle, ease: EASE_OUT, delay: 0.1 + Math.min(i, 8) * 0.03 }}
                     style={{ transformOrigin: "bottom" }}
                     className={`w-full h-full rounded-t-[5px] ${
                       day.count === 0
@@ -635,9 +832,9 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
                   style={{ height: count === 0 ? "4px" : `${Math.max(4, (count / computed.maxLevel) * 100)}%` }}
                 >
                   <motion.div
-                    initial={{ scaleY: 0 }}
+                    initial={appear ? { scaleY: 0 } : false}
                     animate={{ scaleY: 1 }}
-                    transition={{ duration: 0.5, ease: EASE_OUT, delay: 0.2 + level * 0.03 }}
+                    transition={{ duration: DUR.gentle, ease: EASE_OUT, delay: 0.2 + level * 0.03 }}
                     style={{
                       transformOrigin: "bottom",
                       /* Amber intensity scales with height; the tallest bar is solid. */

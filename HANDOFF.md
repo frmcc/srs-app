@@ -19,6 +19,11 @@ cited code — line numbers may have drifted; locate by the quoted evidence. If 
 session died mid-batch, a finding may be marked open while partially edited (or vice
 versa) — trust the code over the doc, and fix the doc.
 
+**Starting after a dead session:** run `git status` first. Uncommitted modified files may
+be half-edited by an interrupted agent. If `npx tsc --noEmit` fails or a diff looks
+truncated, discard those uncommitted files (`git checkout -- <file>`) and re-implement
+their still-open finding IDs from the doc. Everything committed is verified and safe.
+
 ## Working rules (non-negotiable)
 
 1. Work on branch **`design-polish`**; merge/push to `main` only when a wave is verified

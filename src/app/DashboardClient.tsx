@@ -357,7 +357,7 @@ function detectFeedbackLanguage(text: string): "german" | "english" | "unknown" 
 const ACCENT_PREVIEW_DOT: Record<AppearanceAccent, { paper: string; ink: string }> = {
   amber: { paper: "#EF9F1F", ink: "#F2A62E" },
   slate: { paper: "#6E8FB4", ink: "#8BAACC" },
-  eucalyptus: { paper: "#619F88", ink: "#80B69F" },
+  eucalyptus: { paper: "#619F98", ink: "#80B6B0" },
   heather: { paper: "#9C7EB6", ink: "#AC90C6" },
   graphite: { paper: "#4E4638", ink: "#DED5C3" },
 };
@@ -365,7 +365,7 @@ const ACCENT_PREVIEW_DOT: Record<AppearanceAccent, { paper: string; ink: string 
 const ACCENT_SWATCH: Record<AppearanceAccent, { paper: [string, string, string]; ink: [string, string, string]; onPaper: string; onInk: string }> = {
   amber: { paper: ["#F7BC5A", "#EF9F1F", "#DE850B"], ink: ["#F9C468", "#F2A62E", "#DE8A0E"], onPaper: "#2A1D07", onInk: "#2A1D07" },
   slate: { paper: ["#97B2D0", "#6E8FB4", "#55779D"], ink: ["#AFC8E2", "#8BAACC", "#6F92B8"], onPaper: "#142638", onInk: "#142638" },
-  eucalyptus: { paper: ["#8FC0AC", "#619F88", "#4A8770"], ink: ["#A5D2BF", "#80B69F", "#649D86"], onPaper: "#0E241C", onInk: "#0E241C" },
+  eucalyptus: { paper: ["#8FC0BA", "#619F98", "#4A8780"], ink: ["#A5D2CD", "#80B6B0", "#649D96"], onPaper: "#0E2421", onInk: "#0E2421" },
   heather: { paper: ["#BBA2CE", "#9C7EB6", "#83659F"], ink: ["#CBB4DD", "#AC90C6", "#9174AB"], onPaper: "#241533", onInk: "#241533" },
   graphite: { paper: ["#6E6455", "#4E4638", "#37312A"], ink: ["#F4EEE1", "#DED5C3", "#C4B8A0"], onPaper: "#F6F3EC", onInk: "#211B12" },
 };
@@ -1281,16 +1281,18 @@ export default function DashboardClient({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
-      if (promptModal) { setPromptModal(null); return; }
-      if (promptsModal) { setPromptsModal(null); return; }
-      if (compFeedback) { setCompFeedback(null); return; }
-      if (showSettingsModal) { closeSettingsModal(); return; }
-      if (showCalendarModal) { setShowCalendarModal(false); return; }
-      if (activeFeedbackItem) { setActiveFeedbackItem(null); return; }
-      if (archiveModalData) { setArchiveModalData(null); return; }
-      if (snoozeArmedId) { setSnoozeArmedId(null); return; }
-      if (confirmingDeleteId) { setConfirmingDeleteId(null); return; }
-      if (confirmingDeleteModuleKey) { setConfirmingDeleteModuleKey(null); return; }
+      // IS-10: mark the press consumed — the tutor panel's own Escape listener
+      // checks defaultPrevented, so one keystroke closes exactly one layer.
+      if (promptModal) { e.preventDefault(); setPromptModal(null); return; }
+      if (promptsModal) { e.preventDefault(); setPromptsModal(null); return; }
+      if (compFeedback) { e.preventDefault(); setCompFeedback(null); return; }
+      if (showSettingsModal) { e.preventDefault(); closeSettingsModal(); return; }
+      if (showCalendarModal) { e.preventDefault(); setShowCalendarModal(false); return; }
+      if (activeFeedbackItem) { e.preventDefault(); setActiveFeedbackItem(null); return; }
+      if (archiveModalData) { e.preventDefault(); setArchiveModalData(null); return; }
+      if (snoozeArmedId) { e.preventDefault(); setSnoozeArmedId(null); return; }
+      if (confirmingDeleteId) { e.preventDefault(); setConfirmingDeleteId(null); return; }
+      if (confirmingDeleteModuleKey) { e.preventDefault(); setConfirmingDeleteModuleKey(null); return; }
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
@@ -3555,7 +3557,7 @@ export default function DashboardClient({
                                                                 </div>
 
                                                                 {/* Honest footnote — replaces the old, often-wrong "N of 7 quizzes generated" line. */}
-                                                                <p className="text-[10px] text-ink-300 mt-3">
+                                                                <p className="text-[10px] text-ink-400 mt-3">
                                                                   {totalRepeats > 0
                                                                     ? (language === "german"
                                                                         ? `${totalRepeats} Wiederholung${totalRepeats === 1 ? "" : "en"} insgesamt${inMastery ? " · in der Meister-Schleife" : ""}`
@@ -3610,7 +3612,7 @@ export default function DashboardClient({
                                                                 </button>
                                                               )}
                                                             </div>
-                                                            <p className="text-[10px] text-ink-300 mt-2">
+                                                            <p className="text-[10px] text-ink-400 mt-2">
                                                               {language === "german"
                                                                 ? "Misst dein tatsächliches Verständnis anhand deiner bisherigen Bewertungen — Zeitplan und Level bleiben unberührt. Jeder Lauf überschreibt das letzte Ergebnis."
                                                                 : "Measures your actual understanding from your assessment history — schedule and levels stay untouched. Each run overwrites the last result."}
@@ -4567,7 +4569,7 @@ export default function DashboardClient({
                                     <ChevronDownIcon className="w-3.5 h-3.5" />
                                   </motion.span>
                                 ) : (
-                                  <span className="text-[9px] text-ink-300 shrink-0">{language === "german" ? "kein Brief" : "no brief"}</span>
+                                  <span className="text-[9px] text-ink-400 shrink-0">{language === "german" ? "kein Brief" : "no brief"}</span>
                                 )}
                               </button>
                               <AnimatePresence initial={false}>
@@ -4595,7 +4597,7 @@ export default function DashboardClient({
                                               </div>
                                             )}
                                             {translated && !showFeedbackOriginal && (
-                                              <p className="text-[10px] text-ink-300 mb-2">
+                                              <p className="text-[10px] text-ink-400 mb-2">
                                                 {language === "german" ? "Automatisch übersetzt" : "Auto-translated"}
                                               </p>
                                             )}
@@ -4612,7 +4614,7 @@ export default function DashboardClient({
                             </div>
                           );
                         })}
-                        <p className="text-[10px] text-ink-300 pt-1">
+                        <p className="text-[10px] text-ink-400 pt-1">
                           {language === "german"
                             ? "Briefe werden ab jetzt bei jeder Bewertung gespeichert — ältere Einträge haben noch keinen."
                             : "Briefs are stored per review from now on — older entries don't have one yet."}
@@ -5244,7 +5246,7 @@ export default function DashboardClient({
       </div>
 
       {/* Toast notifications (non-blocking alert replacement) */}
-      <ToastStack toasts={toasts} onDismiss={dismissToast} />
+      <ToastStack toasts={toasts} onDismiss={dismissToast} language={language} />
 
       {/* Prompts list — one quiet entry point for a lecture's debug prompts */}
       <AnimatePresence>

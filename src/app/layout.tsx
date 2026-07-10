@@ -11,6 +11,10 @@ const fraunces = Fraunces({
   // Optical size axis: display-grade cut (sharp serifs, high contrast) at
   // heading sizes — without this, every size renders the soft 9pt text cut.
   axes: ["opsz"],
+  // "optional": the 34–54px serif heroes must never morph mid-view (PP-7).
+  // On a slow cold load the size-adjusted fallback keeps the frame; every
+  // warm load renders Fraunces instantly from cache. (Inter stays on swap.)
+  display: "optional",
 });
 
 const inter = Inter({
