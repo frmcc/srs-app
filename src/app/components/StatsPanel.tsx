@@ -11,6 +11,7 @@ import {
   ExclamationTriangleIcon,
 } from "@heroicons/react/24/outline";
 import { Tip } from "./Tooltip";
+import { fmtPercent } from "@/lib/format";
 
 /**
  * Statistik tab. All day-based aggregation (streak, heatmap, forecast) is done
@@ -404,10 +405,10 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
   const heatSummary =
     busiest === null
       ? de
-        ? "Noch keine Reviews in den letzten 6 Monaten."
+        ? "Noch keine Wiederholungen in den letzten 6 Monaten."
         : "No reviews in the last 6 months."
       : de
-        ? `An ${computed.activeDays} von ${computed.pastDays} Tagen gelernt. Stärkster Tag: ${busiest.date.toLocaleDateString(locale, { day: "numeric", month: "long" })} mit ${busiest.count} ${busiest.count === 1 ? "Review" : "Reviews"}.`
+        ? `An ${computed.activeDays} von ${computed.pastDays} Tagen gelernt. Stärkster Tag: ${busiest.date.toLocaleDateString(locale, { day: "numeric", month: "long" })} mit ${busiest.count} ${busiest.count === 1 ? "Wiederholung" : "Wiederholungen"}.`
         : `Studied on ${computed.activeDays} of the last ${computed.pastDays} days. Busiest day: ${busiest.date.toLocaleDateString(locale, { day: "numeric", month: "long" })} with ${busiest.count} ${busiest.count === 1 ? "review" : "reviews"}.`;
   // All-time totals only exist unfiltered (server-side count). With a semester
   // selected we count the filtered logs instead — they span the last 12 months,
@@ -502,7 +503,7 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
           {de ? "Noch keine Daten" : "No data yet"}
         </h3>
         <p className="text-ink-600 text-sm leading-relaxed max-w-sm">
-          {de ? "Dein erstes Review schreibt den ersten Datenpunkt." : "Your first review writes the first data point."}
+          {de ? "Deine erste Wiederholung schreibt den ersten Datenpunkt." : "Your first review writes the first data point."}
         </p>
       </div>
     );
@@ -538,7 +539,7 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
                 ? "one review is waiting for you"
                 : `${computed.dueToday} reviews are waiting for you`
             : de
-              ? "dein nächstes Review startet die Serie"
+              ? "deine nächste Wiederholung startet die Serie"
               : "your next review starts the streak",
     },
     {
@@ -551,26 +552,28 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
             ? `~${computed.dueToday * 7} Minuten`
             : `~${computed.dueToday * 7} minutes`
           : de
-            ? "inkl. überfälliger Reviews"
+            ? "inkl. überfälliger Wiederholungen"
             : "incl. overdue reviews",
     },
     {
       icon: <ArrowTrendingUpIcon className="w-4 h-4 text-(--grade-pass-accent)" strokeWidth={1.7} />,
       label: de ? "Quote · 30 T." : "Pass rate · 30d",
       value: passRate30,
-      suffix: "%",
+      // TY-4: the numeral animates separately, so the sign carries its own
+      // narrow no-break space in German (DIN 5008) — cf. fmtPercent().
+      suffix: de ? "\u202F%" : "%",
       sub:
         computed.recent > 0
           ? de
             ? `${computed.recentPassed} von ${computed.recent} bestanden`
             : `${computed.recentPassed} of ${computed.recent} passed`
           : de
-            ? "noch keine Reviews"
+            ? "noch keine Wiederholungen"
             : "no reviews yet",
     },
     {
       icon: <CheckCircleIcon className="w-4 h-4 text-ink-400" strokeWidth={1.7} />,
-      label: de ? "Reviews gesamt" : "Total reviews",
+      label: de ? "Wiederholungen gesamt" : "Total reviews",
       value: totalReviews,
       sub:
         semesterFilter === "all"
@@ -681,7 +684,7 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
                 >
                   <span className="h-3 text-[10px] text-ink-400 leading-3 whitespace-nowrap">{week.label ?? ""}</span>
                   {week.days.map((cell) => (
-                    <Tip key={cell.key} label={`${cell.date.toLocaleDateString(locale)} — ${cell.count} ${de ? (cell.count === 1 ? "Review" : "Reviews") : (cell.count === 1 ? "review" : "reviews")}`}>
+                    <Tip key={cell.key} label={`${cell.date.toLocaleDateString(locale)} — ${cell.count} ${de ? (cell.count === 1 ? "Wiederholung" : "Wiederholungen") : (cell.count === 1 ? "review" : "reviews")}`}>
                       <div className={`heat-cell w-[13px] h-[13px] rounded-[3px] ${heatColor(cell.count, cell.future)}`} />
                     </Tip>
                   ))}
@@ -720,11 +723,11 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
             <div className="flex flex-col gap-4">
               {(showAllModules ? computed.modules : computed.modules.slice(0, 8)).map((mod, i) => (
                 <div key={mod.name}>
-                  <Tip label={`${mod.reviews} ${de ? "Reviews" : "reviews"}${mod.items > 0 ? ` · ${mod.items} ${de ? "Vorl." : "lect."} · Ø L${(mod.avgLevel + 1).toLocaleString(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}` : ""}`}>
+                  <Tip label={`${mod.reviews} ${de ? (mod.reviews === 1 ? "Wiederholung" : "Wiederholungen") : (mod.reviews === 1 ? "review" : "reviews")}${mod.items > 0 ? ` · ${mod.items} ${de ? "Vorl." : "lect."} · Ø L${(mod.avgLevel + 1).toLocaleString(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}` : ""}`}>
                   <div className="flex justify-between gap-3 text-[13px] mb-[7px]">
                     <span className="text-ink-900 truncate" style={{ fontWeight: 550 }}>{mod.name}</span>
                     <span className="text-ink-600 tabular-nums whitespace-nowrap">
-                      {mod.passRate === null ? "—" : `${mod.passRate}%`}
+                      {mod.passRate === null ? "—" : fmtPercent(mod.passRate, language)}
                     </span>
                   </div>
                   </Tip>
@@ -773,7 +776,7 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
         {/* ── Review load · next 14 days ── */}
         <div className="card-surface p-5 md:px-6 md:py-[22px]">
           <h4 className="text-sm text-ink-900" style={{ fontWeight: 650 }}>
-            {de ? "Review-Last · nächste 14 Tage" : "Review load · next 14 days"}
+            {de ? "Pensum · nächste 14 Tage" : "Review load · next 14 days"}
           </h4>
           <div className="flex items-end gap-1.5 h-[150px] mt-5">
             {computed.forecast.map((day, i) => (

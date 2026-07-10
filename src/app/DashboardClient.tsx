@@ -68,10 +68,16 @@ import { AutoGrowTextarea } from "./components/AutoGrowTextarea";
 import { ScribbleCanvas } from "./components/ScribbleCanvas";
 import StatsPanel from "./components/StatsPanel";
 import TutorPanel from "./components/TutorPanel";
+import { fmtPercent } from "@/lib/format";
 import { signOut } from "next-auth/react";
 
 const LIB_LEVEL_SHORT = ["T1", "T3", "T7", "T21", "T60", "T180", "T365"] as const;
-const LIB_LEVEL_FULL  = ["Tag 1", "Tag 3", "Tag 7", "Tag 21", "Tag 60", "Tag 180", "Tag 365"] as const;
+const LIB_LEVEL_DAYS  = [1, 3, 7, 21, 60, 180, 365] as const;
+/** MC-4: interval names sit inside otherwise-localized tooltips — derive them per language ("Tag 7" / "Day 7"). */
+const libLevelFull = (l: number, language: string) => `${language === "german" ? "Tag" : "Day"} ${LIB_LEVEL_DAYS[l]}`;
+/** MC-3: bilingual, blame-free fallback when a stream error event carries no message. */
+const fallbackErrorMsg = (language: string) =>
+  language === "german" ? "Etwas ist schiefgelaufen — bitte erneut versuchen." : "Something went wrong — please try again.";
 
 // Scribble key for the free-form (unstructured) answer box — the per-task
 // sketches are keyed by task.id, this one has no task to hang off.
@@ -378,6 +384,25 @@ const ACCENT_COPY: Record<AppearanceAccent, { name: string; en: string; de: stri
   heather: { name: "Heather", en: "— quiet violet from psychology's shelf of the library.", de: "— leises Violett aus dem Psychologie-Regal der Bibliothek." },
   graphite: { name: "Graphite", en: "— no colour at all. Ink, paper, and your own focus.", de: "— gar keine Farbe. Tinte, Papier und dein eigener Fokus." },
 };
+
+/**
+ * MC-8: the library's Meister/Mastery badge, shared so due cards, scheduled
+ * rows and the quiz header never render the impossible "Level 8 von 7" once
+ * an item loops the T365 mastery interval (currentLevel is uncapped).
+ */
+function MasteryBadge({ level, language, className = "" }: { level: number; language: string; className?: string }) {
+  const laps = level - (LIB_LEVEL_SHORT.length - 1); // completed T365 mastery reviews
+  return (
+    <Tip label={language === "german"
+      ? `Alle 7 Level bestanden — ${laps}× durch die Meister-Schleife (Tag 365)`
+      : `All 7 levels cleared — ${laps}× through the mastery loop (Day 365)`}>
+      <span className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-[0.08em] px-2 py-0.5 rounded-full bg-amber-400/[0.14] border border-(--accent-border-soft) text-(--accent-text-strong) whitespace-nowrap ${className}`}>
+        <AcademicCapIcon className="w-3 h-3" strokeWidth={2} />
+        {language === "german" ? "Meister" : "Mastery"} ×{laps}
+      </span>
+    </Tip>
+  );
+}
 
 /** Colorize standalone PASS/REPEAT verdicts inside feedback text. */
 function colorizeVerdicts(text: string, keyPrefix: string): ReactNode[] {
@@ -949,7 +974,13 @@ export default function DashboardClient({
       // Read at runtime from the server prop (works on Cloud Run without needing
       // the var inlined at build time, which is the usual cause of this error).
       const vapidKey = vapidPublicKey;
-      if (!vapidKey) { addToast("error", "VAPID key not configured."); return; }
+      if (!vapidKey) {
+        // MC-7: "VAPID" is developer jargon — surface the same warm bilingual
+        // failure as every other push error and keep the real cause in the console.
+        console.error("Push subscribe error: VAPID public key not configured.");
+        addToast("error", language === "german" ? "Mitteilungen konnten nicht aktiviert werden." : "Couldn't enable notifications.");
+        return;
+      }
 
       let sub = await reg.pushManager.getSubscription();
       if (!sub) {
@@ -1815,7 +1846,7 @@ export default function DashboardClient({
             if (activeTabRef.current === "upload") setActiveTab("dashboard");
           }, 3000);
         } else if (evt.event === "error") {
-          const msg = evt.data.message ?? "Unbekannter Fehler";
+          const msg = evt.data.message ?? fallbackErrorMsg(language);
           setProgressMsg(msg);
           // EM-1 — keep a persistent inline failure record (the progress screen
           // unmounts right after this and a 5s toast is easy to miss).
@@ -1959,7 +1990,7 @@ export default function DashboardClient({
             });
           }
         } else if (evt.event === "error") {
-          const msg = evt.data.message ?? "Unbekannter Fehler";
+          const msg = evt.data.message ?? fallbackErrorMsg(language);
           setGradingMsg(msg);
           setGradingError(msg);
           addToast("error", `${language === "german" ? "Bewertungsfehler" : "Grading error"}: ${msg}`);
@@ -2027,7 +2058,7 @@ export default function DashboardClient({
         } else if (evt.event === "done") {
           quizText = evt.data.quizText ?? "";
         } else if (evt.event === "error") {
-          errMsg = evt.data.message ?? "Unbekannter Fehler";
+          errMsg = evt.data.message ?? fallbackErrorMsg(language);
         }
       });
       if (errMsg) throw new Error(errMsg);
@@ -2608,9 +2639,14 @@ export default function DashboardClient({
                                             <div className="text-base font-semibold tracking-[-0.011em] text-ink-900 mt-[5px] max-sm:line-clamp-2 sm:truncate">{review.topic}</div>
                                           </Tip>
                                         </div>
-                                        <span className="hidden sm:inline-block text-xs text-ink-600 border border-(--line-soft) rounded-full px-2.5 py-1 whitespace-nowrap tnum" style={{ fontWeight: 550 }}>
-                                          Level&nbsp;{review.level + 1}&nbsp;{de ? "von" : "of"}&nbsp;7
-                                        </span>
+                                        {review.level >= LIB_LEVEL_SHORT.length ? (
+                                          /* MC-8: past level 7 the counter keeps climbing — celebrate mastery instead of "Level 8 von 7" */
+                                          <MasteryBadge level={review.level} language={language} className="max-sm:hidden" />
+                                        ) : (
+                                          <span className="hidden sm:inline-block text-xs text-ink-600 border border-(--line-soft) rounded-full px-2.5 py-1 whitespace-nowrap tnum" style={{ fontWeight: 550 }}>
+                                            Level&nbsp;{review.level + 1}&nbsp;{de ? "von" : "of"}&nbsp;7
+                                          </span>
+                                        )}
                                         {snoozeArmedId === review.id && !snoozingIds[review.id] ? (
                                           <motion.div
                                             initial={{ opacity: 0, scale: 0.9, y: -4 }}
@@ -2831,7 +2867,12 @@ export default function DashboardClient({
                                         <div className="text-sm tracking-[-0.008em] text-ink-900 truncate" style={{ fontWeight: 570 }}>{review.topic}</div>
                                         <div className="text-xs text-ink-400 mt-0.5 truncate">{review.subject}</div>
                                       </div>
-                                      <span className="text-xs text-ink-400 whitespace-nowrap">Level {review.level + 1}</span>
+                                      {review.level >= LIB_LEVEL_SHORT.length ? (
+                                        /* MC-8: mastered items show the library's Meister badge, not an uncapped level count */
+                                        <MasteryBadge level={review.level} language={language} />
+                                      ) : (
+                                        <span className="text-xs text-ink-400 whitespace-nowrap">Level {review.level + 1}</span>
+                                      )}
                                       <span className="text-[13px] text-ink-600 tnum w-[84px] text-right whitespace-nowrap" style={{ fontWeight: 550 }}>{fmtShort(new Date(review.raw.nextReviewDate))}</span>
                                     </div>
                                   </div>
@@ -2876,12 +2917,12 @@ export default function DashboardClient({
                               <div className="card-surface p-5">
                                 <div className="caps-label">{de ? "Bestehensquote · 30 Tage" : "Pass rate · last 30 days"}</div>
                                 <div className="font-display text-[34px] tracking-[-0.01em] text-ink-900 mt-2 leading-none tnum" style={{ fontWeight: 520 }}>
-                                  {Math.round((passRate30.passed / passRate30.total) * 100)}%
+                                  {fmtPercent((passRate30.passed / passRate30.total) * 100, language)}
                                 </div>
                                 <div className="text-[13px] text-ink-600 mt-1.5">
                                   {de
-                                    ? `${passRate30.passed} von ${passRate30.total} Reviews bestanden`
-                                    : `${passRate30.passed} of ${passRate30.total} reviews passed`}
+                                    ? `${passRate30.passed} von ${passRate30.total} ${passRate30.total === 1 ? "Wiederholung" : "Wiederholungen"} bestanden`
+                                    : `${passRate30.passed} of ${passRate30.total} ${passRate30.total === 1 ? "review" : "reviews"} passed`}
                                 </div>
                                 <div className="h-[3px] rounded-full bg-paper-2 mt-3.5 overflow-hidden">
                                   <div className="h-full rounded-full bg-(--grade-pass-accent)" style={{ width: `${Math.round((passRate30.passed / passRate30.total) * 100)}%` }}></div>
@@ -2907,7 +2948,7 @@ export default function DashboardClient({
                 className="max-w-3xl mx-auto"
               >
                 <header className="mb-10">
-                  <p className="caps-label tracking-[0.14em] mb-3">{language === 'german' ? 'Neues Modul' : 'New module'}</p>
+                  <p className="caps-label tracking-[0.14em] mb-3">{language === 'german' ? 'Neue Vorlesung' : 'New lecture'}</p>
                   <h1 className="font-display text-[34px] sm:text-[40px] tracking-[-0.02em] leading-[1.05] text-ink-900 mb-3" style={{ fontWeight: 470 }}>
                     {language === 'german' ? <>Aus einer Vorlesung wird ein <em className="italic">Quiz</em>.</> : <>Turn a lecture into a <em className="italic">quiz</em>.</>}
                   </h1>
@@ -2919,7 +2960,7 @@ export default function DashboardClient({
                     <div className="w-16 h-16 rounded-[18px] bg-(--accent-wash-soft) border border-(--accent-border-soft) flex items-center justify-center mb-6">
                       <ArrowPathIcon className="w-7 h-7 text-(--accent-text-strong) animate-spin" strokeWidth={1.6} />
                     </div>
-                    <h3 className="font-display text-[26px] text-ink-900 mb-2" style={{ fontWeight: 470 }}>{language === 'german' ? 'Dein Modul entsteht' : 'Building your module'}</h3>
+                    <h3 className="font-display text-[26px] text-ink-900 mb-2" style={{ fontWeight: 470 }}>{language === 'german' ? 'Deine Vorlesung entsteht' : 'Building your lecture'}</h3>
                     <p className="text-ink-600 mb-9 text-sm">{progressMsg}</p>
 
                     <div className="progress-track w-full max-w-[460px] h-1 overflow-hidden">
@@ -3370,7 +3411,7 @@ export default function DashboardClient({
                                               <Tip label={language === "german"
                                                 ? `Wissens-Rating: Ø Verständnis aus ${rated.length} von ${lectures.length} Vorlesungen`
                                                 : `Knowledge rating: avg comprehension of ${rated.length} of ${lectures.length} lectures`}>
-                                                <span className="text-[11px] font-semibold text-ink-400 tnum shrink-0">Ø {avg} %</span>
+                                                <span className="text-[11px] font-semibold text-ink-400 tnum shrink-0">Ø {fmtPercent(avg, language)}</span>
                                               </Tip>
                                             );
                                           })()}
@@ -3451,10 +3492,10 @@ export default function DashboardClient({
                                                     {/* Verständnis-Rating — green/red by the last check's PASS/REPEAT */}
                                                     {typeof item.comprehensionScore === "number" && (
                                                       <Tip label={language === "german"
-                                                        ? `Verständnis-Check: ${Math.round(item.comprehensionScore)} % (${item.comprehensionPassed ? "bestanden" : "wiederholen"})`
-                                                        : `Comprehension check: ${Math.round(item.comprehensionScore)} % (${item.comprehensionPassed ? "passed" : "repeat"})`}>
+                                                        ? `Verständnis-Check: ${fmtPercent(item.comprehensionScore, language)} (${item.comprehensionPassed ? "bestanden" : "wiederholen"})`
+                                                        : `Comprehension check: ${fmtPercent(item.comprehensionScore, language)} (${item.comprehensionPassed ? "passed" : "repeat"})`}>
                                                         <span className={`hidden sm:inline text-[11px] font-semibold tnum shrink-0 ${item.comprehensionPassed ? "text-(--grade-pass-text)" : "text-(--grade-fail-text)"}`}>
-                                                          {Math.round(item.comprehensionScore)} %
+                                                          {fmtPercent(item.comprehensionScore, language)}
                                                         </span>
                                                       </Tip>
                                                     )}
@@ -3472,7 +3513,7 @@ export default function DashboardClient({
                                                     {/* 7-dot level progress */}
                                                     <div className="hidden sm:flex items-center gap-0.5 shrink-0">
                                                       {item.generatedLevels.map((generated, l) => (
-                                                        <Tip key={l} label={`Level ${l+1} (${LIB_LEVEL_FULL[l]}): ${l < item.currentLevel ? (language === "german" ? "Bestanden" : "Passed") : l === item.currentLevel ? (language === "german" ? "Aktuell" : "Current") : generated ? (language === "german" ? "Generiert" : "Generated") : (language === "german" ? "Ausstehend" : "Pending")}`}>
+                                                        <Tip key={l} label={`Level ${l+1} (${libLevelFull(l, language)}): ${l < item.currentLevel ? (language === "german" ? "Bestanden" : "Passed") : l === item.currentLevel ? (language === "german" ? "Aktuell" : "Current") : generated ? (language === "german" ? "Generiert" : "Generated") : (language === "german" ? "Ausstehend" : "Pending")}`}>
                                                         <div
                                                           className={`w-[7px] h-[7px] rounded-full transition-all ${
                                                             l < item.currentLevel
@@ -3520,7 +3561,6 @@ export default function DashboardClient({
                                                           {(() => {
                                                             const LEVELS = LIB_LEVEL_SHORT.length; // 7 SRS intervals T1…T365
                                                             const inMastery = item.currentLevel >= LEVELS; // all 7 cleared; now looping T365 (currentLevel is an uncapped mastery counter)
-                                                            const masteryLaps = inMastery ? item.currentLevel - (LEVELS - 1) : 0; // completed T365 mastery reviews
                                                             const totalRepeats = (item.failCounts ?? []).reduce((a, b) => a + (b || 0), 0);
                                                             return (
                                                               <div>
@@ -3529,14 +3569,8 @@ export default function DashboardClient({
                                                                     {language === "german" ? "Fortschritt" : "Progress"}
                                                                   </p>
                                                                   {inMastery ? (
-                                                                    <Tip label={language === "german"
-                                                                      ? `Alle 7 Level bestanden — ${masteryLaps}× durch die Meister-Schleife (Tag 365)`
-                                                                      : `All 7 levels cleared — ${masteryLaps}× through the mastery loop (Day 365)`}>
-                                                                      <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-[0.08em] px-2 py-0.5 rounded-full bg-amber-400/[0.14] border border-(--accent-border-soft) text-(--accent-text-strong)">
-                                                                        <AcademicCapIcon className="w-3 h-3" strokeWidth={2} />
-                                                                        {language === "german" ? "Meister" : "Mastery"} ×{masteryLaps}
-                                                                      </span>
-                                                                    </Tip>
+                                                                    /* MC-8: single source of truth — the same badge the due cards and quiz header reuse */
+                                                                    <MasteryBadge level={item.currentLevel} language={language} />
                                                                   ) : (
                                                                     <span className="text-[10px] font-semibold text-ink-400 tnum">
                                                                       {language === "german" ? `Level ${item.currentLevel + 1} von 7` : `Level ${item.currentLevel + 1} of 7`}
@@ -3562,7 +3596,7 @@ export default function DashboardClient({
                                                                           <div className={`flex-1 h-[2px] mt-[9px] rounded-full transition-colors ${reached ? "bg-amber-500" : "bg-(--hairline-card)"}`} />
                                                                         )}
                                                                         <div className="flex flex-col items-center gap-1.5 shrink-0">
-                                                                          <Tip label={`${label} (${LIB_LEVEL_FULL[l]}): ${status}`}>
+                                                                          <Tip label={`${label} (${libLevelFull(l, language)}): ${status}`}>
                                                                             <div className={`w-5 h-5 rounded-full flex items-center justify-center transition-all ${
                                                                               passed
                                                                                 ? "bg-amber-500"
@@ -3639,7 +3673,7 @@ export default function DashboardClient({
                                                                     {item.comprehensionPassed ? (language === "german" ? "Bestanden" : "Passed") : (language === "german" ? "Wiederholen" : "Repeat")}
                                                                   </span>
                                                                   <span className={`text-xs font-semibold tnum shrink-0 ${item.comprehensionPassed ? "text-(--grade-pass-text)" : "text-(--grade-fail-text)"}`}>
-                                                                    {Math.round(item.comprehensionScore)} %
+                                                                    {fmtPercent(item.comprehensionScore, language)}
                                                                   </span>
                                                                   {item.comprehensionAt && (
                                                                     <span className="text-[11px] text-ink-400 shrink-0">{new Date(item.comprehensionAt).toLocaleDateString(language === "german" ? "de-DE" : "en-GB")}</span>
@@ -3780,7 +3814,7 @@ export default function DashboardClient({
                                                                     </span>
                                                                   )}
                                                                   {summary.mastery !== null && (
-                                                                    <span className="text-xs font-semibold text-ink-600 tnum shrink-0">≈ {summary.mastery} %</span>
+                                                                    <span className="text-xs font-semibold text-ink-600 tnum shrink-0">≈ {fmtPercent(summary.mastery, language)}</span>
                                                                   )}
                                                                   <span className="text-xs text-ink-400 flex-1 min-w-0 truncate">{summary.snippet}</span>
                                                                   <ChevronRightIcon className="w-3.5 h-3.5 text-ink-300 group-hover/fb:text-ink-600 transition-colors shrink-0" strokeWidth={2} />
@@ -3884,11 +3918,16 @@ export default function DashboardClient({
                   <div className="flex items-center gap-2.5 mb-3.5">
                     <span className="caps-label truncate">{selectedReview.subject}</span>
                     <span className="text-ink-300">·</span>
-                    <span className="caps-label whitespace-nowrap">
-                      {comprehensionMode
-                        ? (language === "german" ? "Verständnis-Check" : "Comprehension check")
-                        : <>Level {selectedReview.level + 1}</>}
-                    </span>
+                    {!comprehensionMode && selectedReview.level >= LIB_LEVEL_SHORT.length ? (
+                      /* MC-8: the quiz header inherits the uncapped mastery counter — show the Meister badge instead */
+                      <MasteryBadge level={selectedReview.level} language={language} />
+                    ) : (
+                      <span className="caps-label whitespace-nowrap">
+                        {comprehensionMode
+                          ? (language === "german" ? "Verständnis-Check" : "Comprehension check")
+                          : <>Level {selectedReview.level + 1}</>}
+                      </span>
+                    )}
                     {interactive.active && (
                       <span className="inline-flex items-center gap-1.5 h-[34px] px-[14px] rounded-full bg-(--accent-wash) border border-(--accent-border-soft) text-(--accent-text-strong) text-[13px] font-semibold">
                         <MicrophoneIcon className="w-3.5 h-3.5" strokeWidth={2} />
@@ -4023,8 +4062,8 @@ export default function DashboardClient({
                     </pre>
                     <p className="text-xs text-ink-400 text-left leading-relaxed">
                       {language === "german"
-                        ? "Bitte überprüfe die Datenbank, den Gemini API-Schlüssel oder die Server-Logs und versuche es erneut."
-                        : "Please check your database, Gemini API key, or server logs, and click below to try submitting again."}
+                        ? "Deine Antworten sind noch da — versuch es einfach erneut. Wenn es wieder passiert, warte kurz und lade die Seite neu."
+                        : "Your answers are still here — just submit again. If it happens again, wait a moment and reload the page."}
                     </p>
                   </div>
                 )}
@@ -4106,8 +4145,8 @@ export default function DashboardClient({
                               ? <>
                                   <span className={`tnum ${gradingResult.isPass ? "text-(--grade-pass-text)" : "text-(--grade-fail-text)"}`}>
                                     {gradingResult.comprehensionScore !== null && gradingResult.comprehensionScore !== undefined
-                                      ? `${Math.round(gradingResult.comprehensionScore)} %`
-                                      : "— %"}
+                                      ? fmtPercent(gradingResult.comprehensionScore, language)
+                                      : language === "german" ? "—\u202F%" : "—%"}
                                   </span>{" "}
                                   <em className="italic">{language === "german" ? "Verständnis." : "comprehension."}</em>
                                 </>
@@ -4533,7 +4572,7 @@ export default function DashboardClient({
                 {/* Header/Title */}
                 <div className="border-b border-(--hairline-card) bg-paper-0 px-6 py-3.5 flex items-center gap-2.5">
                   <DocumentTextIcon className="w-4 h-4 text-ink-400" />
-                  <h3 className="caps-label !text-ink-600">{language === "german" ? "Feedback & Auswertung" : "Examiner's brief"}</h3>
+                  <h3 className="caps-label !text-ink-600">{language === "german" ? "Gutachter-Brief" : "Examiner's brief"}</h3>
                   <span className="flex-1" />
                   {feedbackTranslating ? (
                     <span className="flex items-center gap-1.5 text-[11px] text-ink-400">
@@ -4589,7 +4628,7 @@ export default function DashboardClient({
                                 className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${entry.feedback ? "cursor-pointer hover:bg-paper-0" : "cursor-default"} press-row`}
                               >
                                 <span className={`text-[9px] font-bold uppercase tracking-[0.12em] px-2 py-0.5 rounded-full border shrink-0 ${entry.passed ? "bg-(--grade-pass-wash) text-(--grade-pass-text) border-(--grade-pass-border)" : "bg-(--grade-fail-wash) text-(--grade-fail-text) border-(--grade-fail-border)"}`}>
-                                  {entry.passed ? "PASS" : "REPEAT"}
+                                  {entry.passed ? (language === "german" ? "Bestanden" : "Passed") : (language === "german" ? "Wiederholen" : "Repeat")}
                                 </span>
                                 <span className="text-[10px] font-semibold text-ink-600 bg-paper-2 px-2 py-0.5 rounded-full border border-(--hairline-card) shrink-0">
                                   Level {entry.level + 1}
@@ -5073,13 +5112,13 @@ export default function DashboardClient({
                   <h4 className="caps-label mb-3">{language === "german" ? "KI-Verbindung" : "AI connection"}</h4>
                   <p className="text-xs text-ink-600 mb-4 leading-relaxed">
                     {language === "german"
-                      ? "Wähle aus, für welche Module der experimentelle Gemini Proxy genutzt werden soll. Die offizielle Google API dient immer als sicherer Fallback."
-                      : "Choose which modules should use the experimental Gemini proxy. The official Google API will always act as a reliable fallback."}
+                      ? "Wähle, welche Schritte über den experimentellen Gemini Proxy laufen. Die offizielle Google API dient immer als sicherer Fallback."
+                      : "Choose which steps run through the experimental Gemini proxy. The official Google API will always act as a reliable fallback."}
                   </p>
                   {(isGenerating || isGrading) && (
                     <div className="mb-4 text-xs font-semibold text-ink-600 flex items-center gap-2">
                       <LockClosedIcon className="w-3.5 h-3.5" />
-                      {language === "german" ? "Einstellungen gesperrt, während eine KI-Aktion läuft." : "Settings locked while AI generation is in progress."}
+                      {language === "german" ? "Einstellungen gesperrt, während eine KI-Aktion läuft." : "Settings locked while an AI task is running."}
                     </div>
                   )}
                   <div className="segmented">
@@ -5175,7 +5214,7 @@ export default function DashboardClient({
                   {(isGenerating || isGrading) && (
                     <div className="mb-4 text-xs font-semibold text-ink-600 flex items-center gap-2">
                       <LockClosedIcon className="w-3.5 h-3.5" />
-                      {language === "german" ? "Einstellungen gesperrt, während eine KI-Aktion läuft." : "Settings locked while AI generation is in progress."}
+                      {language === "german" ? "Einstellungen gesperrt, während eine KI-Aktion läuft." : "Settings locked while an AI task is running."}
                     </div>
                   )}
                   <div className="segmented">
@@ -5261,7 +5300,7 @@ export default function DashboardClient({
               : null;
             if (gradingResult.comprehension) {
               const score = gradingResult.comprehensionScore !== null && gradingResult.comprehensionScore !== undefined
-                ? `${Math.round(gradingResult.comprehensionScore)} %`
+                ? fmtPercent(gradingResult.comprehensionScore, language)
                 : null;
               return de
                 ? `Verständnis-Check abgeschlossen${score ? ` — ${score}` : ""}.`
@@ -5359,7 +5398,7 @@ export default function DashboardClient({
                     </span>
                     {typeof compFeedback.comprehensionScore === "number" && (
                       <span className={`text-xs font-semibold tnum ${compFeedback.comprehensionPassed ? "text-(--grade-pass-text)" : "text-(--grade-fail-text)"}`}>
-                        {Math.round(compFeedback.comprehensionScore)} %
+                        {fmtPercent(compFeedback.comprehensionScore, language)}
                       </span>
                     )}
                     {compFeedback.comprehensionAt && (
