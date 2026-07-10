@@ -95,7 +95,7 @@ export function ToastStack({ toasts, onDismiss }: { toasts: ToastItem[]; onDismi
               {toast.action && (
                 <button
                   onClick={() => { toast.action?.onClick(); onDismiss(toast.id); }}
-                  className="text-(--a-g2) font-semibold px-2 py-1 rounded-full hover:bg-[color-mix(in_srgb,var(--paper-0)_12%,transparent)] transition-colors cursor-pointer"
+                  className="text-(--accent-on-surface-inverse) font-semibold px-2 py-1 rounded-full hover:bg-[color-mix(in_srgb,var(--paper-0)_12%,transparent)] transition-colors cursor-pointer"
                 >
                   {toast.action.label}
                 </button>

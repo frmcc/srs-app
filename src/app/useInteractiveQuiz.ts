@@ -80,6 +80,14 @@ function cutAtTrigger(text: string): { answer: string; triggered: boolean } {
   return { answer: text.trim(), triggered: false };
 }
 
+/**
+ * Error copy in the session's UI language. The hook already localizes STT/TTS
+ * from the same `language` option — failure toasts must speak it too.
+ */
+function errMsg(lang: string, de: string, en: string): string {
+  return lang === "English" ? en : de;
+}
+
 /** Pick a MediaRecorder mime the browser supports (iOS → mp4/aac, Chrome → webm/opus). */
 function pickRecorderMime(): string {
   if (typeof MediaRecorder === "undefined") return "";
@@ -303,7 +311,10 @@ export function useInteractiveQuiz({ tasks, language = "German", dictationMode =
           // Recognition blocked but the recorder may still work — degrade quietly.
           degradeRef.current(i);
         } else {
-          setError("Mikrofon-Zugriff wurde blockiert. Bitte erlaube das Mikrofon und starte erneut.");
+          setError(errMsg(langRef.current,
+            "Mikrofon-Zugriff wurde blockiert. Bitte erlaube das Mikrofon und starte erneut.",
+            "Microphone access was blocked. Please allow the microphone and start again.",
+          ));
           wantListenRef.current = false;
         }
         return;
@@ -475,7 +486,10 @@ export function useInteractiveQuiz({ tasks, language = "German", dictationMode =
       const data = (await res.json().catch(() => ({}))) as { text?: string; error?: string };
       if (!activeRef.current || pausedRef.current || indexRef.current !== i) return;
       if (!res.ok || data.error) {
-        setError("Transkription fehlgeschlagen — nutze den „Nächste“-Button, um weiterzugehen.");
+        setError(errMsg(langRef.current,
+          "Transkription fehlgeschlagen — nutze den „Nächste“-Button, um weiterzugehen.",
+          "Transcription failed — use the “Next task” button to continue.",
+        ));
         return;
       }
       const task = tasksRef.current[i];
@@ -505,7 +519,10 @@ export function useInteractiveQuiz({ tasks, language = "German", dictationMode =
         // No recognition AND no recorder (e.g. the mic prompt was denied): nothing
         // can capture input. Surface an error instead of hanging forever on the
         // "listening" phase with no engine running.
-        setError("Mikrofon nicht verfügbar — bitte Zugriff erlauben, oder nutze den „Nächste“-Button.");
+        setError(errMsg(langRef.current,
+          "Mikrofon nicht verfügbar — bitte Zugriff erlauben, oder nutze den „Nächste“-Button.",
+          "Microphone unavailable — please allow access, or use the “Next task” button.",
+        ));
       }
     },
     [teardownRecognition],
@@ -545,7 +562,10 @@ export function useInteractiveQuiz({ tasks, language = "German", dictationMode =
           if (!recognitionRef.current) runRecognizerRef.current(i);
           recognitionRunning = true;
         } else if (mode === "browser") {
-          setError("Standard-Spracherkennung wird in diesem Browser nicht unterstützt — wechsle in den Einstellungen zu Hybrid oder Gemini.");
+          setError(errMsg(langRef.current,
+            "Standard-Spracherkennung wird in diesem Browser nicht unterstützt — wechsle in den Einstellungen zu Hybrid oder Gemini.",
+            "Built-in speech recognition is not supported in this browser — switch to Hybrid or Gemini in Settings.",
+          ));
           return;
         }
         // hybrid without recognition support: fall through to record+poll below
@@ -572,7 +592,10 @@ export function useInteractiveQuiz({ tasks, language = "German", dictationMode =
       if (!activeRef.current || pausedRef.current || indexRef.current !== i) return;
       if (!stream) {
         if (mode === "gemini" || !recognitionRunning) {
-          setError("Mikrofon nicht verfügbar — bitte Zugriff erlauben, oder nutze den „Nächste“-Button.");
+          setError(errMsg(langRef.current,
+            "Mikrofon nicht verfügbar — bitte Zugriff erlauben, oder nutze den „Nächste“-Button.",
+            "Microphone unavailable — please allow access, or use the “Next task” button.",
+          ));
         }
         return; // hybrid: recognition alone still works (no AI overwrite for this task)
       }
@@ -586,7 +609,10 @@ export function useInteractiveQuiz({ tasks, language = "German", dictationMode =
           rec = new MediaRecorder(stream);
         } catch {
           if (mode === "gemini" || !recognitionRunning) {
-            setError("Aufnahme wird in diesem Browser nicht unterstützt — nutze den „Nächste“-Button.");
+            setError(errMsg(langRef.current,
+              "Aufnahme wird in diesem Browser nicht unterstützt — nutze den „Nächste“-Button.",
+              "Recording is not supported in this browser — use the “Next task” button.",
+            ));
           }
           return;
         }
@@ -615,7 +641,10 @@ export function useInteractiveQuiz({ tasks, language = "German", dictationMode =
     (i: number) => {
       const task = tasksRef.current[i];
       if (typeof window === "undefined" || !("speechSynthesis" in window) || !task) {
-        setError("Sprachausgabe fehlgeschlagen — das Diktat startet trotzdem.");
+        setError(errMsg(langRef.current,
+          "Sprachausgabe fehlgeschlagen — das Diktat startet trotzdem.",
+          "Speech playback failed — dictation will start anyway.",
+        ));
         listenRef.current(i);
         return;
       }
@@ -638,7 +667,10 @@ export function useInteractiveQuiz({ tasks, language = "German", dictationMode =
         // while this question is still the active one.
         const intentional = ev.error === "interrupted" || ev.error === "canceled";
         if (!settled && !intentional && activeRef.current && !pausedRef.current && indexRef.current === i) {
-          setError("Sprachausgabe fehlgeschlagen — das Diktat startet trotzdem.");
+          setError(errMsg(langRef.current,
+            "Sprachausgabe fehlgeschlagen — das Diktat startet trotzdem.",
+            "Speech playback failed — dictation will start anyway.",
+          ));
         }
         proceed();
       };
@@ -646,7 +678,10 @@ export function useInteractiveQuiz({ tasks, language = "German", dictationMode =
       try {
         window.speechSynthesis.speak(u);
       } catch {
-        setError("Sprachausgabe fehlgeschlagen — das Diktat startet trotzdem.");
+        setError(errMsg(langRef.current,
+          "Sprachausgabe fehlgeschlagen — das Diktat startet trotzdem.",
+          "Speech playback failed — dictation will start anyway.",
+        ));
         proceed();
         return;
       }

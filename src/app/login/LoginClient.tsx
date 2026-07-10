@@ -123,8 +123,14 @@ export default function LoginClient({ error, callbackUrl = "/" }: { error?: stri
               <button
                 onClick={handleSignIn}
                 disabled={isSigningIn}
-                className="w-full h-[50px] mt-[26px] bg-paper-1 hover:bg-(--paper-hover) text-ink-900 font-semibold rounded-[14px] px-5 flex items-center justify-center gap-[11px] text-[14.5px] transition-all cursor-pointer border border-(--line) shadow-(--shadow-e1) hover:-translate-y-px hover:shadow-(--shadow-lift) active:translate-y-0 active:scale-[0.99] disabled:opacity-60 disabled:cursor-wait disabled:hover:translate-y-0"
+                className="group relative w-full h-[50px] mt-[26px] bg-paper-1 hover:bg-(--paper-hover) text-ink-900 font-semibold rounded-[14px] px-5 flex items-center justify-center gap-[11px] text-[14.5px] cursor-pointer border border-(--line) shadow-(--shadow-e1) hover:-translate-y-px active:translate-y-0 active:scale-[0.99] disabled:opacity-60 disabled:cursor-wait disabled:hover:translate-y-0"
               >
+                {/* Pre-rendered hover shadow, cross-faded via opacity — box-shadow itself
+                    never animates (motion law, same recipe as .card-surface-elevated). */}
+                <span
+                  aria-hidden="true"
+                  className="pointer-events-none absolute -inset-px rounded-[14px] shadow-(--shadow-lift) opacity-0 transition-opacity duration-200 ease-(--ease-cinematic) group-enabled:group-hover:opacity-100"
+                />
                 {isSigningIn ? (
                   <>
                     <ArrowPathIcon className="w-[19px] h-[19px] animate-spin text-ink-400" strokeWidth={1.6} />
@@ -157,7 +163,7 @@ export default function LoginClient({ error, callbackUrl = "/" }: { error?: stri
       </div>
 
       <footer className="py-6 text-center text-xs text-ink-400 relative z-10">
-        © {new Date().getFullYear()} SRS Master · Built for serious students
+        © {new Date().getFullYear()} SRS Master · Für ernsthafte Studierende gebaut
       </footer>
     </main>
     </MotionConfig>
