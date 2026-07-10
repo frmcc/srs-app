@@ -9,7 +9,9 @@ import {
   overlayMotion,
   modalPanel,
   pressable,
+  hoverLift,
   EASE_OUT,
+  EASE_IN_OUT,
   DUR,
   springSoft,
   springTactile,
@@ -52,9 +54,10 @@ import {
   BackwardIcon,
   ChartBarIcon,
   MagnifyingGlassIcon,
+  ArrowTopRightOnSquareIcon,
 } from "@heroicons/react/24/outline";
 
-import { useState, useEffect, useCallback, useRef, useMemo, useTransition, Fragment, type ReactNode } from "react";
+import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, useTransition, Fragment, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import { useToasts, ToastStack } from "./components/Toast";
@@ -464,13 +467,18 @@ function latestVideoUrlOf(videoUrl: string | null): string | null {
 const startOfLocalDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
 const isDueLocal = (due: Date, today: Date) => startOfLocalDay(due) <= startOfLocalDay(today);
 
-const formatItems = (data: RawReviewItem[]): ReviewCard[] => {
+/**
+ * PP-1 — `now` is a parameter so the SSR pass and the hydration render can use
+ * the SAME timezone-neutral value (null → nothing is "due"), instead of each
+ * side calling new Date() with a different clock and hydrating a different
+ * sort order. The real client clock re-partitions dueness before first paint
+ * (see the mount layout effect in DashboardClient).
+ */
+const formatItems = (data: RawReviewItem[], now: Date | null = new Date()): ReviewCard[] => {
   if (!Array.isArray(data)) return [];
 
-  const now = new Date();
-
   const formatted = data.map(item => {
-    const isDue = isDueLocal(new Date(item.nextReviewDate), now);
+    const isDue = now ? isDueLocal(new Date(item.nextReviewDate), now) : false;
 
     return {
       id: item.id,
@@ -483,19 +491,91 @@ const formatItems = (data: RawReviewItem[]): ReviewCard[] => {
     };
   });
 
-  // Sort logic: Due items first, then group by module, then by urgency
+  // Sort logic: due items first, then strictly chronological (IA-1/IA-2).
+  // Due items sort most-overdue first; scheduled items sort soonest first, so
+  // scheduledItems[0] IS the next review and the Upcoming date column reads in
+  // order. Module name only breaks ties within the same date.
   formatted.sort((a, b) => {
     if (a.isDue && !b.isDue) return -1;
     if (!a.isDue && b.isDue) return 1;
 
-    const subjectCompare = a.subject.localeCompare(b.subject);
-    if (subjectCompare !== 0) return subjectCompare;
+    const dateCompare = new Date(a.raw.nextReviewDate).getTime() - new Date(b.raw.nextReviewDate).getTime();
+    if (dateCompare !== 0) return dateCompare;
 
-    return new Date(a.raw.nextReviewDate).getTime() - new Date(b.raw.nextReviewDate).getTime();
+    return a.subject.localeCompare(b.subject);
   });
 
   return formatted;
 };
+
+// useLayoutEffect on the client (corrections land before first paint),
+// useEffect during the SSR pass (silences React's server warning). (PP-1)
+const useIsoLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
+
+/**
+ * AX-1 — shared dialog chrome for the seven overlays: real dialog semantics
+ * (role/aria-modal/aria-labelledby), initial focus on the panel, a Tab trap,
+ * and focus restored to the opener on close. Escape stays with the global
+ * ordered handler in DashboardClient; the visuals stay whatever `className`
+ * says. Wrap the panel content that used to live in `<motion.div {...modalPanel}>`.
+ */
+function ModalDialog({
+  labelledBy,
+  className,
+  onClick,
+  children,
+}: {
+  labelledBy: string;
+  className?: string;
+  onClick?: (e: React.MouseEvent<HTMLDivElement>) => void;
+  children: ReactNode;
+}) {
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const opener = document.activeElement;
+    panelRef.current?.focus({ preventScroll: true });
+    return () => {
+      if (opener instanceof HTMLElement) opener.focus({ preventScroll: true });
+    };
+  }, []);
+  const trapTab = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== "Tab" || !panelRef.current) return;
+    const focusables = Array.from(
+      panelRef.current.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      )
+    );
+    if (focusables.length === 0) {
+      e.preventDefault();
+      return;
+    }
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    const active = document.activeElement;
+    if (e.shiftKey && (active === first || active === panelRef.current)) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && active === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  };
+  return (
+    <motion.div
+      {...modalPanel}
+      ref={panelRef}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={labelledBy}
+      tabIndex={-1}
+      onKeyDown={trapTab}
+      onClick={onClick}
+      className={`outline-none ${className ?? ""}`}
+    >
+      {children}
+    </motion.div>
+  );
+}
 
 export default function DashboardClient({
   initialItems,
@@ -529,7 +609,9 @@ export default function DashboardClient({
   // React never interrupts an ongoing animation to apply them — no more blink.
   const [, startTransition] = useTransition();
 
-  const [upcomingReviews, setUpcomingReviews] = useState<ReviewCard[]>(initialItems ? formatItems(initialItems) : []);
+  // PP-1 — the initializer runs during SSR AND the hydration render; passing a
+  // null clock makes both deterministic (identical HTML, no hydration re-sort).
+  const [upcomingReviews, setUpcomingReviews] = useState<ReviewCard[]>(initialItems ? formatItems(initialItems, null) : []);
   /** Full raw items — kept in sync with every fetchReviews() so the Library always shows live data. */
   const [rawItems, setRawItems] = useState<RawReviewItem[]>(initialItems ?? []);
   /** True only on first mount when we have no SSR items — shows skeleton cards while the first API fetch runs. */
@@ -548,6 +630,23 @@ export default function DashboardClient({
   const [gradingModel, setGradingModel] = useState("gemini-3.5-flash");
   const [progressStep, setProgressStep] = useState(0);
   const [progressMsg, setProgressMsg] = useState("");
+  /** EM-1 — persistent record of the last failed upload run (toasts vanish after 5s). */
+  const [uploadError, setUploadError] = useState("");
+
+  // PP-1 — the viewer's clock: null during SSR and the hydration render (both
+  // paint the same timezone-neutral frame), then set to the real client time
+  // BEFORE first client paint. Greeting, date eyebrow and overdue labels key
+  // off this instead of an SSR-computed `new Date()`, which used the server's
+  // timezone and made the headline flash on hydration.
+  const [clock, setClock] = useState<Date | null>(null);
+  useIsoLayoutEffect(() => {
+    const d = new Date();
+    // Mount-only correction pass: swaps the timezone-neutral SSR frame for the
+    // viewer's clock BEFORE first paint, and re-partitions dueness the same way
+    // (the SSR/hydration frame used formatItems with a null clock).
+    setClock(d);
+    if (initialItems && initialItems.length > 0) setUpcomingReviews(formatItems(initialItems, d));
+  }, []);
 
   // Toasts (non-blocking replacement for alert())
   const { toasts, addToast, dismissToast } = useToasts();
@@ -899,6 +998,16 @@ export default function DashboardClient({
 
   // Library search field — focused by the global ⌘K shortcut (CRAFT.md §3).
   const librarySearchRef = useRef<HTMLInputElement | null>(null);
+
+  // LIVE-1/PP-2 — every tab change lands at the top. On md+ the scroller is
+  // <main> (.app-shell-main), so window.scrollTo alone was a no-op there; on
+  // mobile the window scrolls. Instant (not smooth — html sets
+  // scroll-behavior:smooth) so the tab's enter animation is what the user sees.
+  const mainRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    mainRef.current?.scrollTo({ top: 0, behavior: "instant" });
+    window.scrollTo({ top: 0, behavior: "instant" });
+  }, [activeTab]);
 
   const fetchReviews = useCallback(async () => {
     if (fetchInFlightRef.current) {
@@ -1450,6 +1559,15 @@ export default function DashboardClient({
   const freeTemplateRef = useRef("");
 
   const startQuiz = useCallback((review: ReviewCard, comprehensionQuizText?: string) => {
+    // EM-2 — a grade in flight belongs to the CURRENT selectedReview; starting
+    // another quiz would re-render the grading screen under the new lecture's
+    // header and paint the finished verdict beneath the wrong title. One at a time.
+    if (isGrading) {
+      addToast("error", language === "german"
+        ? "Eine Bewertung läuft noch — das Ergebnis ist gleich da."
+        : "A grading run is still in progress — your result is almost ready.");
+      return;
+    }
     setSelectedReview(review);
 
     // Verständnis-Check: the freshly generated quiz is passed in directly (the
@@ -1521,11 +1639,14 @@ export default function DashboardClient({
     setShowTutorPanel(false); // a fresh quiz starts unobstructed
     setActiveTab("quiz");
     setShowMobileMenu(false); // close the mobile menu if open
-    // Always start at the top so the quiz header is immediately visible.
+    // Always start at the top so the quiz header is immediately visible — the
+    // activeTab effect covers tab CHANGES; this also covers re-starts while
+    // already on the quiz tab. Instant + the md+ <main> scroller (PP-2).
     if (typeof window !== "undefined") {
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      window.scrollTo({ top: 0, behavior: "instant" });
+      mainRef.current?.scrollTo({ top: 0, behavior: "instant" });
     }
-  }, [language, addToast]);
+  }, [language, addToast, isGrading]);
 
   useEffect(() => {
     if (processedQuizIdRef.current || typeof window === "undefined") return;
@@ -1604,6 +1725,7 @@ export default function DashboardClient({
     if ((!textInput.trim() && uploadedFiles.length === 0) || !subjectInput.trim()) return;
     if (isGenerating) return; // double-submit guard
     setIsGenerating(true);
+    setUploadError(""); // a fresh run clears the previous failure record (EM-1)
     setProgressStep(0);
     setProgressMsg(language === "german" ? "Starte KI-Pipeline…" : "Starting AI pipeline…");
 
@@ -1657,6 +1779,9 @@ export default function DashboardClient({
         } else if (evt.event === "error") {
           const msg = evt.data.message ?? "Unbekannter Fehler";
           setProgressMsg(msg);
+          // EM-1 — keep a persistent inline failure record (the progress screen
+          // unmounts right after this and a 5s toast is easy to miss).
+          setUploadError(msg);
           addToast("error", `${language === "german" ? "Generierungsfehler" : "Generation error"}: ${msg}`);
         }
       });
@@ -1668,6 +1793,7 @@ export default function DashboardClient({
           ? "Verbindung unterbrochen — Status wird neu geladen…"
           : "Connection lost — reloading status…";
         setProgressMsg(disconnectMsg);
+        setUploadError(disconnectMsg);
         addToast("error", disconnectMsg);
         fetchReviews();
       }
@@ -1677,6 +1803,7 @@ export default function DashboardClient({
         ? (language === "german" ? "Zeitüberschreitung — Verbindung unterbrochen. Status wird neu geladen…" : "Timeout — connection lost. Reloading status…")
         : e instanceof Error && e.message ? e.message : (language === "german" ? "Verbindung zum Server fehlgeschlagen." : "Failed to connect to server.");
       setProgressMsg(message);
+      setUploadError(message);
       addToast("error", message);
       fetchReviews();
     } finally {
@@ -1782,6 +1909,17 @@ export default function DashboardClient({
             comprehensionScore: typeof evt.data.comprehensionScore === "number" ? evt.data.comprehensionScore : null,
           });
           fetchReviews();
+          // EM-2 — the grading copy invites leaving this page. If the user did,
+          // the quiz tab has no nav entry to come back through: hand them the
+          // way back with an action toast (the ink action bar, 6s).
+          if (activeTabRef.current !== "quiz") {
+            addToast("undo", language === "german" ? "Bewertung abgeschlossen." : "Grading finished.", {
+              action: {
+                label: language === "german" ? "Ergebnis ansehen" : "View result",
+                onClick: () => setActiveTab("quiz"),
+              },
+            });
+          }
         } else if (evt.event === "error") {
           const msg = evt.data.message ?? "Unbekannter Fehler";
           setGradingMsg(msg);
@@ -2018,7 +2156,32 @@ export default function DashboardClient({
             aria-label={language === "german" ? (showMobileMenu ? "Menü schließen" : "Menü öffnen") : (showMobileMenu ? "Close menu" : "Open menu")}
             className="p-2 -mr-2 text-ink-600 hover:text-ink-900 cursor-pointer"
           >
-            {showMobileMenu ? <XMarkIcon className="w-6 h-6" /> : <Bars3Icon className="w-6 h-6" />}
+            {/* MO-2 — the Bars3/XMark swap cross-fades on springTactile instead of flipping raw */}
+            <AnimatePresence mode="wait" initial={false}>
+              {showMobileMenu ? (
+                <motion.span
+                  key="menu-close"
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.8, transition: { duration: 0.1 } }}
+                  transition={springTactile}
+                  className="flex"
+                >
+                  <XMarkIcon className="w-6 h-6" />
+                </motion.span>
+              ) : (
+                <motion.span
+                  key="menu-open"
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.8, transition: { duration: 0.1 } }}
+                  transition={springTactile}
+                  className="flex"
+                >
+                  <Bars3Icon className="w-6 h-6" />
+                </motion.span>
+              )}
+            </AnimatePresence>
           </button>
         </div>
 
@@ -2027,13 +2190,16 @@ export default function DashboardClient({
           <div className="h-7"></div>
         </div>
 
-        {/* Sidebar */}
-        <motion.aside
-          initial={{ x: -24, opacity: 0 }}
-          animate={{ x: 0, opacity: 1 }}
-          transition={{ duration: 0.32, ease: EASE_OUT }}
-          className={`${showMobileMenu ? 'flex' : 'hidden'} app-shell-sidebar md:flex w-full md:w-[264px] sidebar-gradient border-r border-(--hairline) flex-col px-[18px] pt-[26px] pb-[max(1.25rem,env(safe-area-inset-bottom))] md:sticky md:top-0 min-h-[calc(100dvh_-_61px)] md:min-h-0 md:h-[100dvh] z-40 overflow-y-auto custom-scrollbar`}
-        >
+        {/* Sidebar (desktop) + mobile menu overlay (MO-2/MT-3/MT-15) — one body,
+            two shells. The desktop aside stays statically mounted; on phones the
+            menu mounts conditionally inside AnimatePresence as a fixed overlay
+            OVER the main content (which stays mounted, preserving its scroll
+            position) and follows the system's enter/exit law. Its top padding
+            mirrors the top bar's real height formula instead of the old
+            hardcoded 61px. */}
+        {(() => {
+          const sidebarBody = (
+            <>
           <button onClick={() => { setActiveTab("dashboard"); setShowMobileMenu(false); }} className="hidden md:flex items-center gap-[11px] px-2 cursor-pointer text-left transition-opacity hover:opacity-80">
             <div className="brand-tile w-[34px] h-[34px]">
               <span className="font-display italic font-semibold text-lg text-(--accent-on) -translate-y-px">S</span>
@@ -2047,23 +2213,23 @@ export default function DashboardClient({
           </button>
 
           <nav className="flex flex-col gap-0.5 md:mt-[30px]">
-            <button onClick={() => { setActiveTab("dashboard"); setShowMobileMenu(false); }} className={`flex items-center gap-3 h-[38px] px-3 cursor-pointer ${activeTab === 'dashboard' ? 'nav-item-active' : 'nav-item-idle'}`}>
+            <button onClick={() => { setActiveTab("dashboard"); setShowMobileMenu(false); }} className={`flex items-center gap-3 h-[38px] px-3 cursor-pointer press-row ${activeTab === 'dashboard' ? 'nav-item-active' : 'nav-item-idle'}`}>
               <CalendarDaysIcon className={`w-[18px] h-[18px] shrink-0 ${activeTab === 'dashboard' ? 'text-ink-900' : 'text-ink-400'}`} strokeWidth={1.6} />
               <span className={`text-sm whitespace-nowrap ${activeTab === 'dashboard' ? 'font-semibold' : 'font-medium'}`}>Dashboard</span>
             </button>
-            <button onClick={() => { setActiveTab("upload"); setShowMobileMenu(false); }} className={`flex items-center gap-3 h-[38px] px-3 cursor-pointer ${activeTab === 'upload' ? 'nav-item-active' : 'nav-item-idle'}`}>
+            <button onClick={() => { setActiveTab("upload"); setShowMobileMenu(false); }} className={`flex items-center gap-3 h-[38px] px-3 cursor-pointer press-row ${activeTab === 'upload' ? 'nav-item-active' : 'nav-item-idle'}`}>
               <CloudArrowUpIcon className={`w-[18px] h-[18px] shrink-0 ${activeTab === 'upload' ? 'text-ink-900' : 'text-ink-400'}`} strokeWidth={1.6} />
               <span className={`text-sm whitespace-nowrap ${activeTab === 'upload' ? 'font-semibold' : 'font-medium'}`}>{language === 'german' ? 'Material hochladen' : 'Upload material'}</span>
             </button>
-            <button onClick={() => { setActiveTab("library"); setShowMobileMenu(false); }} className={`flex items-center gap-3 h-[38px] px-3 cursor-pointer ${activeTab === 'library' ? 'nav-item-active' : 'nav-item-idle'}`}>
+            <button onClick={() => { setActiveTab("library"); setShowMobileMenu(false); }} className={`flex items-center gap-3 h-[38px] px-3 cursor-pointer press-row ${activeTab === 'library' ? 'nav-item-active' : 'nav-item-idle'}`}>
               <BookOpenIcon className={`w-[18px] h-[18px] shrink-0 ${activeTab === 'library' ? 'text-ink-900' : 'text-ink-400'}`} strokeWidth={1.6} />
               <span className={`text-sm whitespace-nowrap ${activeTab === 'library' ? 'font-semibold' : 'font-medium'}`}>{language === 'german' ? 'Bibliothek' : 'Library'}</span>
             </button>
-            <button onClick={() => { setActiveTab("stats"); setShowMobileMenu(false); }} className={`flex items-center gap-3 h-[38px] px-3 cursor-pointer ${activeTab === 'stats' ? 'nav-item-active' : 'nav-item-idle'}`}>
+            <button onClick={() => { setActiveTab("stats"); setShowMobileMenu(false); }} className={`flex items-center gap-3 h-[38px] px-3 cursor-pointer press-row ${activeTab === 'stats' ? 'nav-item-active' : 'nav-item-idle'}`}>
               <ChartBarIcon className={`w-[18px] h-[18px] shrink-0 ${activeTab === 'stats' ? 'text-ink-900' : 'text-ink-400'}`} strokeWidth={1.6} />
               <span className={`text-sm whitespace-nowrap ${activeTab === 'stats' ? 'font-semibold' : 'font-medium'}`}>{language === 'german' ? 'Statistik' : 'Statistics'}</span>
             </button>
-            <button onClick={() => { setShowSettingsModal(true); }} className="flex items-center gap-3 h-[38px] px-3 cursor-pointer nav-item-idle">
+            <button onClick={() => { setShowSettingsModal(true); }} className="flex items-center gap-3 h-[38px] px-3 cursor-pointer press-row nav-item-idle">
               <Cog8ToothIcon className="w-[18px] h-[18px] shrink-0 text-ink-400" strokeWidth={1.6} />
               <span className="text-sm font-medium whitespace-nowrap">{language === 'german' ? 'Einstellungen' : 'Settings'}</span>
             </button>
@@ -2092,14 +2258,16 @@ export default function DashboardClient({
               </span>
             </button>
 
+            {/* IA-3 — the Live Tutor is SHIPPED (Tutor toggle in every quiz), so the
+                card points at it instead of advertising it as locked/coming soon. */}
             <div className="mt-3 card-surface p-4">
-              <SparklesIcon className="w-[17px] h-[17px] text-amber-500 mb-2.5" strokeWidth={1.6} />
-              <h3 className="text-sm font-semibold text-ink-900">Live Tutor Pro</h3>
-              <p className="text-[12.5px] leading-normal text-ink-600 mt-1">{language === "german" ? "Sprach-Tutoring neben jedem Quiz." : "Voice tutoring beside every quiz."}</p>
-              <div className="mt-3 h-8 rounded-[10px] border border-(--line-soft) flex items-center justify-center gap-[7px] text-ink-400 text-xs font-semibold">
-                <LockClosedIcon className="w-[13px] h-[13px]" strokeWidth={1.8} />
-                {language === "german" ? "Demnächst" : "Coming soon"}
-              </div>
+              <SparklesIcon className="w-[17px] h-[17px] text-ink-400 mb-2.5" strokeWidth={1.6} />
+              <h3 className="text-sm font-semibold text-ink-900">Live Tutor</h3>
+              <p className="text-[12.5px] leading-normal text-ink-600 mt-1">
+                {language === "german"
+                  ? "Öffne ein Quiz und frag ihn — er kennt deine Vorlesung und deine Entwürfe."
+                  : "Open a quiz and ask away — it knows your lecture and your drafts."}
+              </p>
             </div>
 
             {/* User identity strip (Google account) */}
@@ -2135,12 +2303,68 @@ export default function DashboardClient({
               </Tip>
             </div>
           </div>
-        </motion.aside>
+            </>
+          );
+          return (
+            <>
+              {/* Desktop sidebar — statically mounted, keeps the one-time mount slide */}
+              <motion.aside
+                initial={{ x: -24, opacity: 0 }}
+                animate={{ x: 0, opacity: 1 }}
+                transition={{ duration: 0.32, ease: EASE_OUT }}
+                className="app-shell-sidebar hidden md:flex md:w-[264px] sidebar-gradient border-r border-(--hairline) flex-col px-[18px] pt-[26px] pb-[max(1.25rem,env(safe-area-inset-bottom))] md:sticky md:top-0 md:h-[100dvh] z-40 overflow-y-auto custom-scrollbar"
+              >
+                {sidebarBody}
+              </motion.aside>
+
+              {/* Mobile menu — a true overlay: enter 240ms EASE_OUT, exit 200ms
+                  EASE_IN_OUT (motion.ts law). Main stays mounted underneath, so
+                  its scroll position survives open/close. */}
+              <AnimatePresence>
+                {showMobileMenu && (
+                  <motion.aside
+                    key="mobile-menu"
+                    initial={{ y: -8, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1, transition: { duration: 0.24, ease: EASE_OUT } }}
+                    exit={{ y: -8, opacity: 0, transition: { duration: 0.2, ease: EASE_IN_OUT } }}
+                    className="md:hidden fixed inset-x-0 bottom-0 top-[calc(max(0.75rem,env(safe-area-inset-top))_+_2.5rem)] z-40 flex flex-col sidebar-gradient px-[18px] pt-[26px] pb-[calc(4.5rem_+_env(safe-area-inset-bottom))] overflow-y-auto overscroll-contain custom-scrollbar"
+                  >
+                    {sidebarBody}
+                  </motion.aside>
+                )}
+              </AnimatePresence>
+            </>
+          );
+        })()}
+
+        {/* MT-1 — bottom tab bar: the four destinations in thumb reach on phones.
+            Settings, notifications and the account strip keep living in the
+            hamburger menu. Active state is paper+ink — no accent (CC-5). */}
+        <nav className="md:hidden fixed bottom-0 inset-x-0 z-50 bg-(--paper-0)/92 backdrop-blur-xl border-t border-(--hairline) pb-[env(safe-area-inset-bottom)]">
+          <div className="flex items-stretch">
+            {([
+              { tab: "dashboard", icon: CalendarDaysIcon, label: "Dashboard" },
+              { tab: "upload", icon: CloudArrowUpIcon, label: language === "german" ? "Hochladen" : "Upload" },
+              { tab: "library", icon: BookOpenIcon, label: language === "german" ? "Bibliothek" : "Library" },
+              { tab: "stats", icon: ChartBarIcon, label: language === "german" ? "Statistik" : "Stats" },
+            ] as const).map(({ tab, icon: Icon, label }) => (
+              <button
+                key={tab}
+                onClick={() => { setActiveTab(tab); setShowMobileMenu(false); }}
+                aria-current={activeTab === tab ? "page" : undefined}
+                className={`flex-1 flex flex-col items-center justify-center gap-1 pt-2.5 pb-2 cursor-pointer press-row ${activeTab === tab ? "text-ink-900" : "text-ink-400"}`}
+              >
+                <Icon className="w-[22px] h-[22px]" strokeWidth={activeTab === tab ? 1.9 : 1.6} />
+                <span className={`text-[10px] leading-none ${activeTab === tab ? "font-semibold" : "font-medium"}`}>{label}</span>
+              </button>
+            ))}
+          </div>
+        </nav>
 
         {/* Main Content */}
         {/* Mobile: page scrolls naturally (URL bar can collapse, native momentum).
             md+: fixed app-shell — sidebar stays put, main scrolls internally. */}
-        <main className={`${showMobileMenu ? "hidden" : "block"} app-shell-main md:block flex-1 relative px-4 md:px-8 lg:px-12 pt-8 md:pt-[46px] pb-[max(2rem,env(safe-area-inset-bottom))] md:pb-[max(3rem,env(safe-area-inset-bottom))] md:h-[100dvh] md:overflow-y-auto`}>
+        <main ref={mainRef} className="app-shell-main block flex-1 relative px-4 md:px-8 lg:px-12 pt-8 md:pt-[46px] pb-[calc(4.5rem_+_env(safe-area-inset-bottom))] md:pb-[max(3rem,env(safe-area-inset-bottom))] md:h-[100dvh] md:overflow-y-auto">
           <AnimatePresence mode="wait">
             {activeTab === "dashboard" && (
               <motion.div
@@ -2157,16 +2381,28 @@ export default function DashboardClient({
                   const scheduledItems = upcomingReviews.filter(r => !r.isDue);
                   const visibleScheduled = showAllScheduled ? scheduledItems : scheduledItems.slice(0, 6);
                   const firstName = userName?.split(" ")[0];
-                  const now = new Date();
-                  const hour = now.getHours();
-                  const greeting = de
-                    ? (hour < 11 ? "Guten Morgen" : hour < 18 ? "Guten Tag" : "Guten Abend")
-                    : (hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening");
-                  const dateEyebrow = now.toLocaleDateString(de ? "de-DE" : "en-GB", { weekday: "long", day: "numeric", month: "long" });
+                  // PP-1 — greeting/eyebrow/dueness key off the `clock` state (null
+                  // during SSR + hydration, real before first client paint) instead
+                  // of an SSR-computed new Date() that flashed on hydration.
+                  const greeting = !clock
+                    ? (de ? "Willkommen zurück" : "Welcome back")
+                    : de
+                    ? (clock.getHours() < 11 ? "Guten Morgen" : clock.getHours() < 18 ? "Guten Tag" : "Guten Abend")
+                    : (clock.getHours() < 12 ? "Good morning" : clock.getHours() < 18 ? "Good afternoon" : "Good evening");
+                  const dateEyebrow = clock
+                    ? clock.toLocaleDateString(de ? "de-DE" : "en-GB", { weekday: "long", day: "numeric", month: "long" })
+                    : " ";
                   const nextUp = scheduledItems[0] ? new Date(scheduledItems[0].raw.nextReviewDate) : null;
                   const fmtLong = (d: Date) => d.toLocaleDateString(de ? "de-DE" : "en-GB", { weekday: "long", day: "numeric", month: "long" });
                   const fmtShort = (d: Date) => d.toLocaleDateString(de ? "de-DE" : "en-GB", { weekday: "short", day: "numeric", month: "short" });
+                  const fmtDay = (d: Date) => d.toLocaleDateString(de ? "de-DE" : "en-GB", { day: "numeric", month: "long" });
                   const minutes = dueItems.length * 7;
+                  // IA-2 — overdue exists as a concept: due before today (not just "due").
+                  const overdueOf = (r: ReviewCard) => !!clock && startOfLocalDay(new Date(r.raw.nextReviewDate)) < startOfLocalDay(clock);
+                  const overdueCount = dueItems.filter(overdueOf).length;
+                  // PP-1 — the SSR/hydration frame has no clock yet: show the same
+                  // skeleton the reviews fetch uses instead of asserting dueness.
+                  const dashboardPending = isLoadingReviews || !clock;
                   return (
                     <>
                       <motion.header variants={riseChild} className="flex flex-col sm:flex-row sm:items-end justify-between gap-6">
@@ -2176,18 +2412,18 @@ export default function DashboardClient({
                             {greeting}{firstName ? `, ${firstName}` : ""}.
                           </h1>
                           <p className="text-[15px] text-ink-600 mt-3 leading-normal">
-                            {isLoadingReviews
+                            {dashboardPending
                               ? (de ? "Einen Moment …" : "One moment …")
                               : dueItems.length > 0
                               ? (de
-                                  ? `${dueItems.length} ${dueItems.length === 1 ? "Wiederholung ist" : "Wiederholungen sind"} bereit — etwa ${minutes} Minuten.`
-                                  : `${dueItems.length} ${dueItems.length === 1 ? "review is" : "reviews are"} ready — about ${minutes} minutes.`)
+                                  ? `${dueItems.length} ${dueItems.length === 1 ? "Wiederholung ist" : "Wiederholungen sind"} bereit — ${overdueCount > 0 ? `${overdueCount} davon überfällig, ` : ""}etwa ${minutes} Minuten.`
+                                  : `${dueItems.length} ${dueItems.length === 1 ? "review is" : "reviews are"} ready — ${overdueCount > 0 ? `${overdueCount} overdue, ` : ""}about ${minutes} minutes.`)
                               : nextUp
                               ? (de ? `Heute ist nichts fällig. Die nächste Wiederholung kommt am ${fmtLong(nextUp)}.` : `Nothing due today. The next review lands ${fmtLong(nextUp)}.`)
                               : (de ? "Lade deine erste Vorlesung hoch — der Rest plant sich selbst." : "Upload your first lecture — the rest schedules itself.")}
                           </p>
                         </div>
-                        {dueItems.length > 0 ? (
+                        {dashboardPending ? null : dueItems.length > 0 ? (
                            
                           <button onClick={() => startQuiz(dueItems[0])} className="btn-primary h-11 px-6 text-sm shrink-0 cursor-pointer">
                             {de ? "Jetzt wiederholen" : "Start reviewing"}
@@ -2201,7 +2437,7 @@ export default function DashboardClient({
                         ) : null}
                       </motion.header>
 
-                      {!isLoadingReviews && dueItems.length === 0 && upcomingReviews.length > 0 && (
+                      {!dashboardPending && dueItems.length === 0 && upcomingReviews.length > 0 && (
                         <motion.div
                           initial={{ scaleX: 0 }}
                           animate={{ scaleX: 1 }}
@@ -2213,7 +2449,7 @@ export default function DashboardClient({
 
                       <motion.div variants={riseChild} className="flex flex-col xl:flex-row gap-8 xl:gap-9 mt-10 items-start">
                         <div className="flex-1 min-w-0 w-full">
-                          {isLoadingReviews ? (
+                          {dashboardPending ? (
                             /* Skeleton — static paper blocks, no shimmer */
                             <div className="flex flex-col gap-2.5">
                               {[0, 1, 2].map((i) => (
@@ -2260,9 +2496,17 @@ export default function DashboardClient({
                           ) : (
                             /* Due today */
                             <div>
-                              <div className="flex items-center gap-2 mb-3.5">
-                                <span className="w-1.5 h-1.5 rounded-full bg-(--a-g2) shadow-[0_0_8px_color-mix(in_srgb,var(--a-g2)_50%,transparent)]"></span>
+                              <div className="flex items-baseline gap-2 mb-3.5">
+                                <span className="w-1.5 h-1.5 rounded-full bg-(--a-g2) shadow-[0_0_8px_color-mix(in_srgb,var(--a-g2)_50%,transparent)] self-center"></span>
                                 <h2 className="text-base tracking-[-0.011em] text-ink-900 font-sans" style={{ fontWeight: 650 }}>{de ? "Heute fällig" : "Due today"}</h2>
+                                {/* IA-2 — overdue is named, not flattened into "today" */}
+                                {overdueCount > 0 && (
+                                  <span className="text-xs text-ink-400 tnum" style={{ fontWeight: 550 }}>
+                                    {de
+                                      ? `${overdueCount} überfällig · ${dueItems.length - overdueCount} heute`
+                                      : `${overdueCount} overdue · ${dueItems.length - overdueCount} today`}
+                                  </span>
+                                )}
                               </div>
                               <motion.div variants={staggerContainer} initial="initial" animate="animate" className="flex flex-col gap-2.5">
                                 {dueItems.map((review) => {
@@ -2287,25 +2531,43 @@ export default function DashboardClient({
                                   const isWaitingForNewVideo = latestVideoLevel < review.level;
                                   const archiveVideos = isWaitingForNewVideo ? videoHistory : videoHistory.slice(0, -1);
                                   const materialsOpen = expandedCards.has(review.id);
+                                  // IA-2 — overdue cards say since when, quietly (text only, no new color)
+                                  const overdueSince = overdueOf(review) ? new Date(review.raw.nextReviewDate) : null;
 
                                   return (
                                     <motion.div
                                       key={review.id}
                                       variants={riseChild}
-                                      whileHover={{ y: -1 }}
-                                      transition={springSoft}
-                                       
+                                      {...hoverLift}
+                                      role="button"
+                                      tabIndex={0}
+                                      onKeyDown={(e) => {
+                                        // Only when the CARD itself is focused — Enter on a nested
+                                        // button must not also start the quiz (IS-2/AX-2).
+                                        if (e.target !== e.currentTarget) return;
+                                        if (e.key === "Enter" || e.key === " ") {
+                                          e.preventDefault();
+                                          startQuiz(review);
+                                        }
+                                      }}
                                       onClick={() => startQuiz(review)}
-                                      className="card-surface-elevated group cursor-pointer relative overflow-hidden pl-[26px] pr-5 pt-[18px] pb-4"
+                                      className="card-surface-elevated group cursor-pointer relative pl-6 pr-5 pt-4 pb-4"
                                     >
                                       {/* Amber thread — the due signal */}
                                       <span className="amber-thread absolute left-0 top-3.5 bottom-3.5 w-[3px]"></span>
 
                                       <div className="flex items-center gap-3 sm:gap-4">
                                         <div className="flex-1 min-w-0">
-                                          <div className="caps-label truncate">{review.subject}</div>
+                                          <div className="flex items-baseline gap-2 min-w-0">
+                                            <div className="caps-label truncate">{review.subject}</div>
+                                            {overdueSince && (
+                                              <span className="text-[11px] text-ink-400 whitespace-nowrap shrink-0" style={{ fontWeight: 550 }}>
+                                                {de ? `seit ${fmtDay(overdueSince)}` : `since ${fmtDay(overdueSince)}`}
+                                              </span>
+                                            )}
+                                          </div>
                                           <Tip label={review.topic}>
-                                            <div className="text-base font-semibold tracking-[-0.011em] text-ink-900 mt-[5px] truncate">{review.topic}</div>
+                                            <div className="text-base font-semibold tracking-[-0.011em] text-ink-900 mt-[5px] max-sm:line-clamp-2 sm:truncate">{review.topic}</div>
                                           </Tip>
                                         </div>
                                         <span className="hidden sm:inline-block text-xs text-ink-600 border border-(--line-soft) rounded-full px-2.5 py-1 whitespace-nowrap tnum" style={{ fontWeight: 550 }}>
@@ -2405,7 +2667,7 @@ export default function DashboardClient({
                                             <button
                                               onClick={(e) => handleDeleteModule(e, review.id)}
                                               disabled={!!deletingIds[review.id]}
-                                              className="btn-ghost-icon w-8 h-8 flex items-center justify-center sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 sm:focus-visible:opacity-100 hover:!text-(--grade-fail-accent) disabled:opacity-60 disabled:cursor-wait cursor-pointer transition-opacity"
+                                              className="btn-ghost-icon w-8 h-8 flex items-center justify-center [@media(hover:hover)]:sm:opacity-0 [@media(hover:hover)]:sm:group-hover:opacity-100 focus-visible:opacity-100 sm:focus-visible:opacity-100 hover:!text-(--grade-fail-accent) disabled:opacity-60 disabled:cursor-wait cursor-pointer transition-opacity"
                                             >
                                               {deletingIds[review.id] ? (
                                                 <ArrowPathIcon className="w-4 h-4 animate-spin" />
@@ -2497,7 +2759,7 @@ export default function DashboardClient({
                           )}
 
                           {/* Upcoming */}
-                          {!isLoadingReviews && scheduledItems.length > 0 && (
+                          {!dashboardPending && scheduledItems.length > 0 && (
                             <div className="mt-10">
                               <div className="flex items-center justify-between mb-3.5">
                                 <h2 className="text-base tracking-[-0.011em] text-ink-900 font-sans" style={{ fontWeight: 650 }}>{de ? "Demnächst" : "Upcoming"}</h2>
@@ -2515,9 +2777,17 @@ export default function DashboardClient({
                                   <div key={review.id}>
                                     {idx > 0 && <div className="h-px bg-(--hairline) mx-[22px]" />}
                                     <div
-                                       
+                                      role="button"
+                                      tabIndex={0}
+                                      onKeyDown={(e) => {
+                                        if (e.target !== e.currentTarget) return;
+                                        if (e.key === "Enter" || e.key === " ") {
+                                          e.preventDefault();
+                                          startQuiz(review);
+                                        }
+                                      }}
                                       onClick={() => startQuiz(review)}
-                                      className="grid grid-cols-[1fr_auto_auto] items-center gap-4 sm:gap-6 py-[13px] px-[22px] cursor-pointer hover:bg-(--paper-hover) transition-colors"
+                                      className="grid grid-cols-[1fr_auto_auto] items-center gap-4 sm:gap-6 py-[13px] px-[22px] cursor-pointer hover:bg-(--paper-hover) transition-colors press-row"
                                     >
                                       <div className="min-w-0">
                                         <div className="text-sm tracking-[-0.008em] text-ink-900 truncate" style={{ fontWeight: 570 }}>{review.topic}</div>
@@ -2609,7 +2879,7 @@ export default function DashboardClient({
                 {isGenerating ? (
                   <div className="card-surface-elevated px-8 py-12 md:py-14 flex flex-col items-center justify-center text-center">
                     <div className="w-16 h-16 rounded-[18px] bg-(--accent-wash-soft) border border-(--accent-border-soft) flex items-center justify-center mb-6">
-                      <ArrowPathIcon className="w-7 h-7 text-amber-600 animate-spin" strokeWidth={1.6} />
+                      <ArrowPathIcon className="w-7 h-7 text-(--accent-text-strong) animate-spin" strokeWidth={1.6} />
                     </div>
                     <h3 className="font-display text-[27px] text-ink-900 mb-2" style={{ fontWeight: 470 }}>{language === 'german' ? 'Dein Modul entsteht' : 'Building your module'}</h3>
                     <p className="text-ink-600 mb-9 text-sm">{progressMsg}</p>
@@ -2660,7 +2930,26 @@ export default function DashboardClient({
                     </div>
                   </div>
                 ) : (
-                  <div className="card-surface-elevated p-5 md:p-8 flex flex-col gap-7">
+                  <>
+                  {/* EM-1 — persistent failure record: the 60s progress screen used to
+                      snap back to the form with only a 5s toast as evidence. */}
+                  {uploadError && (
+                    <div className="mb-6 p-6 rounded-[18px] bg-(--grade-fail-wash) border border-(--grade-fail-border) text-sm flex flex-col gap-3">
+                      <div className="flex items-center gap-2 text-(--grade-fail-text) font-semibold">
+                        <ExclamationTriangleIcon className="w-5 h-5" strokeWidth={1.6} />
+                        <span>{language === "german" ? "Dein Modul wurde nicht erstellt." : "Your module wasn't created."}</span>
+                      </div>
+                      <pre className="text-xs font-mono bg-paper-0 p-4 rounded-xl border border-(--hairline) whitespace-pre-wrap overflow-x-auto max-h-40 overflow-y-auto leading-relaxed text-left text-(--grade-fail-text)/80 custom-scrollbar">
+                        {uploadError}
+                      </pre>
+                      <p className="text-xs text-ink-400 text-left leading-relaxed">
+                        {language === "german"
+                          ? "Deine Eingaben sind noch da — versuche es unten einfach erneut."
+                          : "Your inputs are still here — just try submitting again below."}
+                      </p>
+                    </div>
+                  )}
+                  <div className="card-surface-elevated p-6 md:p-8 flex flex-col gap-7">
                     <div className="flex flex-col sm:flex-row gap-5">
                       <div className="flex-1 flex flex-col justify-end">
                         <div className="flex items-start justify-between mb-2 gap-2">
@@ -2680,7 +2969,7 @@ export default function DashboardClient({
                         ) : (
                           <div className="input-dark w-full px-4 py-3.5 text-ink-600 text-sm flex items-center justify-between gap-2">
                             {language === "german" ? `Keine Module für Semester ${currentSemester} definiert` : `No modules defined for Semester ${currentSemester}`}
-                            <button onClick={() => { setShowSettingsModal(true); }} className="text-amber-600 hover:text-(--accent-text-strong) font-medium cursor-pointer shrink-0">{language === "german" ? "Hinzufügen" : "Add Presets"}</button>
+                            <button onClick={() => { setShowSettingsModal(true); }} className="text-(--accent-text-strong) font-medium cursor-pointer shrink-0">{language === "german" ? "Hinzufügen" : "Add Presets"}</button>
                           </div>
                         )}
                       </div>
@@ -2714,7 +3003,7 @@ export default function DashboardClient({
                         }}
                       >
                         <div className="w-12 h-12 rounded-xl bg-(--accent-wash-softer) border border-(--accent-border-soft) flex items-center justify-center mb-4">
-                          <CloudArrowUpIcon className="w-6 h-6 text-amber-600" />
+                          <CloudArrowUpIcon className="w-6 h-6 text-(--accent-text-strong)" />
                         </div>
                         <p className="text-ink-900 text-[15px] font-semibold text-center leading-snug">
                           {language === "german" ? "Zieh dein PDF, deine Folien oder Notizen hierher" : "Drop your PDF, slides, or notes here"}
@@ -2749,7 +3038,7 @@ export default function DashboardClient({
                           {uploadedFiles.map((file, idx) => (
                             /* addUploadFiles dedupes by name, so file.name is a stable key */
                             <div key={file.name} className="flex items-center gap-2 bg-(--accent-wash-soft) text-(--accent-text-strong) h-[30px] px-[11px] rounded-[10px] text-xs border border-(--accent-border-soft)" style={{ fontWeight: 550 }}>
-                              <DocumentTextIcon className="w-4 h-4 text-amber-600" />
+                              <DocumentTextIcon className="w-4 h-4 text-(--accent-text-strong)" />
                               {file.name}
                               <Tip label={language === "german" ? "Datei entfernen" : "Remove file"}>
                                 <button
@@ -2769,7 +3058,7 @@ export default function DashboardClient({
                         value={textInput}
                         onChange={e => setTextInput(e.target.value)}
                         placeholder={language === "german" ? "...oder füge deine Vorlesungsskripte, Transkripte oder rohen Text hier ein..." : "...or paste your lecture notes, transcript, or raw text here..."}
-                        className="input-dark w-full px-4 py-3.5 h-[120px] resize-none text-sm leading-relaxed"
+                        className="input-dark w-full px-4 py-3.5 h-[120px] resize-none text-base sm:text-sm leading-relaxed"
                       />
                     </div>
                     <div>
@@ -2777,7 +3066,7 @@ export default function DashboardClient({
                         <select
                           value={generationModel}
                           onChange={e => setGenerationModel(e.target.value)}
-                          className="input-dark sm:w-[200px] h-[52px] px-4 text-sm cursor-pointer appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M5%208l5%205%205-5%22%20stroke%3D%22%23A89D8B%22%20stroke-width%3D%222%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-no-repeat bg-[position:right_1rem_center]"
+                          className="input-dark sm:w-[200px] h-[52px] px-4 text-base sm:text-sm cursor-pointer appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M5%208l5%205%205-5%22%20stroke%3D%22%23A89D8B%22%20stroke-width%3D%222%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-no-repeat bg-[position:right_1rem_center]"
                         >
                           <option value="gemini-3.5-flash">3.5 Flash (Standard)</option>
                           <option value="gemini-3.1-pro-preview">3.1 Pro (Preview)</option>
@@ -2799,6 +3088,7 @@ export default function DashboardClient({
                       </p>
                     </div>
                   </div>
+                  </>
                 )}
               </motion.div>
             )}
@@ -2839,7 +3129,7 @@ export default function DashboardClient({
                         if (e.target.value.trim()) { setLibraryEditing(false); setConfirmingDeleteModuleKey(null); }
                       }}
                       placeholder={language === "german" ? "Modul oder Vorlesung suchen…" : "Search module or lecture…"}
-                      className="input-dark w-full h-12 pl-11 pr-10 text-sm"
+                      className="input-dark w-full h-12 pl-11 pr-10 text-base sm:text-sm"
                     />
                     {!librarySearching && (
                       <span className="kbd absolute right-3 top-1/2 -translate-y-1/2 hidden md:inline-flex pointer-events-none">⌘K</span>
@@ -2997,14 +3287,18 @@ export default function DashboardClient({
 
                                 return (
                                   <div key={modKey} className="card-surface overflow-hidden">
-                                    {/* Module header */}
+                                    {/* Module header — AX-4: the expand/collapse toggle and the
+                                        edit-mode delete control are SIBLING <button>s (no more
+                                        role="button" spans nested inside a button). */}
+                                    <div className="w-full flex items-center group press-row">
                                     <button
                                       onClick={() => setExpandedLibraryModules(prev => {
                                         const next = new Set(prev);
                                         if (next.has(modKey)) next.delete(modKey); else next.add(modKey);
                                         return next;
                                       })}
-                                      className="w-full flex items-center gap-3 px-5 py-4 group cursor-pointer press-row"
+                                      aria-expanded={modOpen}
+                                      className={`flex-1 min-w-0 flex items-center gap-3 pl-5 py-4 cursor-pointer text-left ${libraryEditing ? "pr-3" : "pr-5"}`}
                                     >
                                       <motion.div animate={{ rotate: modOpen ? 90 : 0 }} transition={springTactile}>
                                         <ChevronRightIcon className="w-3.5 h-3.5 text-ink-300 group-hover:text-ink-600 transition-colors shrink-0" />
@@ -3047,36 +3341,40 @@ export default function DashboardClient({
                                           </span>
                                         </>
                                       )}
-                                      {/* Edit mode: circular remove → two-step confirm → busy spinner */}
-                                      {libraryEditing && (
-                                        modDeleting ? (
+                                    </button>
+                                    {/* Edit mode: circular remove → two-step confirm → busy spinner.
+                                        Real buttons, keyboard-reachable (AX-4). */}
+                                    {libraryEditing && (
+                                      <div className="pr-5 shrink-0 flex items-center">
+                                        {modDeleting ? (
                                           <span className="w-[30px] h-[30px] rounded-full flex items-center justify-center bg-(--grade-fail-wash) text-(--grade-fail-text) shrink-0">
                                             <ArrowPathIcon className="w-3.5 h-3.5 animate-spin" strokeWidth={2} />
                                           </span>
                                         ) : confirmingDeleteModuleKey === modKey ? (
-                                          <span
-                                            role="button"
+                                          <button
+                                            type="button"
                                             onClick={(e) => handleDeleteLibraryModule(e, modKey, lectures)}
                                             className="inline-flex items-center h-[30px] px-3 rounded-full bg-(--grade-fail-wash) text-(--grade-fail-text) border border-(--grade-fail-border) text-xs font-semibold cursor-pointer shrink-0"
                                           >
                                             {language === "german"
                                               ? `${lectures.length} ${lectures.length === 1 ? "Vorlesung" : "Vorlesungen"} löschen?`
                                               : `Delete ${lectures.length} ${lectures.length === 1 ? "lecture" : "lectures"}?`}
-                                          </span>
+                                          </button>
                                         ) : (
                                           <Tip label={language === "german" ? "Modul entfernen" : "Remove module"}>
-                                            <span
-                                              role="button"
+                                            <button
+                                              type="button"
                                               aria-label={language === "german" ? "Modul entfernen" : "Remove module"}
                                               onClick={(e) => handleDeleteLibraryModule(e, modKey, lectures)}
                                               className="w-[30px] h-[30px] rounded-full flex items-center justify-center bg-(--grade-fail-wash) hover:bg-(--grade-fail-border) text-(--grade-fail-text) transition-all cursor-pointer shrink-0 active:scale-90"
                                             >
                                               <MinusIcon className="w-[15px] h-[15px]" strokeWidth={2.2} />
-                                            </span>
+                                            </button>
                                           </Tip>
-                                        )
-                                      )}
-                                    </button>
+                                        )}
+                                      </div>
+                                    )}
+                                    </div>
 
                                     {/* Lecture rows */}
                                     <AnimatePresence initial={false}>
@@ -3196,7 +3494,7 @@ export default function DashboardClient({
                                                                     <Tip label={language === "german"
                                                                       ? `Alle 7 Level bestanden — ${masteryLaps}× durch die Meister-Schleife (Tag 365)`
                                                                       : `All 7 levels cleared — ${masteryLaps}× through the mastery loop (Day 365)`}>
-                                                                      <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-[0.08em] px-2 py-0.5 rounded-full bg-amber-400/[0.14] border border-(--accent-border-soft) text-amber-600">
+                                                                      <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-[0.08em] px-2 py-0.5 rounded-full bg-amber-400/[0.14] border border-(--accent-border-soft) text-(--accent-text-strong)">
                                                                         <AcademicCapIcon className="w-3 h-3" strokeWidth={2} />
                                                                         {language === "german" ? "Meister" : "Mastery"} ×{masteryLaps}
                                                                       </span>
@@ -3238,7 +3536,7 @@ export default function DashboardClient({
                                                                               {current && <div className="w-1.5 h-1.5 rounded-full bg-amber-500" />}
                                                                             </div>
                                                                           </Tip>
-                                                                          <span className={`w-7 text-center text-[9px] leading-none ${current ? "text-(--accent-text-strong) font-semibold" : passed ? "text-ink-500 font-medium" : "text-ink-300 font-medium"}`}>
+                                                                          <span className={`w-7 text-center text-[9px] leading-none ${current ? "text-(--accent-text-strong) font-semibold" : passed ? "text-ink-600 font-medium" : "text-ink-300 font-medium"}`}>
                                                                             {label}
                                                                           </span>
                                                                           {fails > 0 ? (
@@ -3526,7 +3824,7 @@ export default function DashboardClient({
                 initial="initial"
                 animate="animate"
                 exit="exit"
-                className={`max-w-4xl mx-auto transition-[padding] ${showTutorPanel ? "xl:pr-[392px]" : ""}`}
+                className={`max-w-4xl mx-auto ${showTutorPanel ? "xl:pr-[392px]" : ""}`}
               >
                 <button
                   onClick={() => {
@@ -3583,7 +3881,7 @@ export default function DashboardClient({
                       <motion.button
                         {...pressable}
                         onClick={() => setShowTutorPanel(prev => !prev)}
-                        className={`flex items-center gap-2 h-9 px-4 text-[13px] font-semibold cursor-pointer rounded-xl transition-colors ${showTutorPanel ? "bg-(--accent-wash-soft) text-(--accent-text-strong) border border-(--accent-border)" : "btn-secondary"}`}
+                        className={`flex items-center gap-2 h-9 px-4 text-[13px] font-semibold cursor-pointer rounded-xl transition-colors ${showTutorPanel ? "bg-paper-2 text-ink-900 border border-(--line) shadow-(--shadow-e1)" : "btn-secondary"}`}
                       >
                         <AcademicCapIcon className="w-4 h-4" strokeWidth={1.6} />
                         Tutor
@@ -3638,7 +3936,7 @@ export default function DashboardClient({
                     initial={{ opacity: 0, y: 16 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={springSoft}
-                    className="fixed bottom-[max(1.25rem,env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 z-[60] flex items-center gap-1.5 px-3 py-2 rounded-[18px] bg-paper-1 border border-(--hairline-card)"
+                    className="fixed bottom-[calc(4rem_+_env(safe-area-inset-bottom))] md:bottom-[max(1.25rem,env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 z-[60] flex items-center gap-1.5 px-3 py-2 rounded-[18px] bg-paper-1 border border-(--hairline-card)"
                     style={{ boxShadow: "var(--shadow-e3)" }}
                   >
                     <span className="text-[12px] font-bold text-(--accent-text-strong) tnum px-1.5">{interactive.currentIndex + 1} / {interactive.total}</span>
@@ -3696,7 +3994,7 @@ export default function DashboardClient({
                 {isGrading ? (
                   <div className="card-surface-elevated px-8 py-12 md:py-14 flex flex-col items-center justify-center text-center">
                     <div className="w-16 h-16 rounded-[18px] bg-(--accent-wash-soft) border border-(--accent-border-soft) flex items-center justify-center mb-6">
-                      <ArrowPathIcon className="w-7 h-7 text-amber-600 animate-spin" strokeWidth={1.6} />
+                      <ArrowPathIcon className="w-7 h-7 text-(--accent-text-strong) animate-spin" strokeWidth={1.6} />
                     </div>
                     <h3 className="font-display text-[27px] text-ink-900 mb-2" style={{ fontWeight: 470 }}>{language === "german" ? "Deine Antworten werden bewertet" : "Grading your answers"}</h3>
                     <p className="text-ink-600 mb-2 text-sm">{gradingMsg}</p>
@@ -3757,7 +4055,7 @@ export default function DashboardClient({
                   </div>
                 ) : gradingResult ? (
                   <div className="space-y-5">
-                    <div className="card-surface-elevated p-7 md:p-8 relative overflow-hidden">
+                    <div className="card-surface-elevated p-6 md:p-8 relative">
                       <div className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-6">
                         <div>
                           <span className={`inline-flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-full ${gradingResult.isPass ? 'bg-(--grade-pass-wash) text-(--grade-pass-text)' : 'bg-(--grade-fail-wash) text-(--grade-fail-text)'}`}>
@@ -3814,9 +4112,10 @@ export default function DashboardClient({
                       )}
                     </div>
 
-                    <div className="card-surface-elevated overflow-hidden">
+                    <div className="card-surface-elevated">
+                      <div className="overflow-hidden rounded-[inherit]">
                       <div className="border-b border-(--hairline) bg-(--paper-hover) px-6 py-4 flex items-center gap-2.5">
-                        <DocumentTextIcon className={`w-4 h-4 ${gradingResult.isPass ? "text-amber-600" : "text-(--grade-fail-accent)"}`} strokeWidth={1.6} />
+                        <DocumentTextIcon className={`w-4 h-4 ${gradingResult.isPass ? "text-(--accent-text-strong)" : "text-(--grade-fail-accent)"}`} strokeWidth={1.6} />
                         <h3 className="caps-label !text-ink-600">
                           {gradingResult.isPass
                             ? (language === "german" ? "Gutachter-Brief" : "Examiner's brief")
@@ -3825,6 +4124,7 @@ export default function DashboardClient({
                       </div>
                       <div className="p-6 md:p-8">
                         <FeedbackBody text={gradingResult.feedback} />
+                      </div>
                       </div>
                     </div>
 
@@ -3844,7 +4144,7 @@ export default function DashboardClient({
                       </button>
                       {!gradingResult.isPass && selectedReview.raw.prePodcastUrl?.startsWith("http") && (
                         <a href={selectedReview.raw.prePodcastUrl} target="_blank" rel="noopener noreferrer" className="btn-secondary h-11 px-5 text-sm inline-flex items-center gap-2">
-                          <SpeakerWaveIcon className="w-4 h-4 text-amber-600" strokeWidth={1.6} />
+                          <SpeakerWaveIcon className="w-4 h-4 text-ink-600" strokeWidth={1.6} />
                           {language === "german" ? "Audio · vorher abspielen" : "Play pre-lecture audio"}
                         </a>
                       )}
@@ -3864,16 +4164,26 @@ export default function DashboardClient({
                               initial={{ opacity: 0, y: 20 }}
                               animate={{ opacity: 1, y: 0 }}
                               transition={{ delay: Math.min(idx, 8) * 0.03, duration: DUR.base, ease: EASE_OUT }}
-                              className={`card-surface-elevated p-[22px] md:px-[26px] transition-all duration-300 ${
+                              className={`card-surface-elevated p-6 md:p-8 transition-[opacity,border-color] duration-[240ms] ${
                                 interactive.active && interactive.currentIndex === idx
-                                  ? "!border-(--accent-border-strong) ring-[3px] ring-(--accent-wash) shadow-[0_20px_48px_-20px_color-mix(in_srgb,var(--a-g3)_28%,transparent)]"
+                                  ? "!border-(--accent-border-strong)"
                                   : interactive.active
                                   ? "opacity-50"
                                   : ""
                               }`}
                             >
+                              {/* MO-4 — pre-rendered focus ring + deep shadow; only opacity
+                                  animates (no box-shadow interpolation, per the motion law) */}
+                              <div
+                                aria-hidden="true"
+                                className="absolute -inset-px rounded-[inherit] pointer-events-none transition-opacity duration-[240ms]"
+                                style={{
+                                  boxShadow: "0 0 0 3px var(--accent-wash), 0 20px 48px -20px color-mix(in srgb, var(--a-g3) 28%, transparent)",
+                                  opacity: interactive.active && interactive.currentIndex === idx ? 1 : 0,
+                                }}
+                              />
                               <div className="flex items-center gap-3 mb-4">
-                                <span className={`font-display text-xl italic leading-none ${interactive.active && interactive.currentIndex === idx ? "text-amber-500" : "text-ink-300"}`}>{String(idx + 1).padStart(2, "0")}</span>
+                                <span className={`font-display text-xl italic leading-none ${interactive.active && interactive.currentIndex === idx ? "text-(--accent-text-strong)" : "text-ink-300"}`}>{String(idx + 1).padStart(2, "0")}</span>
                                 <h3 className="caps-label !text-ink-600">{task.label}</h3>
                               </div>
                               {interactive.active && interactive.currentIndex === idx && (
@@ -3935,7 +4245,7 @@ export default function DashboardClient({
                                   placeholder={language === "german"
                                     ? (isMC ? "Tippe A, B, C oder D …" : "Antworte in eigenen Worten — oder diktiere im interaktiven Modus.")
                                     : (isMC ? "Type A, B, C, or D …" : "Answer in your own words — or dictate it in interactive mode.")}
-                                  className={`input-inset w-full px-4 py-[13px] text-sm leading-[1.6] resize-none overflow-hidden ${isMC ? "min-h-[3rem]" : "min-h-[88px]"}`}
+                                  className={`input-inset w-full px-4 py-[13px] text-base sm:text-sm leading-[1.6] resize-none overflow-hidden ${isMC ? "min-h-[3rem]" : "min-h-[88px]"}`}
                                 />
                                 {/* Scribble pad (allowlist feature): a WIDER canvas breaks out of the
                                     card padding so formulas/structures have room to breathe. */}
@@ -3981,7 +4291,7 @@ export default function DashboardClient({
                             <select
                               value={gradingModel}
                               onChange={e => setGradingModel(e.target.value)}
-                              className="btn-secondary sm:w-[200px] h-12 px-4 text-[13px] cursor-pointer appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M5%208l5%205%205-5%22%20stroke%3D%22%23A89D8B%22%20stroke-width%3D%222%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-no-repeat bg-[position:right_0.9rem_center]"
+                              className="btn-secondary sm:w-[200px] h-12 px-4 text-base sm:text-[13px] cursor-pointer appearance-none focus-visible:border-(--accent-border-strong) focus-visible:shadow-[0_0_0_3px_var(--accent-ring)] bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M5%208l5%205%205-5%22%20stroke%3D%22%23A89D8B%22%20stroke-width%3D%222%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-no-repeat bg-[position:right_0.9rem_center]"
                             >
                               <option value="gemini-3.5-flash">3.5 Flash (Standard)</option>
                               <option value="gemini-3.1-pro-preview">3.1 Pro (Preview)</option>
@@ -4012,7 +4322,7 @@ export default function DashboardClient({
                         </div>
                       </div>
                     ) : (
-                      <div className="card-surface-elevated p-5 md:p-7 flex flex-col">
+                      <div className="card-surface-elevated p-6 md:p-8 flex flex-col">
                         <div className="bg-paper-0 border border-(--hairline) rounded-[14px] p-6 font-sans whitespace-pre-wrap text-ink-900/80 text-sm leading-relaxed mb-6">
                           {/* Server-computed, level-correct quiz text (slim payload) */}
                           {extractStudentQuiz(selectedReview.raw.currentQuizText || "")}
@@ -4043,7 +4353,7 @@ export default function DashboardClient({
                           value={studentAnswers}
                           onChange={e => setStudentAnswers(e.target.value)}
                           placeholder={language === "german" ? "Schreibe deine Antworten hier …" : "Write your answers here …"}
-                          className="input-inset flex-1 w-full p-5 text-sm leading-relaxed resize-none min-h-[300px] mb-5"
+                          className="input-inset flex-1 w-full p-5 text-base sm:text-sm leading-relaxed resize-none min-h-[300px] mb-5"
                         />
                         {scribbleEnabled && openScribbles[FREE_SKETCH_KEY] && (
                           <div className="mb-5">
@@ -4063,7 +4373,7 @@ export default function DashboardClient({
                           <select
                             value={gradingModel}
                             onChange={e => setGradingModel(e.target.value)}
-                            className="btn-secondary sm:w-[200px] h-12 px-4 text-[13px] cursor-pointer appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M5%208l5%205%205-5%22%20stroke%3D%22%23A89D8B%22%20stroke-width%3D%222%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-no-repeat bg-[position:right_0.9rem_center]"
+                            className="btn-secondary sm:w-[200px] h-12 px-4 text-base sm:text-[13px] cursor-pointer appearance-none focus-visible:border-(--accent-border-strong) focus-visible:shadow-[0_0_0_3px_var(--accent-ring)] bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M5%208l5%205%205-5%22%20stroke%3D%22%23A89D8B%22%20stroke-width%3D%222%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-no-repeat bg-[position:right_0.9rem_center]"
                           >
                             <option value="gemini-3.5-flash">3.5 Flash (Standard)</option>
                             <option value="gemini-3.1-pro-preview">3.1 Pro (Preview)</option>
@@ -4109,13 +4419,13 @@ export default function DashboardClient({
                 onClick={() => setArchiveModalData(null)}
               >
                 <div className="fixed -inset-6 -z-10 bg-(--overlay) backdrop-blur-[3px]" aria-hidden="true" />
-                <motion.div
-                  {...modalPanel}
+                <ModalDialog
+                  labelledBy="archive-modal-title"
                   onClick={(e) => e.stopPropagation()}
                   className="card-glass w-full max-w-lg overflow-hidden flex flex-col max-h-[85dvh] border border-(--line-soft)"
                 >
-                  <div className="p-6 border-b border-(--hairline-card) flex justify-between items-center">
-                    <h3 className="font-display text-xl font-medium text-ink-900">{language === "german" ? "Video-Archiv" : "Video Archive"}</h3>
+                  <div className="px-6 py-5 border-b border-(--hairline-card) flex justify-between items-center">
+                    <h3 id="archive-modal-title" className="font-display text-xl font-medium text-ink-900">{language === "german" ? "Video-Archiv" : "Video Archive"}</h3>
                     <Tip label={language === "german" ? "Schließen — Esc" : "Close — Esc"}>
                       <button
                         onClick={() => setArchiveModalData(null)}
@@ -4125,7 +4435,7 @@ export default function DashboardClient({
                       </button>
                     </Tip>
                   </div>
-                  <div className="p-6 space-y-3 overflow-y-auto overscroll-contain custom-scrollbar">
+                  <div className="p-6 md:p-8 space-y-3 overflow-y-auto overscroll-contain custom-scrollbar">
                     {archiveModalData.map((item, idx) => (
                       <div key={idx} className="card-surface p-4 flex items-center justify-between">
                         <div>
@@ -4138,13 +4448,13 @@ export default function DashboardClient({
                           rel="noopener noreferrer"
                           className="btn-secondary px-4 py-2 text-xs flex items-center gap-2"
                         >
-                          <VideoCameraIcon className="w-4 h-4 text-amber-600" />
+                          <VideoCameraIcon className="w-4 h-4 text-ink-600" />
                           {language === "german" ? "Ansehen" : "Watch"}
                         </a>
                       </div>
                     ))}
                   </div>
-                </motion.div>
+                </ModalDialog>
               </motion.div>
             )}
           </AnimatePresence>
@@ -4161,15 +4471,15 @@ export default function DashboardClient({
               onClick={() => setActiveFeedbackItem(null)}
             >
               <div className="fixed -inset-6 -z-10 bg-(--overlay) backdrop-blur-[3px]" aria-hidden="true" />
-              <motion.div
-                {...modalPanel}
+              <ModalDialog
+                labelledBy="feedback-modal-title"
                 onClick={(e) => e.stopPropagation()}
                 className="card-glass w-full max-w-4xl overflow-hidden flex flex-col max-h-[85dvh] border border-(--line-soft)"
               >
                 {/* Header */}
-                <div className="p-6 border-b border-(--hairline-card) flex justify-between items-center">
+                <div className="px-6 py-5 border-b border-(--hairline-card) flex justify-between items-center">
                   <div>
-                    <h3 className="font-display text-xl font-medium text-ink-900">{activeFeedbackItem.subjectSub}</h3>
+                    <h3 id="feedback-modal-title" className="font-display text-xl font-medium text-ink-900">{activeFeedbackItem.subjectSub}</h3>
                     <p className="text-xs text-ink-600 mt-1">{activeFeedbackItem.subjectMain} — Level {activeFeedbackItem.currentLevel + 1}</p>
                   </div>
                   <Tip label={language === "german" ? "Schließen — Esc" : "Close — Esc"}>
@@ -4184,7 +4494,7 @@ export default function DashboardClient({
 
                 {/* Header/Title */}
                 <div className="border-b border-(--hairline-card) bg-paper-0 px-6 py-3.5 flex items-center gap-2.5">
-                  <DocumentTextIcon className="w-4 h-4 text-amber-600" />
+                  <DocumentTextIcon className="w-4 h-4 text-ink-400" />
                   <h3 className="caps-label !text-ink-600">{language === "german" ? "Feedback & Auswertung" : "Examiner's brief"}</h3>
                   <span className="flex-1" />
                   {feedbackTranslating ? (
@@ -4311,7 +4621,7 @@ export default function DashboardClient({
                     )}
                   </div>
                 </div>
-              </motion.div>
+              </ModalDialog>
             </motion.div>
           )}
         </AnimatePresence>
@@ -4325,13 +4635,13 @@ export default function DashboardClient({
               onClick={() => setShowCalendarModal(false)}
             >
               <div className="fixed -inset-6 -z-10 bg-(--overlay) backdrop-blur-[3px]" aria-hidden="true" />
-              <motion.div
-                {...modalPanel}
-                className="card-glass p-5 sm:p-6 md:p-7 max-w-[560px] w-full border border-(--line-soft) max-h-[90dvh] overflow-y-auto overscroll-contain custom-scrollbar"
+              <ModalDialog
+                labelledBy="calendar-modal-title"
+                className="card-glass p-6 md:p-8 max-w-[560px] w-full border border-(--line-soft) max-h-[85dvh] overflow-y-auto overscroll-contain custom-scrollbar"
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="flex items-center justify-between mb-2">
-                  <h2 className="font-display text-2xl text-ink-900 tracking-[-0.015em]" style={{ fontWeight: 480 }}>
+                  <h2 id="calendar-modal-title" className="font-display text-2xl text-ink-900 tracking-[-0.015em]" style={{ fontWeight: 480 }}>
                     {language === "german" ? "Kalender-Sync" : "Calendar sync"}
                   </h2>
                   <Tip label={language === "german" ? "Schließen — Esc" : "Close — Esc"}>
@@ -4354,7 +4664,7 @@ export default function DashboardClient({
                     href={`webcal://${typeof window !== 'undefined' ? window.location.host : 'localhost:3000'}/api/calendar?lang=${language}${calTokenAnd}`}
                     className="btn-secondary flex items-center justify-center gap-2 w-full py-3.5 text-sm"
                   >
-                    <CalendarDaysIcon className="w-4 h-4 text-amber-600" />
+                    <CalendarDaysIcon className="w-4 h-4 text-ink-600" />
                     {language === "german" ? "In Apple Kalender abonnieren" : "Subscribe in Apple Calendar"}
                   </a>
 
@@ -4422,7 +4732,7 @@ export default function DashboardClient({
                     {language === "german" ? ".ics-Datei herunterladen (Einmal-Import)" : "Download .ics file (one-time import)"}
                   </a>
                 </div>
-              </motion.div>
+              </ModalDialog>
             </motion.div>
           )}
         </AnimatePresence>
@@ -4438,14 +4748,14 @@ export default function DashboardClient({
             onClick={closeSettingsModal}
           >
             <div className="fixed -inset-6 -z-10 bg-(--overlay) backdrop-blur-[3px]" aria-hidden="true" />
-            <motion.div
-              {...modalPanel}
-              className="card-glass p-5 sm:p-6 md:p-7 w-full max-w-[560px] border border-(--line-soft) max-h-[90dvh] overflow-y-auto overscroll-contain custom-scrollbar"
+            <ModalDialog
+              labelledBy="settings-modal-title"
+              className="card-glass p-6 md:p-8 w-full max-w-[560px] border border-(--line-soft) max-h-[85dvh] overflow-y-auto overscroll-contain custom-scrollbar"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex justify-between items-start mb-7">
                 <div>
-                  <h3 className="font-display text-2xl text-ink-900 tracking-[-0.015em]" style={{ fontWeight: 480 }}>
+                  <h3 id="settings-modal-title" className="font-display text-2xl text-ink-900 tracking-[-0.015em]" style={{ fontWeight: 480 }}>
                     {language === "german" ? "Einstellungen" : "Settings"}
                   </h3>
                   <p className="text-[13px] text-ink-600 mt-1.5">
@@ -4620,7 +4930,7 @@ export default function DashboardClient({
                         }
                       }}
                       placeholder={language === "german" ? "z.B. Lineare Algebra" : "e.g. Linear Algebra"}
-                      className="input-dark flex-1 px-4 py-2.5 text-sm"
+                      className="input-dark flex-1 px-4 py-2.5 text-base sm:text-sm"
                     />
                     <button
                       onClick={() => {
@@ -4729,7 +5039,7 @@ export default function DashboardClient({
                       : "Choose which modules should use the experimental Gemini proxy. The official Google API will always act as a reliable fallback."}
                   </p>
                   {(isGenerating || isGrading) && (
-                    <div className="mb-4 text-xs font-semibold text-amber-600 flex items-center gap-2">
+                    <div className="mb-4 text-xs font-semibold text-ink-600 flex items-center gap-2">
                       <LockClosedIcon className="w-3.5 h-3.5" />
                       {language === "german" ? "Einstellungen gesperrt, während eine KI-Aktion läuft." : "Settings locked while AI generation is in progress."}
                     </div>
@@ -4805,6 +5115,16 @@ export default function DashboardClient({
                       {language === "german" ? "Nur Fallback" : "Fallback only"}
                     </button>
                   </div>
+                  <a
+                    href="https://aistudio-api-150434442017.europe-west1.run.app"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 mt-4 text-xs text-(--accent-text) hover:text-(--accent-text-strong) transition-colors cursor-pointer"
+                    style={{ fontWeight: 550 }}
+                  >
+                    {language === "german" ? "Proxy-Admin öffnen (Login & Konto)" : "Open proxy admin (login & account)"}
+                    <ArrowTopRightOnSquareIcon className="w-3.5 h-3.5" />
+                  </a>
                 </div>
 
                 <div className="pt-6 border-t border-(--hairline-card)">
@@ -4815,7 +5135,7 @@ export default function DashboardClient({
                       : "Applies only to the Gemini proxy — the official Gemini API always uses its native file upload. Inline embeds PDFs as base64 in the proxy request itself (reliable up to ~14 MB, independent of the proxy account). File upload pushes the file once through the upload proxy and references it — saves bandwidth across steps, but is tied to the proxy account that uploaded it."}
                   </p>
                   {(isGenerating || isGrading) && (
-                    <div className="mb-4 text-xs font-semibold text-amber-600 flex items-center gap-2">
+                    <div className="mb-4 text-xs font-semibold text-ink-600 flex items-center gap-2">
                       <LockClosedIcon className="w-3.5 h-3.5" />
                       {language === "german" ? "Einstellungen gesperrt, während eine KI-Aktion läuft." : "Settings locked while AI generation is in progress."}
                     </div>
@@ -4886,10 +5206,42 @@ export default function DashboardClient({
                   </button>
                 </div>
               </div>
-            </motion.div>
+            </ModalDialog>
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* AX-5 — one polite live region: grading progress and the verdict (the
+          app's earned moment) are announced to screen readers. */}
+      <div className="sr-only" role="status" aria-live="polite">
+        {(() => {
+          const de = language === "german";
+          if (isGrading) return gradingMsg || (de ? "Bewertung läuft…" : "Grading in progress…");
+          if (gradingResult) {
+            const when = gradingResult.nextReviewDate
+              ? new Date(gradingResult.nextReviewDate).toLocaleDateString(de ? "de-DE" : "en-GB", { weekday: "long", day: "numeric", month: "long" })
+              : null;
+            if (gradingResult.comprehension) {
+              const score = gradingResult.comprehensionScore !== null && gradingResult.comprehensionScore !== undefined
+                ? `${Math.round(gradingResult.comprehensionScore)} %`
+                : null;
+              return de
+                ? `Verständnis-Check abgeschlossen${score ? ` — ${score}` : ""}.`
+                : `Comprehension check finished${score ? ` — ${score}` : ""}.`;
+            }
+            const level = gradingResult.currentLevel !== null ? gradingResult.currentLevel + 1 : null;
+            return gradingResult.isPass
+              ? (de
+                  ? `Bestanden${level ? ` — Level ${level} freigeschaltet` : ""}.${when ? ` Nächste Wiederholung am ${when}.` : ""}`
+                  : `Passed${level ? ` — level ${level} unlocked` : ""}.${when ? ` Next review on ${when}.` : ""}`)
+              : (de
+                  ? `Wiederholen.${when ? ` Kommt zurück am ${when}.` : ""}`
+                  : `Repeat.${when ? ` Comes back on ${when}.` : ""}`);
+          }
+          if (isGenerating) return progressMsg;
+          return "";
+        })()}
+      </div>
 
       {/* Toast notifications (non-blocking alert replacement) */}
       <ToastStack toasts={toasts} onDismiss={dismissToast} />
@@ -4904,16 +5256,16 @@ export default function DashboardClient({
             onClick={() => setPromptsModal(null)}
           >
             <div className="fixed -inset-6 -z-10 bg-(--overlay) backdrop-blur-[3px]" aria-hidden="true" />
-            <motion.div
-              {...modalPanel}
+            <ModalDialog
               key="prompts-list-modal"
+              labelledBy="prompts-modal-title"
               onClick={(e) => e.stopPropagation()}
-              className="card-glass border border-(--line-soft) w-full max-w-md max-h-[80dvh] flex flex-col overflow-hidden"
+              className="card-glass border border-(--line-soft) w-full max-w-md max-h-[85dvh] flex flex-col overflow-hidden"
             >
-              <div className="flex items-start justify-between gap-4 px-6 py-5 border-b border-(--hairline)">
+              <div className="flex items-start justify-between gap-4 px-6 py-5 border-b border-(--hairline-card)">
                 <div className="min-w-0">
                   <p className="caps-label mb-1">Prompts</p>
-                  <h3 className="text-[15px] font-semibold text-ink-900 truncate">{promptsModal.title}</h3>
+                  <h3 id="prompts-modal-title" className="text-[15px] font-semibold text-ink-900 truncate">{promptsModal.title}</h3>
                 </div>
                 <Tip label={language === "german" ? "Schließen — Esc" : "Close — Esc"}>
                   <button
@@ -4924,7 +5276,7 @@ export default function DashboardClient({
                   </button>
                 </Tip>
               </div>
-              <div className="p-4 flex flex-col gap-2 overflow-y-auto overscroll-contain custom-scrollbar">
+              <div className="p-6 md:p-8 flex flex-col gap-2 overflow-y-auto overscroll-contain custom-scrollbar">
                 {promptsModal.prompts.map((p) => (
                   <button
                     key={p.label}
@@ -4940,7 +5292,7 @@ export default function DashboardClient({
                   {language === "german" ? "Zum Debuggen — öffnet den Prompt-Viewer." : "For debugging — opens the prompt viewer."}
                 </p>
               </div>
-            </motion.div>
+            </ModalDialog>
           </motion.div>
         )}
 
@@ -4949,20 +5301,20 @@ export default function DashboardClient({
           <motion.div
             {...overlayMotion}
             key="comp-feedback-backdrop"
-            className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center p-4"
+            className="fixed inset-0 z-[80] flex items-center justify-center p-4"
             onClick={() => setCompFeedback(null)}
           >
             <div className="fixed -inset-6 -z-10 bg-(--overlay) backdrop-blur-[3px]" aria-hidden="true" />
-            <motion.div
-              {...modalPanel}
+            <ModalDialog
               key="comp-feedback-modal"
+              labelledBy="comp-feedback-modal-title"
               onClick={(e) => e.stopPropagation()}
-              className="card-glass border border-(--line-soft) w-full max-w-2xl max-h-[80dvh] flex flex-col overflow-hidden"
+              className="card-glass border border-(--line-soft) w-full max-w-2xl max-h-[85dvh] flex flex-col overflow-hidden"
             >
-              <div className="flex items-start justify-between gap-4 px-6 py-5 border-b border-(--hairline)">
+              <div className="flex items-start justify-between gap-4 px-6 py-5 border-b border-(--hairline-card)">
                 <div className="min-w-0">
                   <p className="caps-label mb-1">{language === "german" ? "Verständnis-Check" : "Comprehension check"}</p>
-                  <h3 className="text-[15px] font-semibold text-ink-900 truncate">{compFeedback.subjectSub}</h3>
+                  <h3 id="comp-feedback-modal-title" className="text-[15px] font-semibold text-ink-900 truncate">{compFeedback.subjectSub}</h3>
                   <div className="flex items-center gap-2.5 mt-2">
                     <span className={`text-[9px] font-bold uppercase tracking-[0.12em] px-2 py-0.5 rounded-full border shrink-0 ${compFeedback.comprehensionPassed ? "bg-(--grade-pass-wash) text-(--grade-pass-text) border-(--grade-pass-border)" : "bg-(--grade-fail-wash) text-(--grade-fail-text) border-(--grade-fail-border)"}`}>
                       {compFeedback.comprehensionPassed ? (language === "german" ? "Bestanden" : "Passed") : (language === "german" ? "Wiederholen" : "Repeat")}
@@ -4986,7 +5338,7 @@ export default function DashboardClient({
                   </button>
                 </Tip>
               </div>
-              <div className="p-6 md:p-7 overflow-y-auto overscroll-contain custom-scrollbar">
+              <div className="p-6 md:p-8 overflow-y-auto overscroll-contain custom-scrollbar">
                 {compFeedback.comprehensionFeedback ? (
                   <FeedbackBody text={compFeedback.comprehensionFeedback} size="sm" />
                 ) : (
@@ -4995,7 +5347,7 @@ export default function DashboardClient({
                   </p>
                 )}
               </div>
-            </motion.div>
+            </ModalDialog>
           </motion.div>
         )}
       </AnimatePresence>
@@ -5005,20 +5357,20 @@ export default function DashboardClient({
         {promptModal && (
           <motion.div
             {...overlayMotion}
-            className="fixed inset-0 z-[90] flex items-end sm:items-center justify-center p-4"
+            className="fixed inset-0 z-[90] flex items-center justify-center p-4"
             onClick={() => setPromptModal(null)}
           >
             <div className="fixed -inset-6 -z-10 bg-(--overlay) backdrop-blur-[3px]" aria-hidden="true" />
-            <motion.div
-              {...modalPanel}
+            <ModalDialog
+              labelledBy="prompt-modal-title"
               onClick={(e) => e.stopPropagation()}
-              className="card-glass border border-(--line-soft) w-full max-w-2xl max-h-[80dvh] flex flex-col overflow-hidden"
+              className="card-glass border border-(--line-soft) w-full max-w-2xl max-h-[85dvh] flex flex-col overflow-hidden"
             >
               {/* Header */}
               <div className="flex items-start justify-between gap-4 px-6 py-5 border-b border-(--hairline-card)">
                 <div className="min-w-0">
                   <p className="eyebrow mb-1">{language === "german" ? "Prompt" : "Prompt"}</p>
-                  <h3 className="font-display text-base font-medium text-ink-900 truncate">{promptModal.title}</h3>
+                  <h3 id="prompt-modal-title" className="font-display text-base font-medium text-ink-900 truncate">{promptModal.title}</h3>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <button
@@ -5027,7 +5379,7 @@ export default function DashboardClient({
                         .then(() => addToast("success", language === "german" ? "Kopiert!" : "Copied!"))
                         .catch(() => addToast("error", language === "german" ? "Kopieren fehlgeschlagen." : "Copy failed."));
                     }}
-                    className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-amber-400/[0.1] hover:bg-(--accent-wash) border border-(--accent-border-soft) hover:border-(--accent-border) text-amber-600 transition-all cursor-pointer"
+                    className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-amber-400/[0.1] hover:bg-(--accent-wash) border border-(--accent-border-soft) hover:border-(--accent-border) text-(--accent-text-strong) transition-all cursor-pointer"
                   >
                     {language === "german" ? "Kopieren" : "Copy"}
                   </button>
@@ -5042,10 +5394,10 @@ export default function DashboardClient({
                 </div>
               </div>
               {/* Body */}
-              <div className="flex-1 overflow-y-auto overscroll-contain custom-scrollbar p-6">
+              <div className="flex-1 overflow-y-auto overscroll-contain custom-scrollbar p-6 md:p-8">
                 <pre className="text-sm text-ink-900/80 leading-relaxed whitespace-pre-wrap font-sans">{promptModal.content}</pre>
               </div>
-            </motion.div>
+            </ModalDialog>
           </motion.div>
         )}
       </AnimatePresence>
