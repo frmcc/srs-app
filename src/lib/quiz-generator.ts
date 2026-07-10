@@ -6,7 +6,6 @@ import { generatePodcastWorker, createNotebook } from "./notebooklm";
 import { generateContentWithRetry, normalizeFileTransport } from "./gemini-retry";
 import { getOrCreateDriveFolder, uploadToDrive, createGoogleDoc } from "./google-drive";
 import { extractSection } from "./markers";
-import { pdfToText } from "./pdf-text";
 import type { SRSItem } from "@prisma/client";
 import fs from "fs/promises";
 import path from "path";
@@ -63,34 +62,32 @@ export async function runQuizGeneration(params: {
     const language = appConfig?.language || "german";
     const languageInstruction = `\n\nCRITICAL: You must generate ALL text, output, and responses strictly in ${language.toUpperCase()}. This applies to every section of the generated content.`;
 
-    // ---- Prepare source material: raw bytes + text extraction fallback ----
+    // ---- Prepare source material ----
     // Files travel as inlineData; gemini-retry's transport layer decides per
-    // backend whether they stay inline or go through the File API (the old
-    // unconditional official upload produced fileData URIs the AIStudioToAPI
-    // wrapper could never read — the model then only saw the extracted text).
-    const geminiFileParts: { inlineData: { data: string; mimeType: string } }[] = [];
-    let dynamicTextContent = textContent;
+    // backend whether they stay inline or go through the File API, and its
+    // FileDropped tripwire + official-API fallback cover delivery failures.
+    // Each document gets a filename caption directly before its bytes —
+    // inlineData carries no name, and the caption is what lets the model tell
+    // multiple sources apart. NO text-extraction ride-along: sending the same
+    // PDF twice (bytes + extracted text) wasted context and left the model two
+    // "sources" it was never told were the same document.
+    const masterContextParts: Array<{ text: string } | { inlineData: { data: string; mimeType: string } }> = [];
 
     for (const fileInfo of filePaths) {
       try {
         const buffer = await fs.readFile(fileInfo.path);
         const name = fileInfo.name || path.basename(fileInfo.path);
-        geminiFileParts.push({
+        masterContextParts.push({ text: `Quellmaterial „${name}“:` });
+        masterContextParts.push({
           inlineData: { data: buffer.toString("base64"), mimeType: fileInfo.mimeType },
         });
-        if (fileInfo.mimeType === "application/pdf" || name.toLowerCase().endsWith(".pdf")) {
-          dynamicTextContent += `\n\n--- Inhalt von ${name} ---\n${await pdfToText(buffer)}`;
-        } else if (fileInfo.mimeType.startsWith("text/")) {
-          dynamicTextContent += `\n\n--- Inhalt von ${name} ---\n${buffer.toString("utf-8")}`;
-        }
       } catch (err) {
         console.error(`[quiz-gen] Error reading file ${fileInfo.path}:`, err);
       }
     }
 
-    const masterContextParts: Array<{ text: string } | { inlineData: { data: string; mimeType: string } }> = [...geminiFileParts];
-    if (dynamicTextContent.trim()) {
-      masterContextParts.push({ text: `\n\nZusätzliches Textmaterial:\n${dynamicTextContent}` });
+    if (textContent.trim()) {
+      masterContextParts.push({ text: `Zusätzliches Textmaterial (vom Nutzer eingegeben):\n${textContent}` });
     }
 
     // ---- Step 1: Blueprint ----
@@ -251,14 +248,17 @@ export async function runQuizGeneration(params: {
     // Pre must fully finish (upload → index wait → ask → save) before post starts.
     if (preNotebookId) {
       try {
-        await generatePodcastWorker(createdItem.id, "pre", preNotebookId, dynamicTextContent, filePaths);
+        // Only user-typed text goes to NotebookLM as "Vorlesungsskript" — the
+        // worker uploads the actual files itself, so extracted PDF text would
+        // just duplicate a source in the notebook.
+        await generatePodcastWorker(createdItem.id, "pre", preNotebookId, textContent, filePaths);
       } catch (e) {
         console.error("[quiz-gen] Pre podcast worker failed:", e);
       }
     }
     if (postNotebookId) {
       try {
-        await generatePodcastWorker(createdItem.id, "post", postNotebookId, dynamicTextContent, filePaths);
+        await generatePodcastWorker(createdItem.id, "post", postNotebookId, textContent, filePaths);
       } catch (e) {
         console.error("[quiz-gen] Post podcast worker failed:", e);
       }

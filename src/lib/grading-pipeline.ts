@@ -8,7 +8,6 @@ import { generateContentWithRetry, normalizeFileTransport } from "@/lib/gemini-r
 import { generateVideoPromptsWorker } from "@/lib/notebooklm";
 import { extractSection, extractSectionOr, formatPrompt, parseMismatchVerdict, parseAssessmentDecision, DecisionParseError } from "@/lib/markers";
 import { countTasks, currentQuizText, intervalLabelFor, nextReviewDateAfter, quizFieldForLevel, INTERVAL_LABELS } from "@/lib/srs";
-import { pdfToText } from "@/lib/pdf-text";
 import type { SRSItem } from "@prisma/client";
 import fs from "fs/promises";
 
@@ -47,7 +46,7 @@ export interface GradingSketch {
 }
 
 export interface GradingSubmission {
-  /** Typed answers (web) or extracted scan text (shortcut fallback). */
+  /** Typed answers (web). May accompany a pdf; never auto-extracted from it. */
   text?: string;
   /** Scanned submission PDF (shortcut). */
   pdf?: { base64: string; mimeType: string };
@@ -92,7 +91,13 @@ function parseComprehensionScore(feedback: string, isPass: boolean): number {
   return Math.max(0, Math.min(100, raw));
 }
 
-/** Re-hydrate the lecture material for the graders (Drive download + text fallback for the proxy). */
+/**
+ * Re-hydrate the lecture material for the graders (Drive download). Documents
+ * go as captioned inlineData ONLY — no text-extraction ride-along. Delivery
+ * failures are gemini-retry's job (FileDropped tripwire + official fallback);
+ * sending the PDF twice as bytes + text wasted context and gave the model two
+ * unlabeled "sources" for the same document.
+ */
 export async function buildSourceMaterialParts(item: SRSItem): Promise<Part[]> {
   const parts: Part[] = [];
   if (!item.sourceMaterialContent) return parts;
@@ -106,12 +111,8 @@ export async function buildSourceMaterialParts(item: SRSItem): Promise<Part[]> {
         if (buffer.length === 0) {
           console.warn(`[grading] Drive file ${parsed.driveFileId} is EMPTY — item ${item.id} has corrupt source material.`);
         } else {
+          parts.push({ text: "Vorlesungsmaterial (Original-Dokument):" });
           parts.push({ inlineData: { data: buffer.toString("base64"), mimeType: "application/pdf" } });
-          try {
-            parts.push({ text: `Vorlesungsmaterial (Text):\n${await pdfToText(buffer)}` });
-          } catch (e) {
-            console.error("[grading] PDF parse failed:", e);
-          }
         }
       } catch (err) {
         console.error("[grading] Could not download source material from Drive:", err instanceof Error ? err.message : err);
@@ -120,7 +121,9 @@ export async function buildSourceMaterialParts(item: SRSItem): Promise<Part[]> {
       // Legacy items: base64 or local file path
       for (const fileInfo of parsed.files) {
         try {
+          const caption = { text: `Vorlesungsmaterial „${fileInfo.name || "Dokument"}“:` };
           if (fileInfo.base64) {
+            parts.push(caption);
             parts.push({ inlineData: { data: fileInfo.base64, mimeType: fileInfo.mimeType } });
           } else if (fileInfo.path) {
             // Raw bytes as inlineData — gemini-retry's transport layer decides
@@ -128,6 +131,7 @@ export async function buildSourceMaterialParts(item: SRSItem): Promise<Part[]> {
             // (The old official-only upload produced fileData URIs the wrapper
             // account could never read.)
             const buffer = await fs.readFile(fileInfo.path);
+            parts.push(caption);
             parts.push({ inlineData: { data: buffer.toString("base64"), mimeType: fileInfo.mimeType } });
           }
         } catch (fileErr) {
@@ -191,19 +195,16 @@ export async function runGradingPipeline(opts: {
     + `\n\nWhenever the output contains numbered tasks or questions, label each one at the very start of its own line as "${language === "english" ? "Task" : "Aufgabe"} N:" (N = the task number). Do not use a different word for the task headings.`;
 
   // ---- Submission parts (the student's actual answers) -------------------
+  // The scan goes as the captioned document alone — the examiners read the
+  // handwriting themselves (Gemini is multimodal). No pdfToText ride-along:
+  // extraction of a handwritten scan is lossy at best, and a second "version"
+  // of the answers invites the graders to grade the wrong one.
   const answerParts: Part[] = [];
-  let submissionText = submission.text || "";
+  const submissionText = submission.text || "";
   if (submission.pdf) {
     answerParts.push({ text: "Beantwortetes Quiz des Studenten (handschriftlich gescannt):" });
     answerParts.push({ inlineData: { data: submission.pdf.base64, mimeType: submission.pdf.mimeType } });
-    if (!submissionText) {
-      try {
-        submissionText = await pdfToText(Buffer.from(submission.pdf.base64, "base64"));
-      } catch (e) {
-        console.error("[grading] Student PDF parse failed:", e);
-      }
-    }
-    if (submissionText.trim()) answerParts.push({ text: `(Zusätzlicher extrahierter Text vom Scan):\n${submissionText}` });
+    if (submissionText.trim()) answerParts.push({ text: `Zusätzliche getippte Antworten des Studenten:\n${submissionText}` });
   } else {
     answerParts.push({ text: `Beantwortetes Quiz des Studenten:\n${submissionText}` });
   }

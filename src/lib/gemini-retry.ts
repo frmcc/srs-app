@@ -415,20 +415,38 @@ function withWrapperThinkingHigh(request: GenerateRequest, modelName: string): G
 type GenerateResponse = Awaited<ReturnType<GoogleGenAI["models"]["generateContent"]>>;
 
 /**
- * Silent-drop tripwire: when the request carried files, the prompt-token count
- * must at least reach the text estimate plus a lowballed file floor. A backend
- * that swallowed the file (instead of erroring) lands well under that line —
- * better to fail loudly than to return a confident answer about a document the
- * model never saw. Lenient by design: no usageMetadata ⇒ no verdict.
+ * Silent-drop tripwire. Preferred signal: usageMetadata.promptTokensDetails —
+ * a request whose files reached the model bills a non-TEXT modality (DOCUMENT
+ * for PDFs, IMAGE for sketches) with a non-zero token count. Exact: no
+ * byte-based estimation, so image-heavy scans (whose bytes-per-page dwarf
+ * their billed ~258 tokens/page) can't false-alarm now that the extracted-text
+ * ride-along no longer pads the prompt. Backends that omit the per-modality
+ * breakdown fall back to the old lowballed byte floor; no usageMetadata at
+ * all ⇒ no verdict (lenient by design).
  */
 function assertFilesWereSeen(response: GenerateResponse, adapted: AdaptedRequest, backendId: BackendId, stepLabel: string) {
   if (adapted.fileCount === 0) return;
-  const promptTokens = response.usageMetadata?.promptTokenCount;
-  if (typeof promptTokens !== "number") {
+  const usage = response.usageMetadata;
+  const promptTokens = usage?.promptTokenCount;
+  if (!usage || typeof promptTokens !== "number") {
     console.warn(`[Gemini Files] ${stepLabel} (${backendId}): no usageMetadata — cannot verify the file reached the model.`);
     return;
   }
-  // Text at ~4 chars/token, discounted; file floor already halved.
+  const details = usage.promptTokensDetails;
+  if (Array.isArray(details) && details.length > 0) {
+    // Modality may arrive enum-styled (TEXT vs MODALITY_TEXT); treating any
+    // "TEXT"-containing name as text errs toward leniency, never a false alarm.
+    const fileTokens = details
+      .filter((d) => d.modality && !String(d.modality).includes("TEXT"))
+      .reduce((sum, d) => sum + (d.tokenCount ?? 0), 0);
+    if (fileTokens === 0) {
+      throw new FileDroppedError(
+        `${stepLabel} (${backendId}): the ${adapted.fileCount} attached file(s) billed 0 non-text prompt tokens — the file was silently discarded.`
+      );
+    }
+    return;
+  }
+  // Fallback: text at ~4 chars/token, discounted; file floor already halved.
   const floor = Math.round(adapted.textChars / 4 / 2) + adapted.fileTokenFloor;
   if (promptTokens < floor) {
     throw new FileDroppedError(
