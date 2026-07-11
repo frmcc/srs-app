@@ -345,14 +345,24 @@
   }
 
   /* Long unbroken strings (URLs, German compound words) wrap instead of forcing
-     horizontal overflow on narrow screens. hyphens:auto (TY-5/LIVE-2) lets
-     German compounds break at dictionary points — with a hyphen — before
-     break-word snaps them at an arbitrary character; it relies on the html
-     lang attribute, which layout.tsx now sets from the stored language. */
+     horizontal overflow on narrow screens. */
   p, span, a, h1, h2, h3, h4, h5, h6, li, button, label, div {
     overflow-wrap: break-word;
+  }
+  /* Auto-hyphenation belongs ONLY in running text, where a German compound
+     benefits from breaking at a dictionary point — with a hyphen — rather than
+     snapping mid-word. It relies on the html lang attribute (set in layout.tsx
+     from the stored language). NEVER on the display serif headings: a squeezed
+     column would otherwise hyphenate a title syllable-by-syllable
+     ("Mo-dera-tion"), which looks broken. Headings rely on text-wrap:balance
+     plus adequate column width instead. */
+  p, li {
     -webkit-hyphens: auto;
     hyphens: auto;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    -webkit-hyphens: manual;
+    hyphens: manual;
   }
 
   h1, h2, h3 {

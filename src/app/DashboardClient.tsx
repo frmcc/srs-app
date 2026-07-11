@@ -4230,9 +4230,13 @@ export default function DashboardClient({
                       </span>
                     )}
                   </div>
-                  <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 sm:gap-6">
+                  {/* When the Tutor panel is open the column is narrow (~376px);
+                      keep the header stacked so the title owns the full width and
+                      never competes with the action buttons (which would squeeze
+                      it to a few chars and wrap the display title mid-line). */}
+                  <div className={`flex flex-col justify-between gap-4 ${showTutorPanel ? "" : "sm:flex-row sm:items-end sm:gap-6"}`}>
                     <div className="min-w-0">
-                      <h1 className="font-display text-[26px] sm:text-3xl tracking-[-0.018em] leading-[1.1] text-ink-900" style={{ fontWeight: 470 }}>{selectedReview.topic}</h1>
+                      <h1 className="font-display text-[26px] sm:text-3xl tracking-[-0.018em] leading-[1.1] text-balance text-ink-900" style={{ fontWeight: 470 }}>{selectedReview.topic}</h1>
                       {parsedTasks.length > 0 && (() => {
                         // "4 tasks · 8 points · untimed" — points summed from task labels ("TASK 1 - 2 POINTS")
                         const totalPoints = parsedTasks.reduce((sum, t) => {
