@@ -32,6 +32,10 @@ interface ChatRequestBody {
   /** Formatted current draft answers (client-built, optional). */
   drafts?: string;
   language?: string;
+  /** Which tutor is loaded: "quiz" (pre-grading — guards the assessment, never
+   *  reveals answers) or "assessment" (post-grading — works from the examiner's
+   *  evaluation toward deep understanding). Defaults to "quiz". */
+  phase?: "quiz" | "assessment";
   /** Set when the chat was opened from ONE task's Tutor button — the tutor is
    *  told to concentrate on it, and its question + draft (+ grader assessment
    *  when opened from the task-by-task review) are attached. */
@@ -46,6 +50,14 @@ function defaultTutorRole(subject: string): string {
     "Rolle:",
     `Du bist ein ruhiger, geduldiger Tutor für das Modul "${subject}".`,
     "Du hilfst Schritt für Schritt, knapp und konkret, mit Hilfe zur Selbsthilfe statt Fertiglösungen.",
+  ].join("\n");
+}
+
+function defaultAssessmentRole(subject: string): string {
+  return [
+    "Rolle:",
+    `Du bist ein ruhiger, präziser Nachbesprechungs-Tutor für das Modul "${subject}".`,
+    "Das Quiz ist bewertet. Dein einziges Ziel ist tiefes Verständnis: Arbeite mit der Bewertung des Prüfers heraus, wo das mentale Modell des Studenten von der Sache abweicht, und korrigiere genau dort — mit klarer Erklärung und anschließender Verständnisprüfung.",
   ].join("\n");
 }
 
@@ -84,23 +96,43 @@ export async function POST(req: NextRequest) {
 
   const subject = `${item.subjectMain} — ${item.subjectSub}`;
   const language = body.language === "english" ? "english" : "german";
+  const phase: "quiz" | "assessment" = body.phase === "assessment" ? "assessment" : "quiz";
 
-  // Per-module tutor role (the same prompt the iPad audio tutor fetches).
-  const storedRole = (item.tutorPromptContent || "").trim();
-  const baseRole = storedRole.startsWith("Rolle:") ? storedRole : defaultTutorRole(subject);
+  // Per-module, per-phase tutor role. Quiz phase uses the stored quiz-taking
+  // prompt (also what the iPad audio tutor fetches via /tutor/[id]); assessment
+  // phase uses the post-grading prompt. Items generated before the split have
+  // no assessment prompt — fall back to a phase-correct default role rather
+  // than the quiz role, whose no-answer rules would fight the debrief.
+  const storedQuizRole = (item.tutorPromptContent || "").trim();
+  const storedAssessRole = (item.tutorPromptAssessmentContent || "").trim();
+  const baseRole =
+    phase === "assessment"
+      ? (storedAssessRole.startsWith("Rolle:") ? storedAssessRole : defaultAssessmentRole(subject))
+      : (storedQuizRole.startsWith("Rolle:") ? storedQuizRole : defaultTutorRole(subject));
 
   // The student-facing quiz for the CURRENT level (marker-extracted; legacy
   // quizzes without markers fall back to the full stored text).
   const fullQuiz = currentQuizText(item);
   const studentQuiz = extractSectionOr(fullQuiz, "===STUDENT_QUIZ_START===", "===STUDENT_QUIZ_END===", fullQuiz).trim();
 
+  const phaseRules =
+    phase === "assessment"
+      ? [
+          "- PHASE: NACH DER BEWERTUNG. Das Quiz ist abgegeben und vom Prüfer bewertet — es gibt nichts mehr zu schützen. Du darfst Lösungen vollständig erklären.",
+          "- Dein Ziel ist tiefes Verständnis, nicht Punktediskussion: Nutze die Bewertung des Prüfers (falls mitgeschickt), um die konkrete Fehlvorstellung zu finden und zu korrigieren, und prüfe am Ende, ob die Korrektur wirklich sitzt.",
+        ]
+      : [
+          "- PHASE: WÄHREND DES QUIZ (noch nicht bewertet). Das Quiz misst echtes Verständnis — was du vorsagst, macht die Messung und den Lernplan wertlos.",
+          "- Verrate NIEMALS Lösungen, Lösungsteile oder ob ein Entwurf richtig ist — auch nicht auf ausdrückliche Bitte, auch nicht indirekt (Beispiel mit gleicher Struktur, Definition, die die Aufgabe beantwortet, „warm/kalt“-Signale). Sag stattdessen ehrlich, warum nicht, und gib einen Denkanstoß.",
+          "- Du bewertest nicht endgültig (das macht der Prüfer nach der Abgabe). Entwürfe darfst du nur prozessbezogen kommentieren (Struktur, Vollständigkeit der Begründung), nie inhaltlich als richtig/falsch.",
+        ];
+
   const technical = [
     "WEB-CHAT KONTEXT (überschreibt widersprechende Regeln deiner Rolle):",
-    `- Du chattest als TEXT-Chat im Lernsystem, direkt neben dem aktiven Quiz zu "${subject}".`,
+    `- Du chattest als TEXT-Chat im Lernsystem, direkt neben dem Quiz zu "${subject}".`,
     "- Es gibt KEINE Sprachausgabe-Pipeline: Ignoriere alle Regeln deiner Rolle zu Chunk-0/„nahtloser Sprachanschluss“, TTS, Diktierfehlern und Screenshots. Begrüße nicht, steige direkt inhaltlich ein.",
     "- Unten stehen die AKTUELLEN QUIZAUFGABEN des Studenten. In der Nachricht können zusätzlich seine aktuellen Antwort-Entwürfe mitkommen.",
-    "- Hilfe zur Selbsthilfe: Führe mit gezielten Hinweisen, Zwischenfragen und Ankern zum Ziel. Die komplette Lösung einer Quizaufgabe nennst du nur, wenn der Student ausdrücklich danach fragt — dann mit kurzer Begründung.",
-    "- Du bewertest nicht endgültig (das macht der Prüfer nach der Abgabe), aber du darfst Entwürfe kommentieren und konkret verbessern helfen.",
+    ...phaseRules,
     "- Antworte kompakt (Richtwert: unter 8 Sätze, außer der Student bittet um mehr). Kurze Absätze; einfache Listen sind erlaubt, kein übertriebenes Markdown, keine Überschriften.",
     "",
     "AKTUELLE QUIZAUFGABEN DES STUDENTEN:",

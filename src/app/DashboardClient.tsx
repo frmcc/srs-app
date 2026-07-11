@@ -4422,7 +4422,9 @@ export default function DashboardClient({
                       })()}
                     </div>
                     <div className="flex flex-wrap items-center gap-2 shrink-0">
-                      <Tip label={language === "german" ? "Live Tutor: kennt deine Vorlesung, das Quiz und deine Entwürfe" : "Live tutor: knows your lecture, the quiz, and your drafts"}>
+                      <Tip label={gradingResult
+                        ? (language === "german" ? "Live Tutor: bespricht die Bewertung mit dir und erklärt Lösungen vollständig" : "Live tutor: debriefs the assessment with you and explains solutions in full")
+                        : (language === "german" ? "Live Tutor: kennt deine Vorlesung, das Quiz und deine Entwürfe" : "Live tutor: knows your lecture, the quiz, and your drafts")}>
                       <motion.button
                         {...pressable}
                         onClick={() => { setFocusedTaskId(null); setShowTutorPanel(prev => !prev); }}
@@ -4471,6 +4473,7 @@ export default function DashboardClient({
                   subject={selectedReview.subject}
                   topic={selectedReview.topic}
                   language={language}
+                  phase={gradingResult ? "assessment" : "quiz"}
                   tasks={parsedTasks}
                   getDraft={getInteractiveAnswer}
                   getSketch={(taskId) => answerSketches[taskId]}

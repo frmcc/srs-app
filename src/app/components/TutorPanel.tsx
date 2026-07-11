@@ -54,6 +54,11 @@ interface TutorPanelProps {
   subject: string;
   topic: string;
   language: string;
+  /** Which tutor is loaded: "quiz" while answering (guards the assessment,
+   *  hints only) or "assessment" after grading (debriefs with full solutions).
+   *  Assessment chats live on their own threads — a quiz-phase conversation
+   *  never bleeds into the debrief. */
+  phase?: "quiz" | "assessment";
   tasks: TutorTask[];
   getDraft: (taskId: string) => string;
   /** Scribbled answer (PNG data URL) for a task, if the user drew one. Sent to
@@ -92,13 +97,17 @@ function saveHistory(itemId: string, messages: TutorMessage[]) {
   }
 }
 
-export default function TutorPanel({ open, onClose, itemId, subject, topic, language, tasks, getDraft, getSketch, getAssessment, focusedTaskId }: TutorPanelProps) {
+export default function TutorPanel({ open, onClose, itemId, subject, topic, language, phase = "quiz", tasks, getDraft, getSketch, getAssessment, focusedTaskId }: TutorPanelProps) {
   const de = language !== "english";
+  const assess = phase === "assessment";
   const focusedTask = focusedTaskId ? tasks.find((t) => t.id === focusedTaskId) ?? null : null;
   // Each task's tutor chat is its OWN thread; the header (global) tutor keeps the
   // bare-itemId thread. Keying the stored history by task means a per-task
   // conversation never bleeds into another task's chat or the global one.
-  const threadKey = focusedTaskId ? `${itemId}::${focusedTaskId}` : itemId;
+  // Assessment-phase chats get their own suffix: the debrief tutor is a
+  // different persona with different rules, so it must not inherit a mid-quiz
+  // conversation (or vice versa on a repeat attempt).
+  const threadKey = `${focusedTaskId ? `${itemId}::${focusedTaskId}` : itemId}${assess ? "::assess" : ""}`;
 
   const [messages, setMessages] = useState<TutorMessage[]>(() => loadHistory(threadKey));
   const [input, setInput] = useState("");
@@ -309,6 +318,7 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
         body: JSON.stringify({
           itemId,
           language: de ? "german" : "english",
+          phase,
           drafts: buildDrafts(),
           messages: historyForApi,
           focusedTask: focusedTask
@@ -378,7 +388,7 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
         }
       }
     }
-  }, [messages, streaming, itemId, threadKey, de, buildDrafts, focusedTask, getDraft, getSketch, getAssessment]);
+  }, [messages, streaming, itemId, threadKey, de, phase, buildDrafts, focusedTask, getDraft, getSketch, getAssessment]);
 
   /** "Erneut senden" on an error row: prune the failed exchange, resend the same text. */
   const retrySend = useCallback((errRow: TutorMessage) => {
@@ -403,6 +413,19 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
 
   const suggestions = useMemo(() => {
     const first = tasks[0]?.label ?? (de ? "Aufgabe 1" : "Task 1");
+    if (assess) {
+      return de
+        ? [
+            "Geh die Bewertung mit mir durch: Wo lag mein Verständnis daneben?",
+            `Erkläre mir die Musterlösung zu ${first} — und warum meine Antwort nicht gereicht hat.`,
+            "Was ist das Wichtigste, das ich aus diesem Quiz mitnehmen sollte?",
+          ]
+        : [
+            "Walk me through the assessment: where was my understanding off?",
+            `Explain the model answer for ${first} — and why mine fell short.`,
+            "What's the most important thing to take away from this quiz?",
+          ];
+    }
     return de
       ? [
           `Gib mir einen Tipp zu ${first} — ohne die Lösung zu verraten.`,
@@ -414,7 +437,7 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
           "Explain the core concept of this lecture in simple terms.",
           "Review my current draft answers: where am I off track?",
         ];
-  }, [tasks, de]);
+  }, [tasks, de, assess]);
 
   if (typeof document === "undefined") return null;
 
@@ -440,7 +463,9 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
                 Live Tutor
               </h3>
               <p className="text-xs text-ink-400 mt-1 leading-snug">
-                {de ? "Kennt diese Vorlesung, das Quiz und deine Entwürfe." : "Knows this lecture, the quiz, and your drafts."}
+                {assess
+                  ? (de ? "Kennt diese Vorlesung, dein Quiz und die Bewertung." : "Knows this lecture, your quiz, and the assessment.")
+                  : (de ? "Kennt diese Vorlesung, das Quiz und deine Entwürfe." : "Knows this lecture, the quiz, and your drafts.")}
               </p>
             </div>
             {messages.length > 0 && (
@@ -499,12 +524,20 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
                 </p>
                 <p className="text-ink-400 text-xs leading-relaxed mb-6 max-w-[280px]">
                   {focusedTask
-                    ? (de
-                        ? "Er sieht diese Frage und deine bisherige Antwort und hilft mit Hinweisen statt Fertiglösungen. Frag einfach los."
-                        : "It sees this question and your current answer, and helps with hints instead of ready-made solutions. Just ask.")
-                    : (de
-                        ? `${subject} · ${topic} — er sieht die Aufgaben und deine Entwürfe und hilft mit Hinweisen statt Fertiglösungen.`
-                        : `${subject} · ${topic} — it sees the tasks and your drafts and helps with hints instead of ready-made solutions.`)}
+                    ? (assess
+                        ? (de
+                            ? "Er sieht diese Frage, deine Antwort und die Bewertung des Prüfers — und erklärt, bis es wirklich sitzt. Frag einfach los."
+                            : "It sees this question, your answer, and the examiner's assessment — and explains until it truly clicks. Just ask.")
+                        : (de
+                            ? "Er sieht diese Frage und deine bisherige Antwort und hilft mit Hinweisen statt Fertiglösungen. Frag einfach los."
+                            : "It sees this question and your current answer, and helps with hints instead of ready-made solutions. Just ask."))
+                    : (assess
+                        ? (de
+                            ? `${subject} · ${topic} — das Quiz ist bewertet. Jetzt geht es nur noch ums Verstehen: Er erklärt Lösungen vollständig.`
+                            : `${subject} · ${topic} — the quiz is graded. Now it's all about understanding: it explains solutions in full.`)
+                        : (de
+                            ? `${subject} · ${topic} — er sieht die Aufgaben und deine Entwürfe und hilft mit Hinweisen statt Fertiglösungen.`
+                            : `${subject} · ${topic} — it sees the tasks and your drafts and helps with hints instead of ready-made solutions.`))}
                 </p>
                 {/* Suggestion chips are for the general chat only — a per-task
                     chat is already scoped, so they'd just be noise. */}
@@ -630,7 +663,11 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
               </Tip>
             </div>
             <p className="text-[11px] text-ink-400 mt-2 px-1 flex items-center gap-1.5 flex-wrap">
-              <span>{de ? "Der Tutor sieht Quiz + Entwürfe." : "The tutor sees quiz + drafts."}</span>
+              <span>
+                {assess
+                  ? (de ? "Der Tutor sieht Quiz + Bewertung." : "The tutor sees quiz + assessment.")
+                  : (de ? "Der Tutor sieht Quiz + Entwürfe." : "The tutor sees quiz + drafts.")}
+              </span>
               {/* MT-13: the Enter/Shift+Enter chords don't exist on a touch keyboard. */}
               {!coarsePointer && (
                 <>

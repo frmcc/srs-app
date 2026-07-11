@@ -22,7 +22,10 @@ model SRSItem {
   createdAt        DateTime @default(now()) // Column C
   
   tutorPromptDocId String?  // Column D - legacy, now stores item ID for URL
-  tutorPromptContent String? // Full tutor prompt text, served via /tutor/[id]
+  tutorPromptContent String? // Quiz-phase tutor prompt (pre-grading), served via /tutor/[id]
+  // Assessment-phase tutor prompt (post-grading) — loaded once the examiner's
+  // per-task assessment exists. Old items without it fall back to the quiz prompt.
+  tutorPromptAssessmentContent String?
   
   semester         Int      @default(1) // Tracks which semester this module belongs to
   

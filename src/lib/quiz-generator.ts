@@ -116,20 +116,28 @@ export async function runQuizGeneration(params: {
 
     const quiz1Ledger = extractSection(quiz1Text, "===COVERAGE_LEDGER_START===", "===COVERAGE_LEDGER_END===");
 
-    // ---- Step 3+4: Tutor prompt & podcast prompts in parallel (independent) ----
+    // ---- Step 3+4: Tutor prompts & podcast prompts in parallel (independent) ----
+    // Two tutor prompts per module: the quiz-phase tutor (pre-grading, guards
+    // the assessment) and the assessment-phase tutor (post-grading, works from
+    // the examiner's per-task assessment toward deep understanding).
     await heartbeat();
-    progress(3, "Generating Tutor Prompt & Podcast Prompts...");
-    const [tutorRes, podcastRes] = await Promise.all([
+    progress(3, "Generating Tutor Prompts & Podcast Prompts...");
+    const [tutorQuizRes, tutorAssessRes, podcastRes] = await Promise.all([
       generateContentWithRetry(ai, modelName, {
         contents: [{ role: "user", parts: [...masterContextParts, { text: `Modul/Vorlesungsthema:\n${subjectMain}` }, { text: `Didaktischer Blueprint:\n${blueprint}` }, { text: "Bitte generiere den Tutor-Prompt basierend auf dem bereitgestellten Blueprint." }] }],
-        config: { systemInstruction: PROMPTS.tutor_prompt + languageInstruction },
-      }, (msg) => progress(3, msg), "Tutor Prompt", useAiWrapper, fileTransport),
+        config: { systemInstruction: PROMPTS.tutor_prompt_quiz + languageInstruction },
+      }, (msg) => progress(3, msg), "Tutor Prompt (Quiz)", useAiWrapper, fileTransport),
+      generateContentWithRetry(ai, modelName, {
+        contents: [{ role: "user", parts: [...masterContextParts, { text: `Modul/Vorlesungsthema:\n${subjectMain}` }, { text: `Didaktischer Blueprint:\n${blueprint}` }, { text: "Bitte generiere den Tutor-Prompt basierend auf dem bereitgestellten Blueprint." }] }],
+        config: { systemInstruction: PROMPTS.tutor_prompt_assessment + languageInstruction },
+      }, (msg) => progress(3, msg), "Tutor Prompt (Assessment)", useAiWrapper, fileTransport),
       generateContentWithRetry(ai, modelName, {
         contents: [{ role: "user", parts: [...masterContextParts, { text: `Modul/Vorlesungsthema:\n${subjectMain}` }, { text: `Didaktischer Blueprint:\n${blueprint}` }, { text: "Bitte generiere die zwei Regieanweisungen basierend auf dem bereitgestellten Blueprint." }] }],
         config: { systemInstruction: podcast_prompts + languageInstruction },
       }, (msg) => progress(3, msg), "Podcast Prompts", useAiWrapper, fileTransport),
     ]);
-    const tutorPrompt = tutorRes.text;
+    const tutorPrompt = tutorQuizRes.text;
+    const tutorAssessmentPrompt = tutorAssessRes.text;
     const podcastOutput = podcastRes.text;
     const prePodcastPrompt = extractSection(podcastOutput, "===PRE_PODCAST_START===", "===PRE_PODCAST_END===");
     const postPodcastPrompt = extractSection(podcastOutput, "===POST_PODCAST_START===", "===POST_PODCAST_END===");
@@ -182,7 +190,8 @@ export async function runQuizGeneration(params: {
 
       await Promise.allSettled([
         createGoogleDoc("Quiz 1 (Tag 1)", quiz1Text, folderId),
-        createGoogleDoc("Tutor Prompt", tutorPrompt || "", folderId),
+        createGoogleDoc("Tutor Prompt (Quiz)", tutorPrompt || "", folderId),
+        createGoogleDoc("Tutor Prompt (Assessment)", tutorAssessmentPrompt || "", folderId),
       ]);
     } catch (e) {
       console.error("[quiz-gen] Google Drive upload failed (continuing with DB save):", e);
@@ -206,6 +215,7 @@ export async function runQuizGeneration(params: {
           blueprint,
           coverageLedger: quiz1Ledger,
           tutorPromptContent: tutorPrompt,
+          tutorPromptAssessmentContent: tutorAssessmentPrompt,
           tutorPromptDocId: "pending",
           prePodcastPrompt: prePodcastPrompt || null,
           postPodcastPrompt: postPodcastPrompt || null,
