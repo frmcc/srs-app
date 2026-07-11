@@ -132,7 +132,7 @@ function UndoBar({ toast, de, onDismiss }: { toast: ToastItem; de: boolean; onDi
       onPointerLeave={resume}
       onFocusCapture={pause}
       onBlurCapture={resume}
-      className="pointer-events-auto flex items-center gap-4 pl-5 pr-2.5 py-2.5 rounded-full bg-ink-900 text-(--paper-0) text-[13px] font-medium shadow-[0_6px_16px_-6px_rgba(33,27,18,0.4)] whitespace-nowrap"
+      className="pointer-events-auto flex items-center gap-4 pl-5 pr-2.5 py-2.5 rounded-full bg-ink-900 text-(--paper-0) text-[13px] font-medium shadow-(--shadow-ink-chip) whitespace-nowrap"
     >
       <span>{toast.message}</span>
       {toast.action && (

@@ -421,6 +421,16 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
   if (loading) {
     return (
       <div className="flex flex-col gap-4" aria-busy="true" aria-label={de ? "Statistiken werden geladen" : "Loading statistics"}>
+        {/* PP-12: multi-semester users get a filter chip row once data lands —
+            reserve its exact height (chip = 30px) here so nothing shifts down.
+            `semesters` derives from the `items` prop, known before the fetch. */}
+        {semesters.length > 1 && (
+          <div className="flex items-center gap-2 -mb-1 pb-1" aria-hidden="true">
+            <div className="h-[30px] w-28 rounded-[10px] bg-paper-2" />
+            <div className="h-[30px] w-20 rounded-[10px] bg-paper-2" />
+            <div className="h-[30px] w-20 rounded-[10px] bg-paper-2" />
+          </div>
+        )}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
           {[0, 1, 2, 3].map((i) => (
             <div key={i} className="card-surface-elevated p-5">

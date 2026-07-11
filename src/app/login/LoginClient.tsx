@@ -135,7 +135,9 @@ export default function LoginClient({ error, callbackUrl = "/" }: { error?: stri
             transition={{ duration: DUR.gentle, ease: EASE_OUT, delay: 0.2 }}
             className="w-full max-w-[420px] mx-auto lg:mx-0 lg:justify-self-end"
           >
-            <div className="card-glass px-[34px] py-9 border border-(--hairline-card)">
+            {/* EL-18: card-glass pairs with --line-soft everywhere else (all
+                in-app modals); LS-17: p-9 on both axes, not px-[34px]/py-9. */}
+            <div className="card-glass p-9 border border-(--line-soft)">
               <p className="caps-label tracking-[0.13em]">{de ? "Willkommen zurück" : "Welcome back"}</p>
               <h3 className="font-display text-[26px] tracking-[-0.015em] text-ink-900 mt-2.5" style={{ fontWeight: 480 }}>
                 {de ? "In dein Studienarchiv" : "Into your study archive"}

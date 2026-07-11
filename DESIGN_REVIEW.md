@@ -351,7 +351,7 @@
 - Verified: Confirmed all three text-[8px] sites via grep (StatsPanel 496 gutter in ink-300, 514 month labels in ink-400, DashboardClient 3246 repeat marker); confirmed the 13px cell height (`h-[13px]`) leaves headroom; confirmed no other sub-9px type exists in the app.
 
 **TY-10 · P2 · effort:small — `.eyebrow` and `.caps-label` are duplicate tokens, and the caps treatment's tracking drifts per call site (0.10–0.14em)**
-- Status: ⏳ open
+- Status: ⏭ skipped — Cross-file and its central action lands in a forbidden file
 - Where: `src/app/globals.css:462`
 - Evidence: globals.css L462–478 defines `.eyebrow` and `.caps-label` with byte-identical rules (11px / 650 / uppercase / 0.11em / ink-400). `.eyebrow` is used exactly once (DashboardClient L5020); everything else uses `.caps-label` — then overrides it: `tracking-[0.14em]` on page eyebrows (L2174, L2602, L2817, L3508), `tracking-[0.1em]` in stat cards (StatsPanel L465), `tracking-[0.13em]` on login (LoginClient L108), `!text-[10.5px] !tracking-[0.12em]` in TutorPanel (L373), `!text-ink-600` in the brief headers (L3820, 3877, 4188).
 - Impact: Five different letter-spacings for one nominal treatment, plus a dead duplicate class — the definition of design-token erosion. The 0.14em page eyebrows vs 0.11em card labels may be intentional hierarchy, but nothing encodes that intent, so drift keeps compounding.
@@ -359,7 +359,7 @@
 - Verified: Read globals.css 462–478 — the two classes are byte-identical. Grep confirmed .eyebrow's single use (DashboardClient 5020) and every cited override: 0.14em ×4, 0.1em (StatsPanel 465), 0.13em (login 108), TutorPanel !10.5px/!0.12em, and !text-ink-600 overrides at 416/3820/3877/4188.
 
 **TY-11 · P2 · effort:small — Section-header semantics and sizes disagree across tabs and modals (h2 16px vs h4 14px for the same role; modal titles h2 vs h3)**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/DashboardClient.tsx:2265`
 - Duplicate-of/with: IA-2
 - Evidence: Dashboard section headers: `<h2 className="text-base tracking-[-0.011em] …" style={{ fontWeight: 650 }}>` (L2265, L2503); the visually identical StatsPanel section headers: `<h4 className="text-sm text-ink-900" style={{ fontWeight: 650 }}>` (StatsPanel L488, L538, L578, L624). Calendar modal's title is an `<h2>` (L4334) while Settings' is `<h3>` (L4448); the feedback modal has two sibling `<h3>`s — title (L4172) and the caps label (L4188).
@@ -368,7 +368,7 @@
 - Verified: Read all cited lines: dashboard h2 text-base/650 (2265, 2503), StatsPanel h4 text-sm/650 (488, 538, 578, 624), Calendar h2 (4334) vs Settings h3 (4448), and the feedback modal's two h3 siblings (4172 title, 4188 caps-label). All exact.
 
 **TY-12 · P2 · effort:small — Orphan font-weight 570 on the 'Upcoming' row title — a one-off between the system's 550 and 600**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/DashboardClient.tsx:2523`
 - Evidence: `<div className="text-sm tracking-[-0.008em] text-ink-900 truncate" style={{ fontWeight: 570 }}>{review.topic}</div>` — repo-wide inline-weight tally (re-run): 550×14, 650×9, 470×9, 480×6, 560×3, 520×2, 700×1, 570×1, 460×1. 570 appears exactly once; comparable list-row titles use 550 or font-semibold 600.
 - Impact: The upcoming-list topic renders at a weight that exists nowhere else — 20 units off its siblings. Individually invisible, but it's exactly the kind of unmanaged micro-drift the inline-style weights invite (there is no utility for the intermediate weights, so each call site re-guesses).
@@ -376,7 +376,7 @@
 - Verified: Confirmed fontWeight 570 at line 2523 and re-ran the full inline-weight tally myself — it matches the finding's numbers exactly (570 is a true singleton; 550/650/470/480/560/520/460 are the established steps).
 
 **TY-13 · P2 · effort:small — Raw three-dot "..." in upload placeholder while the rest of the app uses the true ellipsis character**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/DashboardClient.tsx:2771`
 - Duplicate-of/with: MC-16
 - Evidence: `placeholder={language === "german" ? "...oder füge deine Vorlesungsskripte, Transkripte oder rohen Text hier ein..." : "...or paste your lecture notes, transcript, or raw text here..."}` — every other placeholder and progress string uses the typographic '…' ("Modul oder Vorlesung suchen…", "Schreibe deine Antworten hier …", "Frag deinen Tutor…", "Starte KI-Pipeline…").
@@ -385,7 +385,7 @@
 - Verified: Confirmed line 2771 uses '...' in both language variants; grepped all placeholders and progress strings — every other one uses '…' (this is the sole typewriter-ellipsis string in the product).
 
 **TY-14 · P2 · effort:small — Dashboard h1 is 44px while every other tab's h1 is 40px at the same breakpoint**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/DashboardClient.tsx:2175`
 - Evidence: Dashboard greeting: `text-[34px] sm:text-[44px] tracking-[-0.02em] leading-[1.05]` (L2175). Upload (L2603), Library (L2818), Stats (L3509), and the result headline (L3768) all use `text-[34px] sm:text-[40px]` with identical tracking/leading. Login uses yet another pair: `text-4xl sm:text-[54px]` with weight 460 and leading-[1.06] (LoginClient L75).
 - Impact: Tab-switching between Dashboard and Library visibly shrinks the page title by 4px with identical layout position — it reads as a glitch rather than intent, since nothing else about the header changes.
@@ -393,7 +393,7 @@
 - Verified: Extracted the size classes from all five cited h1s — dashboard is the sole sm:text-[44px]; the other four are sm:text-[40px] with otherwise identical tracking-[-0.02em] leading-[1.05]. Login's text-4xl sm:text-[54px]/460/leading-[1.06] confirmed at LoginClient 75.
 
 **TY-15 · P2 · effort:small — Print export abandons the brand typography and tokens entirely (Inter bold + raw zinc palette)**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/DashboardClient.tsx:1957`
 - Evidence: Print wrapper: `<h1 className="text-2xl font-bold font-sans text-zinc-900 mb-2">` (L1957), `border-zinc-200`, `bg-zinc-900 text-zinc-100` level chip, `text-zinc-500` meta, `bg-zinc-50` question boxes, `border-zinc-300` answer lines (L1956–1993) — the only place in the codebase using Tailwind's raw zinc palette; globals.css' @media print block (L939–964) meanwhile carefully remaps the paper tokens for printing (--ink-900 #211b12, warm hairlines, paper-2).
 - Impact: The printed quiz sheet — a physical artifact of the product — carries none of the Paper & Ember voice: no Fraunces title, generic gray-blue zincs instead of the warm ink ramp the print block already provides. It looks like a different (cheaper) product on paper.
@@ -477,7 +477,7 @@
 - Verified: Read heatColor (StatsPanel 304–311) and the legend (524–531); card is card-surface = paper-1, empty cells --chart-zero #ece6da. Recomputed composites myself: 28% #ef9f1f over #fffefb = #fbe3bd → 1.00:1 vs chart-zero (exact match); graphite composite #cdcac4 → 1.32:1; ink composite → 1.73:1 — all match. Corrected the recommendation: the original led with 'heat-1 → 40% mix', but that still only yields 1.1:1, so the border/darker-zero moves are the load-bearing fix.
 
 **CC-10 · P2 · effort:small — body's Tailwind selection classes silently override the design-system ::selection token (20% vs the specified 30%)**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/layout.tsx:118`
 - Evidence: `<body className="... selection:bg-amber-500/20 selection:text-ink-900">` — Tailwind 4's selection variant emits `&::selection, & *::selection` in the utilities layer, which beats the base-layer token rule in globals.css:365–368 `::selection { background: color-mix(in srgb, var(--a-g2) 30%, transparent); color: var(--ink-900); }` (annotated 'CRAFT.md §1') regardless of specificity, because utilities cascade after base. The globals rule never applies to anything inside body.
 - Impact: Text selection renders a third lighter than the system specifies, and there are now two competing sources of truth: anyone tuning the CSS token will see no change in the app and burn time hunting the ghost override.
@@ -485,7 +485,7 @@
 - Verified: Confirmed both rules exist: layout.tsx:118 body classes and globals.css 365–368 (inside @layer base, which Tailwind orders before utilities — so the utility wins by layer order, not specificity; adjusted the mechanism wording accordingly). Both resolve through --a-g2 so the visible difference is exactly the 20% vs 30% wash strength plus a dead token. Real but subtle — low severity is right.
 
 **CC-11 · P2 · effort:small — ScribbleCanvas draws in Tailwind stone-900 (#1c1917), not the app's ink, and paints a max-glare #ffffff pad in the dark theme**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/components/ScribbleCanvas.tsx:27`
 - Evidence: `const INK = "#1c1917"; // warm near-black, matches the app's ink tones` — but --ink-900 is #211b12; #1c1917 is Tailwind's cool stone-900, so the comment is false. Line 70 `ctx.fillStyle = "#ffffff"` plus line 223 `bg-white` put a pure-white rectangle inside the espresso ink theme (#1b1713 page) — the only on-screen #fff surfaces in the app (the sketch thumbnail at DashboardClient 3965 shares the same bg-white; the design's whitest paper is #fffefb).
 - Impact: During a late-night ink-theme quiz, opening the scribble pad fires a full-brightness white flash; and the stroke color is subtly cooler than every other black in the UI — a felt-but-not-named wrongness on the paper theme.
@@ -493,7 +493,7 @@
 - Verified: Read ScribbleCanvas lines 27, 70, 223: all three literals confirmed, and the comment's 'matches the app's ink tones' is factually wrong (#1c1917 = Tailwind stone-900 vs --ink-900 #211b12). Grep for white surfaces found one additional companion call site (bg-white sketch thumbnail, DashboardClient 3965) and confirmed the only other #ffffff uses are the print-only palette — added the thumbnail to the fix. The header comment's export rationale is acknowledged; the fix keeps the pad light, so no conflict.
 
 **CC-12 · P2 · effort:small — Tutor brief page drifts from the system: brand italic in text-amber-600 and a default gray Tailwind shadow-sm on the copy button**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/tutor/[id]/page.tsx:47`
 - Duplicate-of/with: IA-16
 - Evidence: `Tutor <em className="font-display italic text-amber-600">Prompt</em>` — every other brand italic uses text-(--accent-text) (DashboardClient 2013/2042, LoginClient 72/77); #de850b here is also 2.79:1 on paper-1. And copy-button.tsx line 29 uses `shadow-sm` — Tailwind's neutral gray shadow — while globals.css:83 declares 'Warm-tinted elevation (never gray)' and every other control uses the themed --shadow-e1.
@@ -605,7 +605,7 @@
 - Verified: Verified 2292–2299 (whileHover present, whileTap absent, onClick starts the quiz), the hoverLift definition at motion.ts 136–140, grep confirming zero hoverLift consumers, and .press-row/.btn-ghost-icon press states in globals.css 780–786. One correction to the original: the theme-preview buttons (4483) DO have whileTap (0.98), so only the due card is missing press feedback. NOTE for aggregation: the motion dimension carries the same finding at the same line — merge.
 
 **EL-13 · P2 · effort:small — Undo toast duplicates the tooltip's hardcoded shadow literal; neither is tokenized nor theme-tuned like every other shadow**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/components/Toast.tsx:92`
 - Evidence: Undo pill: `shadow-[0_6px_16px_-6px_rgba(33,27,18,0.4)]` — byte-identical to `.tip-bubble { box-shadow: 0 6px 16px -6px rgba(33, 27, 18, 0.4); }` (globals.css 827). Every other shadow lives in a themed variable (e1/e2/e3/lift all switch to black-based values under `[data-theme="ink"]`, globals.css 184–199); these two stay frozen at the paper-tinted literal in both themes.
 - Impact: The two 'ink chip' surfaces (tooltip, undo bar) share a design intentionally but share it by copy-paste; retuning one will silently orphan the other. In ink theme they're also the only shadows that don't participate in the dark shadow ramp, sitting noticeably lighter than the e3 toasts they appear next to.
@@ -613,7 +613,7 @@
 - Verified: Verified byte-identical values at Toast.tsx:92 and globals.css:827, confirmed no [data-theme=ink] override exists for .tip-bubble or the toast literal, and confirmed all e-tokens do re-tune at 184–199 — the two frozen literals are genuinely the exceptions.
 
 **EL-14 · P2 · effort:small — Accent swatches animate their selection ring as raw box-shadow (250ms inline transition)**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/DashboardClient.tsx:4546`
 - Evidence: `boxShadow: `${selected ? `0 0 0 3px var(--paper-1), 0 0 0 5.5px ${g2}` : "0 0 0 3px transparent, 0 0 0 5.5px transparent"}, inset 0 1px 0 …`` with `transition: "box-shadow 250ms cubic-bezier(0.16,1,0.3,1)"` (4544–4547).
 - Impact: Selecting an accent tweens a two-layer spread shadow paint-side — a literal breach of the no-box-shadow-interpolation rule inside the very settings panel that showcases the design system. Visually it works (it's a color fade, not a blur morph), but it repaints a 40px circle + rings for 250ms and sets a precedent the codebase already follows elsewhere.
@@ -621,7 +621,7 @@
 - Verified: Verified the inline style object at 4544–4548: the two-layer selection ring lives in boxShadow with an explicit box-shadow transition. The transparent-to-color trick means it interpolates cleanly, so severity low (rule/precedent issue, not visible jank) is the right call.
 
 **EL-15 · P2 · effort:small — Library level-progress dots tween their glow/ring shadows through transition-all**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/DashboardClient.tsx:3141`
 - Evidence: 7-dot row: `w-[7px] h-[7px] rounded-full transition-all` with the current dot at `bg-(--accent-border) shadow-[0_0_0_1.5px_color-mix(in_srgb,var(--a-g2)_40%,transparent)]` (3140–3148); interval stepper node: `w-5 h-5 rounded-full … transition-all` with current at `… border-2 border-amber-500 shadow-[0_0_8px_color-mix(in_srgb,var(--a-g2)_35%,transparent)]` (3230–3238).
 - Impact: When a lecture levels up, the ring and 8px glow interpolate as box-shadow (via transition-all) instead of cross-fading — the same rule breach as the bigger cases, here in miniature. transition-all on these dots also transitions width/height/padding if any responsive class ever touches them.
@@ -629,7 +629,7 @@
 - Verified: Verified both call sites in the working tree (dot row at ~3140–3148, stepper node at ~3230–3238): both carry transition-all and state-dependent shadow classes that swap when currentLevel changes. Low severity appropriate — visible only at level-up moments on 7–20px elements.
 
 **EL-16 · P2 · effort:small — Theme preview cards: 1.5px border on an e1 surface, hover-lift with no shadow response, and inner preview radius breaks the nesting rule**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/DashboardClient.tsx:4486`
 - Evidence: `className="flex-1 … bg-paper-1 rounded-2xl p-[7px] pb-[11px] cursor-pointer shadow-(--shadow-e1)"` + `style={{ border: `1.5px solid ${selected ? "var(--a-g2)" : "var(--hairline-card)"}` …}}` (4486–4487), with `whileHover={{ y: -1 }}` (4483). Inner preview: `rounded-[11px]` (4491/4500/4509) inside outer 16px − 7px padding = 9px ideal.
 - Impact: Three system deviations on one control: the only 1.5px solid card border in the app (every other card hairline is 1px, so the unselected state looks slightly thick/soft), a hover lift with a frozen e1 shadow (nothing deepens beneath the card as it rises), and inner corners (11px) rounder than the geometry allows (9px), leaving a faintly pinched corner margin. rounded-2xl (16px) is also off the app's radius ladder.
@@ -637,7 +637,7 @@
 - Verified: Verified 4483–4509: whileHover y:-1 with static shadow-(--shadow-e1) and no ::after layer; 1.5px inline border; nesting math recomputed (16−7=9px ideal vs 11px actual). Grep for '1.5px solid' found only this and the heat-cell hover outline, so 'only 1.5px card hairline' holds (chip-dashed uses 1.5px dashed, a deliberate non-hairline).
 
 **EL-17 · P2 · effort:small — Floating interactive control bar composes its overlay surface ad hoc: inline e3 style, 18px radius plus hairline — matching neither card-glass nor the toast recipe**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/DashboardClient.tsx:3641`
 - Evidence: `className="fixed … z-[60] … rounded-[18px] bg-paper-1 border border-(--hairline-card)"` with `style={{ boxShadow: "var(--shadow-e3)" }}` (3641–3642). Sibling overlay surfaces: `.card-glass` = paper-1 + 22px + e3, no border (globals.css 442–446); toasts = paper-1 + 18px + `shadow-(--shadow-e3)` class + semantic border (Toast.tsx 59).
 - Impact: Three floating e3 surfaces, three recipes. The bar is closest to a toast but reaches e3 through an inline style object (invisible to a class grep of the elevation system) — exactly the drift that makes shadow audits necessary. Functionally identical, but it forfeits the single source of truth the tokens exist to provide.
@@ -645,7 +645,7 @@
 - Verified: Verified 3641–3642 (inline boxShadow style), .card-glass at globals.css 442–446 (22px, no border), and Toast.tsx 59 (18px, shadow-(--shadow-e3) utility, semantic border). Three distinct recipes for the same tier confirmed.
 
 **EL-18 · P2 · effort:small — Login is the only card-glass paired with --hairline-card; all seven in-app modals use --line-soft**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/login/LoginClient.tsx:107`
 - Duplicate-of/with: LS-17
 - Evidence: `<div className="card-glass px-[34px] py-9 border border-(--hairline-card)">` vs the seven dashboard modals, all `card-glass … border border-(--line-soft)` (DashboardClient 4115, 4167, 4330, 4443, 4911, 4960, 5015). Paper values: hairline-card = rgba(33,27,18,0.08) vs line-soft = rgba(33,27,18,0.10).
@@ -751,7 +751,7 @@
 - Verified: Confirmed at 2292-2299: whileHover without whileTap on the clickable due card. Verified by grep that hoverLift (motion.ts 136-140, which pairs hover with whileTap 0.985) is exported but never imported/used anywhere — the drift claim is accurate. (An elevation-dimension finding overlaps; unique within this batch.)
 
 **MO-12 · P2 · effort:small — Quiz task cards enter with a 20px rise stacked on the page's 8px rise — the largest and least systematic offset in the app**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/DashboardClient.tsx:3864`
 - Evidence: initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(idx, 8) * 0.03, duration: DUR.base, ease: EASE_OUT }} (lines 3861-3866) inside the quiz tab's motion.div using pageVariants (line 3525, initial y:8). The children animate independently of the parent, so both rises compound (~28px composite). System offsets are 8 (riseChild) and 10 (fadeRise).
 - Impact: Opening a quiz feels noticeably 'travellier' than every other screen — cards float up nearly 3x the system distance while the page itself is also rising, a subtle double-motion the other tabs don't have.
@@ -759,7 +759,7 @@
 - Verified: Confirmed: y:20 with explicit initial/animate at 3864-3866 (independent of the parent's variant cascade), quiz tab wrapper uses pageVariants (y:8) at 3525. motion.ts confirms system rises are 8 and 10 only. Compounding claim is mechanically correct since both play at mount.
 
 **MO-13 · P2 · effort:small — Pipeline step indicators: only the 'done' check animates — idle→active pops, and mode="wait" is inert on non-motion children**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/DashboardClient.tsx:2646`
 - Evidence: <AnimatePresence mode="wait">{progressStep > step ? (<motion.span key="done" initial={{ scale: 0.5, opacity: 0 }} ... transition={springTactile}>) : progressStep === step ? (<span key="active" className="ember-dot ...">) : (<div key="idle" ... />)}</AnimatePresence> — 'active' and 'idle' are plain span/div, so they get no enter/exit and the wait mode has nothing to wait for. Duplicated at the grading steps (lines 3727-3737).
 - Impact: As the upload/grading pipeline advances, the amber 'now running' ring — the state the user is actually watching for — snaps in with no transition while the completed check pops satisfyingly, making the sequence feel half-finished.
@@ -767,7 +767,7 @@
 - Verified: Confirmed at both sites: upload pipeline (~2646-2656) and grading steps (3727-3737) — in each, only key="done" is a motion.span; key="active" (ember-dot span) and key="idle" (plain div) are non-motion elements inside AnimatePresence mode="wait", so they mount/unmount instantly.
 
 **MO-14 · P2 · effort:medium — 'Collapse all' animates every nested accordion's height simultaneously — the one case the height-animation exemption excludes**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/DashboardClient.tsx:1307`
 - Evidence: toggleAllLibrary clears both sets at once: setExpandedLibrarySemesters(new Set()); setExpandedLibraryModules(new Set()); (lines 1307-1311) — every semester body (variants={accordion}, ~line 2983) and every module body inside it (~line 3084) then runs concurrent height exit animations. motion.ts's own caveat: "framer `height:\"auto\"` is fine for these small panels" — a whole library tree is not a small panel.
 - Impact: On a real library (several semesters × modules), one click triggers dozens of nested height interpolations, each forcing layout per frame inside an already-animating parent — visible stutter exactly when the user asks for a tidy sweep.
@@ -775,7 +775,7 @@
 - Verified: Confirmed: toggleAllLibrary at 1307-1311 clears both Sets in one click; semester body (AnimatePresence + accordion variants, ~2981-2990) and nested module body (~3082-3091) both height-animate, so all open panels exit concurrently, nested. motion.ts line 103 caveat quote verified.
 
 **MO-15 · P2 · effort:small — Uploaded-file chips appear and disappear with no motion in an otherwise fully-transitioned upload flow**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/DashboardClient.tsx:2747`
 - Evidence: {uploadedFiles.length > 0 && (<div className="flex flex-wrap gap-2 mb-4">{uploadedFiles.map((file, idx) => (<div key={file.name} ...>)}</div>)} — plain conditional list; removal via setUploadedFiles(prev => prev.filter(...)) (line 2756) reflows neighbors instantly. The drop-zone highlight beside it transitions (transition-colors, line 2701), the progress card animates every step.
 - Impact: Dropping files or removing one makes chips blink in/out and the row snap-reflow — a small but repeated cheap moment at the very start of the app's core 'lecture → quiz' journey.
@@ -783,7 +783,7 @@
 - Verified: Confirmed at 2747-2766: plain div chips keyed by file.name (stable keys already in place — a comment even notes the dedupe — so the AnimatePresence fix is drop-in), removal via filter at 2756, no motion anywhere. Drop-zone transition-colors at 2701 confirmed as the contrast.
 
 **MO-16 · P2 · effort:small — JS smooth scrolling ignores prefers-reduced-motion — voice mode auto-scrolls animatedly for reduce-motion users**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/DashboardClient.tsx:710`
 - Evidence: document.getElementById(`iq-${interactive.currentIndex}`)?.scrollIntoView({ behavior: "smooth", block: "center" }); and window.scrollTo({ top: 0, behavior: "smooth" }) (line 1526). The globals.css guard `scroll-behavior: auto !important` (line ~933) only overrides the CSS property — an explicit JS `behavior: "smooth"` option still animates. Framer is covered (MotionConfig reducedMotion="user", line 1949); this is the one gap.
 - Impact: Users who asked the OS for no motion still get repeated animated centering on every dictated task advance — precisely the vestibular-trigger category (large full-viewport scroll) reduced-motion exists for.
@@ -791,7 +791,7 @@
 - Verified: Confirmed: repo-wide grep finds exactly two JS smooth-scroll sites (710, 1526), neither guarded by matchMedia; layout.tsx's only reduced-motion check guards the theme fade, not scrolling. Spec-checked the claim: CSS scroll-behavior governs only behavior:"auto" scrolls, so the !important reset does not neutralize explicit behavior:"smooth". MotionConfig reducedMotion="user" at 1949 confirmed.
 
 **MO-17 · P2 · effort:small — Stats skeleton carries an animationDelay with no animation — vestigial shimmer that never fires**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/components/StatsPanel.tsx:325`
 - Duplicate-of/with: EM-18
 - Evidence: <div key={i} className="card-surface p-5" style={{ animationDelay: `${i * 120}ms` }}> — no animation/animate-* class anywhere on the element; the dashboard skeleton (DashboardClient.tsx ~line 2217) is deliberately commented "Skeleton — static paper blocks, no shimmer" and carries no such style.
@@ -920,7 +920,7 @@
 - Verified: Verified every citation via grep + read: dead `bg-paper-2 hover:bg-paper-2` at L4122, L4178, L5037 and tutor/[id]/page.tsx back link; working `hover:bg-(--hairline)` variant at L4921/L4983; transparent→paper-2 at L4458; bare p-2 color-only at L4338. Corrected the title's count of dead hovers from two to three in-app instances (plus the tutor-page link).
 
 **IS-15 · P2 · effort:small — Accordion/disclosure toggles never set aria-expanded (only the mobile menu button does)**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/DashboardClient.tsx:2355`
 - Evidence: Materials disclosure (L2355-2370), library semester header (L2952-2958), module header (L3001-3007), lecture row (L3101-3107), and history entries (L4234-4241) are all <button>s that animate a chevron but carry no `aria-expanded`. The only instance in the entire src tree is the mobile menu: `aria-expanded={showMobileMenu}` (L2017).
 - Impact: Assistive tech hears 'button' with no open/closed state on five different accordion levels; the one correct usage shows the team knows the pattern — this is drift.
@@ -928,7 +928,7 @@
 - Verified: Grep across src/ confirmed exactly one aria-expanded (L2017, mobile menu). Read the materials disclosure (L2355), semester header (L2952) and module header (L3001) buttons — all animate a chevron from an in-scope open boolean with no aria-expanded.
 
 **IS-16 · P2 · effort:medium — Heatmap cells expose their data only via hover tooltips on non-focusable divs**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/components/StatsPanel.tsx:517`
 - Evidence: `<Tip …><div className={"heat-cell w-[13px] h-[13px]…"} /></Tip>` (L516-518) — Tip shows on mouseenter/focus (Tooltip.tsx:65-69), but the cell is a div with no tabIndex, so keyboard focus never happens and touch has no reliable path. Same wrapping for forecast bars (L583) and level-distribution bars (L629), though those carry visible count labels (L585, L631). The `.heat-cell:hover` ink outline (globals.css:789-792) is likewise hover-only.
 - Impact: On phones — a primary context for a study app — per-day review counts in the heatmap are effectively unreachable (the bars at least show their numbers); keyboard users get nothing anywhere. The Tip component's own onFocus path (built for exactly this) never fires.
@@ -936,7 +936,7 @@
 - Verified: Verified heat cells are bare divs (L517) with no tabIndex anywhere in StatsPanel; Tooltip.tsx L62-69 confirms show-on-focus exists but requires a focusable anchor. Confirmed the forecast/level bars DO render visible count labels (L585, L631), so narrowed the impact to the heatmap being the real data-access gap.
 
 **IS-17 · P2 · effort:small — Two competing auto-reset timers (4s and 5s) for the semester danger-zone confirms — the 5s one is dead code**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/DashboardClient.tsx:1431`
 - Evidence: L1213-1220 resets `confirmingNewSemester/confirmingResetSemester` after 4000ms; L1431-1438 registers a second effect doing the identical reset after 5000ms. Both watch the same deps, so the 4s timer always fires first and the 5s effect never has an observable effect. Armed windows also differ across the app: delete confirms 4000ms (L1193, L1200), snooze pills 5000ms (L1207).
 - Impact: Maintenance trap plus an inconsistent 'grace period' rhythm: identical two-step confirms give users 4s in one place and 5s in another for no reason.
@@ -944,7 +944,7 @@
 - Verified: Read both effects: L1213-1220 (4000ms) and L1431-1438 (5000ms) are byte-for-byte the same reset logic with identical deps — the 5s one can never win. Also confirmed the 4000ms delete-confirm timers (L1191-1202) vs the 5000ms snooze timer (L1205-1209).
 
 **IS-18 · P2 · effort:small — Disabled-cursor language is inconsistent: cursor-default (Scribble) vs cursor-not-allowed (system) vs cursor-wait (busy)**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/components/ScribbleCanvas.tsx:238`
 - Evidence: Scribble Undo/Clear: `disabled:opacity-40 disabled:cursor-default` (L238, L246). The design system's own baseline is `.btn-primary:disabled { cursor: not-allowed; }` (globals.css:502-505), other disabled controls use `disabled:cursor-not-allowed` (e.g. interactive-mode previous, DashboardClient L3655), and busy buttons deliberately use `disabled:cursor-wait` (snooze L2339, comprehension chip L3281). Grep confirms the Scribble pair is the only place using `disabled:cursor-default`.
 - Impact: A perfectionist detail: hovering a disabled Undo reads as an inert label rather than a temporarily unavailable action, breaking the cursor vocabulary the rest of the app maintains (not-allowed = can't, wait = busy).
@@ -1034,7 +1034,7 @@
 - Verified: Re-read lines 2292–2350: conditional swap, pill classes, shared row with flex-1 min-w-0 title and Level pill all match; only the incoming pill group is animated (springTactile on opacity/scale/y), the row reflow itself is unanimated. Confirmed the 5s auto-disarm timer at lines 1205–1209 with its own comment. Width estimate (~44–48px per pill ×3 + gaps vs 32px icon) is fair.
 
 **LS-10 · P2 · effort:small — Screen-header rhythm drifts across the five tabs: eyebrow→title gap is 10px or 12px, and the header's bottom margin is 32, 36 or 40px**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/DashboardClient.tsx:3508`
 - Evidence: Dashboard: eyebrow then h1 "mt-2.5" (2175, 10px). Upload: eyebrow "mb-3" (2602, 12px), header "mb-10" (2601). Library: "mb-3" (2817), header "mb-8 md:mb-10" (2816). Stats: eyebrow "mb-2.5" (3508, 10px), header "mb-8 md:mb-10" (3507). Quiz: header "mb-9" (3547, 36px), eyebrow row "mb-3.5" (3548, 14px).
 - Impact: The eyebrow/title/lede lockup is the app's signature moment on every screen, and its internal spacing changes by 2–4px and its clearance by up to 8px depending on the tab — exactly the kind of micro-inconsistency that makes a template feel hand-assembled rather than systematic.
@@ -1042,7 +1042,7 @@
 - Verified: All five header lockups re-read at the cited lines: dashboard h1 mt-2.5, upload eyebrow mb-3 + header mb-10, library mb-3 + mb-8 md:mb-10, stats mb-2.5 + mb-8 md:mb-10, quiz header mb-9 + eyebrow row mb-3.5. The 10/12/14px eyebrow gaps and 32/36/40px clearances are all present as claimed.
 
 **LS-11 · P2 · effort:small — The same model <select> is 52px tall on Upload and 48px in the Quiz — and wears two different skins (input-dark vs btn-secondary)**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/DashboardClient.tsx:2780`
 - Evidence: Upload: module select "h-12" (2674) and topic input "h-12" (2694), but the model select is "input-dark sm:w-[200px] h-[52px] px-4 text-sm" (2780) beside a submit that is "h-14 sm:h-[52px]" (2789, after the working-tree mobile tweak). Quiz: the identical model picker is "btn-secondary sm:w-[200px] h-12 px-4 text-[13px]" (3983) beside an "h-14 sm:h-12" submit — different height, different skin, different font size for the same component.
 - Impact: On sm+ the upload form mixes 48px inputs with a 52px control row for no hierarchy reason, and the exact same model picker renders 4px shorter with a different surface treatment and 1px-smaller type on the quiz screen — the kind of drift users perceive as 'slightly off' when moving from upload to quiz.
@@ -1050,7 +1050,7 @@
 - Verified: Checked against the uncommitted working-tree tweaks: they only changed the submit buttons (h-14 mobile / flex-none, gap-3) — the selects are untouched, so the 52-vs-48px sm+ drift and the input-dark vs btn-secondary + text-sm vs text-[13px] skin split for the identical picker remain real. Evidence updated to quote the current post-tweak button classes.
 
 **LS-12 · P2 · effort:small — Empty/error state cards use five different paddings (p-9, p-10, p-12 md:p-16, p-14) and two icon-tile sizes for the same pattern**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/DashboardClient.tsx:2228`
 - Evidence: Dashboard empty: "card-surface-elevated p-9 flex flex-col items-start" (2228 — also the only left-aligned one, and the only one on an elevated surface). Library no-results: "card-surface p-10" (2888, bare icon, no tile). Library error/empty: "card-surface p-12 md:p-16" (2898, 2921). Stats error: "card-surface p-14" with icon tile "w-12 h-12" (StatsPanel.tsx 351–352), while the others use "w-[52px] h-[52px]" tiles (2229, 2922, StatsPanel 364).
 - Impact: The rest-state screens — the moments the design intentionally slows down and speaks — each breathe differently: 36 vs 40 vs 48/64 vs 56px of air, plus a 48px icon tile where siblings use 52px, plus one left-aligned outlier. Side by side (library empty vs stats empty on adjacent tabs) the mismatch is visible.
@@ -1058,7 +1058,7 @@
 - Verified: All six call sites re-read: 2228 (p-9, items-start, card-surface-elevated), 2888 (p-10, bare MagnifyingGlassIcon), 2898/2921 (p-12 md:p-16, centered, 52px tiles), StatsPanel 351 (p-14, w-12 tile), StatsPanel 363 (p-12 md:p-16, w-[52px] tile). Every quoted class matches; the surface-level split (elevated vs flat) is an extra inconsistency beyond the original claim.
 
 **LS-13 · P2 · effort:small — Settings 'Appearance' section puts its body copy above the caps-label heading — inverted against every sibling section in the same modal**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/DashboardClient.tsx:4468`
 - Evidence: Lines 4468–4471: <p className="text-xs text-ink-600 mb-4">…Wie dein Lernraum beleuchtet ist…</p> followed by <h4 className="caps-label mb-2.5">Theme</h4>. Every other section leads with the h4 caps-label, description after (dictation: h4 at 4693 then p at 4694; AI connection: h4 at 4724 then p at 4725).
 - Impact: Scanning the settings modal, the eye uses the caps-labels as section anchors; the first section breaks the scan pattern with an orphaned paragraph floating directly under the modal header, reading like a stray subtitle rather than part of 'Theme'.
@@ -1066,7 +1066,7 @@
 - Verified: Confirmed at 4468–4471: the p precedes the h4 with no heading above it, while both sibling sections (Interaktiver Modus · Diktat at ~4693, KI-Verbindung at ~4724) lead with their caps-label h4 then the description paragraph. The inversion is real and unique to the first section.
 
 **LS-14 · P2 · effort:small — Dashboard 'Upcoming' rows use 22px gutters / 13px vertical padding while library rows use 20px / 14–16px — same list-row DNA, different metrics**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/DashboardClient.tsx:2520`
 - Evidence: Upcoming rows: "py-[13px] px-[22px]" with divider "mx-[22px]" (2516, 2520). Library module headers: "px-5 py-4" (3007); lecture rows: "px-5 py-3.5" (3107). All are hover-highlight rows inside card-surface containers.
 - Impact: Two screens apart, visually identical row lists sit on different gutters (22 vs 20px) and off-grid vertical rhythm (13px), so cards that should feel like one component family are optically misaligned relative to their card padding (px-5 content elsewhere in the same cards).
@@ -1074,7 +1074,7 @@
 - Verified: Confirmed at the cited lines: 2516 divider mx-[22px], 2520 row py-[13px] px-[22px] with hover:bg-(--paper-hover); 3007 module header px-5 py-4 press-row; 3107 lecture row px-5 py-3.5 hover:bg-paper-0 press-row. Same interaction pattern (hover-highlight rows in card-surface), different metrics — as claimed.
 
 **LS-15 · P2 · effort:small — Heatmap grid fills only ~460px of a ~900px desktop card, with the legend right-aligned past the grid's edge**
-- Status: ⏳ open
+- Status: ⏭ skipped — The heatmap was intentionally reworked under LS-8/MT-14 into a fixed-13px-cell horizontal scroller that auto-anchors to
 - Where: `src/app/components/StatsPanel.tsx:494`
 - Evidence: Cells are fixed "w-[13px] h-[13px]" in "flex gap-1 min-w-max" (494, 517): 26 weeks ≈ 460px including the weekday gutter, inside a card that spans the max-w-5xl stats column. The legend row is "flex items-center justify-end" (524), pinning Less/More to the card's far right, hundreds of pixels from where the grid ends. Legend swatches are also w-3 (12px) vs the 13px cells (526–530).
 - Impact: On desktop the marquee chart floats in the card's left half with a large dead zone, and its legend is visually attached to nothing. The composition reads unfinished compared to the tightly-fitted flex-1 bar charts below it on the same page.
@@ -1082,7 +1082,7 @@
 - Verified: Confirmed: 26 fixed-width week columns (loop at 226), w-[13px] cells with gap-1 (517), min-w-max container (494), legend justify-end with w-3 swatches (524–530). Width math re-derived at ≈455–460px vs a max-w-5xl (1024px) column — the dead-zone claim is fair on any desktop viewport; the forecast/level charts below do use flex-1 full-width bars.
 
 **LS-16 · P2 · effort:small — 3-up segmented controls in Settings wrap German labels to two lines on small phones, breaking the pill's line rhythm**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/DashboardClient.tsx:4705`
 - Evidence: Dictation segmented (4699–4722) puts "Hybrid · empfohlen" / "Gemini" / "Browser" in flex-1 .segmented-item cells (globals.css 643: flex:1, padding 8px 10px, font-size 13px, weight 600). In the max-w-[560px] modal (overlay p-4, panel p-5 on mobile) at a 375px viewport, each cell nets roughly 78–80px of text width — "Hybrid · empfohlen" (~120px at 13px/600) wraps, as do the AI-connection labels "Proxy für alles" / "Nur Generierung" (4759, 4785).
 - Impact: One segment wraps to two lines while its neighbors stay single-line: the whole control grows taller (flex stretch equalizes the cells, so the wrapped segment forces everyone to its height) with mixed one- and two-line labels inside the active pill — a visually broken control on precisely the settings screen that showcases the design system.
@@ -1090,7 +1090,7 @@
 - Verified: Verified the labels at 4705 ("Hybrid · empfohlen") and 4759/4785 ("Proxy für alles", "Nur Generierung") and the .segmented-item CSS (flex:1, 8px 10px padding, 13px/600). Width math: 375 − 32 (overlay p-4) − 40 (panel p-5) ≈ 303px content, ÷3 minus item padding ≈ 78px per cell — the long labels do wrap. Corrected the original impact's 'uneven cell heights' claim: flex stretch keeps cells equal-height; the real defect is the mixed line counts and doubled control height.
 
 **LS-17 · P2 · effort:small — Unmotivated 1–2px near-misses in the hand-tuned metric set (px-[34px] vs py-9, pt-[18px] vs pb-4, pt-[46px])**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/login/LoginClient.tsx:107`
 - Duplicate-of/with: EL-18
 - Evidence: Login auth card: "card-glass px-[34px] py-9" (107 — 34px vs 36px axes). Due card: "pt-[18px] pb-4" (18 vs 16px, DashboardClient.tsx 2299). Main content: "pt-8 md:pt-[46px]" (DashboardClient.tsx 2143 — 46px, neither 44 nor 48). Also h-[50px] mt-[26px] gap-[11px] on the login button (126).
@@ -1212,7 +1212,7 @@
 - Verified: Verified the conditional swap at L2314 (snooze) and L2392-2417 (delete): the armed UI is a different element conditionally rendered in place of the trigger, so the focused node unmounts and focus falls to body. Timers confirmed: 5000ms snooze (L1205-1209), 4000ms delete (L1191-1195). Escape does back out of armed confirms (L1182-1184) but doesn't fix the focus loss. Adjusted line 2337→2314.
 
 **AX-14 · P2 · effort:small — Tooltips violate WCAG 1.4.13: not dismissible with Escape and not hoverable**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/components/Tooltip.tsx:62`
 - Evidence: The wrapper handles `onMouseEnter/onMouseLeave/onMouseDown/onFocus/onBlur` only (L62-69) — no keydown, so Escape doesn't hide an open tooltip while a control is focused. The bubble itself is `pointer-events: none` (globals.css L828), so pointer users can't move onto it. It's also role="tooltip" (L75) without aria-describedby wiring — harmless here since the label is mirrored to aria-label, but the role is inert.
 - Impact: Keyboard users who focus a control get a persistent bubble they can't dismiss without blurring, which can cover adjacent content (e.g. the interactive control bar's tightly packed buttons); magnifier users can't hover the bubble to keep reading. Formal 1.4.13 failure.
@@ -1220,7 +1220,7 @@
 - Verified: Read Tooltip.tsx in full: event handlers are exactly onMouseEnter/Leave/Down + onFocus/Blur (L62-69), no keydown listener exists; .tip-bubble has pointer-events: none (globals.css ~L828, verified); portal span is role="tooltip" with no describedby wiring. Fully accurate.
 
 **AX-15 · P2 · effort:small — Long scrollable text regions (prompt viewer, grading error, history briefs) are unreachable by keyboard scrolling**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/DashboardClient.tsx:5045`
 - Evidence: Prompt viewer body: `<div className="flex-1 overflow-y-auto overscroll-contain custom-scrollbar p-6"><pre ...>{promptModal.content}</pre></div>` (L5044-5046) — no tabIndex and no focusable children, so arrow keys can never scroll it. Same for the grading error `<pre className="... max-h-40 overflow-y-auto ...">` (L3685) and the expanded history brief `<div className="max-h-64 overflow-y-auto custom-scrollbar"><FeedbackBody .../></div>` (L4292).
 - Impact: Keyboard-only users can read only the first screenful of a multi-page prompt or a long feedback brief; the rest is physically unreachable. (Chrome makes scrollables focusable heuristically, but Safari/Firefox don't.)
@@ -1228,7 +1228,7 @@
 - Verified: Verified all three scroll containers: prompt viewer (L5044-5046, pre of plain text), grading error pre (L3685), history brief wrapper (L4292) — none have tabIndex or focusable descendants. The browser-heuristic caveat is correctly stated. Fully accurate.
 
 **AX-16 · P2 · effort:small — Heading outline is broken: brand wordmark rendered as h1 alongside each page h1, and h2/h3/h4 levels skip and shuffle across surfaces**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/DashboardClient.tsx:2013`
 - Evidence: The brand wordmark is an h1 in the mobile top bar (`<h1 className="text-[15px] font-bold ...">SRS <span ...>Master</span></h1>`, L2013) AND in the sidebar (L2042), alongside each tab's real h1 (greeting L2175, library L2818, stats L3509, quiz topic L3565) — so at any viewport a screen reader sees the logo as an h1 above the page title. Under the dashboard h1, the empty state jumps straight to h3 (L2232). Modal titles are inconsistent levels: calendar uses h2 (L4334), settings/feedback/archive use h3 (L4448/L4172/L4118) with h4 sections below; the feedback modal has two sibling h3s — title (L4172) and the caps label (L4188).
 - Impact: Screen-reader users navigating by headings (the single most-used SR navigation method) get a table of contents where the site logo appears as a page title and levels skip, making the dashboard structure hard to skim.
@@ -1236,7 +1236,7 @@
 - Verified: Enumerated every heading in the file: brand h1s at L2013/L2042 confirmed, tab h1s at L2175/2603/2818/3509/3565, empty-state h3 at L2232 directly under the h1 (skips h2), calendar h2 (L4334) vs settings/feedback/archive h3 (L4448/4172/4118), sibling h3s at L4172+L4188. Corrected one detail: the mobile bar is md:hidden, so only two h1s (not three) are in the accessibility tree at once — substance unchanged.
 
 **AX-17 · P2 · effort:small — Push notification row renders a fake switch with no switch semantics**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/DashboardClient.tsx:2090`
 - Evidence: `<button onClick={togglePush} className="... nav-item-idle">...<span className={`w-7 h-[17px] rounded-full relative inline-block transition-colors ${pushPermission === "granted" && pushSubscribed ? "bg-ink-900" : "bg-[color-mix(...)]"}`}><span className={`absolute top-0.5 w-[13px] h-[13px] rounded-full bg-paper-1 transition-transform ...`}></span></span></button>` (L2081-2093) — a decorative thumb-in-track with state conveyed only by which text variant renders ('Mitteilungen an/aus/blockiert').
 - Impact: Screen readers announce it as a plain button; the on/off state IS in the visible text, so it's not broken, but the toggle affordance is invisible non-visually and the 'blocked' state gives no hint that activation will fail. Minor compared to the segmented controls, but the same class of gap on a stateful control.
@@ -1244,7 +1244,7 @@
 - Verified: Read L2081-2093: fake track/thumb spans inside a plain button confirmed, state only in the label text variants; grep confirms zero role="switch"/aria-checked in the codebase. The finding fairly concedes the visible-text state. Accurate.
 
 **AX-18 · P2 · effort:small — No skip link: keyboard users tab through the full sidebar (9+ stops) before reaching content on every tab switch**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/DashboardClient.tsx:2005`
 - Evidence: DOM order inside `<div className="flex flex-col md:flex-row w-full print:hidden">` (L2005) is: mobile brand button, menu button (L2016), sidebar brand button (L2035+), 5 nav buttons (L2050-2069), push toggle (L2076), Live-Tutor teaser, sign-out (L2131), THEN `<main>` (L2143). No skip link exists anywhere (grep: no 'skip to', no href="#main"), and `<main>` has no id or tabIndex to target.
 - Impact: Every keyboard journey to the day's reviews costs ~9 extra Tab presses past identical chrome; combined with the non-focusable due cards the keyboard path through the app is consistently slower than it needs to be.
@@ -1252,7 +1252,7 @@
 - Verified: Verified DOM order (shell div L2005 → top bar → aside L2035 with nav L2049-2069, push toggle, sign-out L2131 → main L2143), main has no id/tabIndex, and grepped for skip links / #main anchors: none exist. Stop count of ~9 checks out on desktop (mobile bar is md:hidden). Accurate.
 
 **AX-19 · P2 · effort:small — Sub-44px touch targets cluster on high-frequency controls (snooze pills 28px, tutor speak 24px, toast close ~20px)**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/DashboardClient.tsx:2327`
 - Evidence: Snooze interval pills: `className="h-7 px-2.5 rounded-full ..."` (L2327-2329, 28px tall, appear for 5 seconds under time pressure). Tutor read-aloud: `className="w-6 h-6 rounded-lg ..."` (TutorPanel L379, 24px). Toast close: `p-0.5` around a w-4 icon (Toast.tsx L73, ~20px). By contrast the app elsewhere is careful — sign-out uses `w-9 h-9 -m-1` (L2131), file-remove uses w-7 with negative margin (L2757).
 - Impact: On iPhone/iPad (explicitly supported — safe-area insets, PWA install flow, Apple Pencil scribble) these are the controls used mid-flow: snoozing from bed, dismissing an error, replaying tutor audio. Sub-28px targets measurably raise mis-taps; the snooze pills combine a small target with a 5s deadline.
@@ -1353,7 +1353,7 @@
 - Verified: Confirmed loading useState(true) at 108, once-per-mount fetch at 112–135 with no external cache, and conditional mounting at DashboardClient 3498–3519 (`{activeTab === "stats" && ... <StatsPanel/>}`), so every tab switch is a cold mount. Confirmed AnimatedNumber's display starts at 0 (line 72) and animates 1.1s toward value (85–89) — the 'from current display' logic only helps within a mount — and the heatmap week stagger at 507–511.
 
 **EM-12 · P2 · effort:small — Interactive-mode button is offered on browsers that can't run it — the `supported` flag is computed but never used**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/DashboardClient.tsx:3592`
 - Evidence: The hook computes and returns `supported` (useInteractiveQuiz lines 134–138, 908) precisely for capability gating, but the button renders on `{parsedTasks.length > 0 && !interactive.active && (...)}` alone (DashboardClient lines 3592–3603) — `interactive.supported` appears nowhere in the file. On an unsupported browser the mode starts, reads the question, then dies with a runtime error toast ('Mikrofon nicht verfügbar…', useInteractiveQuiz line 575).
 - Impact: An affordance that cannot work is presented as available, and the failure arrives late (after TTS begins) instead of never being offered — the opposite of the app's otherwise careful capability handling (cf. the iOS push pre-check at lines 805–818).
@@ -1361,7 +1361,7 @@
 - Verified: Confirmed supported computed at useInteractiveQuiz 134–138 and returned at 908; grepped DashboardClient for '.supported' — the only hit is an unrelated file-upload variable at 1598, so the flag is genuinely unused. Traced the unsupported-browser path: start() → playQuestion → beginListening with no Ctor and micPromise resolving null → setError at 575. The push pre-check contrast (805–818) is accurate.
 
 **EM-13 · P2 · effort:small — Library tab renders nothing at all during the initial load — the only screen without a skeleton**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/DashboardClient.tsx:2920`
 - Evidence: All library body blocks are gated away while loading: search requires `rawItems.length > 0` (line 2829), the error state requires `!isLoadingReviews` (line 2897), the empty state requires `!isLoadingReviews && !reviewsError` (line 2920), and the accordion maps over the then-empty `libraryBySemester`. While `isLoadingReviews` is true the tab shows only the header — no skeleton — whereas the dashboard has designed skeleton cards ('Skeleton — static paper blocks, no shimmer', lines 2216–2225) and Stats a full layout-mirroring skeleton (StatsPanel lines 319–347).
 - Impact: In the no-SSR-items window a user landing on Library sees a bare headline over blank paper, then content pops in — the one lifecycle the loading system skips, noticeable exactly when the app is at its slowest.
@@ -1369,7 +1369,7 @@
 - Verified: Verified all four gates (2829, 2897, 2920, and the accordion deriving from rawItems), plus both sibling skeletons (dashboard 2216–2225, StatsPanel 319–347). Scope note: `isLoadingReviews` initializes to true only when SSR items are empty (line 536: `useState(initialItems.length === 0)`), so this bites new/empty accounts and stale-SSR windows — narrow but real, consistent with 'low'.
 
 **EM-14 · P2 · effort:small — Dashboard shows 'Upload your first lecture' onboarding when the reviews fetch failed — the documented retry intent is only half-shipped (Library got it, Dashboard didn't)**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/DashboardClient.tsx:2226`
 - Evidence: The dashboard's branch is `: upcomingReviews.length === 0 ? (/* Empty state */ 'Nothing here yet … Upload your first lecture')` (lines 2226–2246) with no `reviewsError` check, and the header subtitle likewise falls through to 'Lade deine erste Vorlesung hoch' (line 2187). Yet the fetch-error comment states the intent: 'Distinguish a fetch failure from a genuinely empty library so the UI can show a retry affordance instead of the "upload your first lecture" state' (lines 930–932) — implemented only in the Library tab (lines 2897–2917). `reviewsError` is read at exactly two render sites: 2897 and 2920, both in Library.
 - Impact: In the empty-SSR + failed-refetch window (stale standalone-PWA sessions, flaky first loads), the same state renders a designed error card with retry in Library but cheerful onboarding on the app's primary screen — an inconsistency where the code's own documented intent is half-shipped.
@@ -1377,7 +1377,7 @@
 - Verified: Confirmed the branch at 2226–2246 lacks any reviewsError check, the subtitle fallthrough at 2187, the intent comment at 930–932, and the Library-only implementation at 2897–2917. Caveat verified and impact reworded: page.tsx SSRs the item list, so 'empty + fetch failed' usually means genuinely empty — the strongest defensible claim is the Library/Dashboard inconsistency against the code's own stated intent, which holds; severity stays low.
 
 **EM-15 · P2 · effort:medium — Login page (and NextAuth error copy) is German-only in a bilingual app**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/login/LoginClient.tsx:14`
 - Evidence: The entire login surface is hardcoded German — ERROR_MESSAGES (lines 14–21: 'Dieses Google-Konto ist … nicht freigeschaltet.' etc.), hero copy 'Lerne weniger. Behalte mehr.' (lines 76–78), button 'Mit Google anmelden' (line 136), privacy note and footer. No language branch exists anywhere in the file, while every post-login string in the app is bilingual via the `language` setting.
 - Impact: An English-mode user who gets signed out (or denied access — the moment they most need to understand what happened) faces an all-German wall including the error explanation. Understandable pre-auth (no stored pref), but the design's bilingual promise breaks at the front door.
@@ -1385,7 +1385,7 @@
 - Verified: Read LoginClient.tsx in full (165 lines): zero occurrences of a language prop or branch; ERROR_MESSAGES at 14–21, hero at 75–78, button at 136, footer at 160 — all German literals. Contrast with the rest of the app (every user-facing string branches on language) verified throughout this review.
 
 **EM-16 · P2 · effort:small — Google avatar has no error fallback — a dead image URL leaves a broken-image glyph in the sidebar**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/DashboardClient.tsx:2109`
 - Evidence: `{userImage ? (<img src={userImage} … />) : (<div className="w-8 h-8 rounded-full bg-(--accent-wash) …">{initial}</div>)}` (lines 2107–2121) — the designed initials fallback renders only when `userImage` is null; there is no `onError` handler, so an expired googleusercontent URL or a third-party-image blocker shows the browser's broken-image icon inside the identity strip.
 - Impact: The user identity row — visible on every screen — degrades to the single cheapest-looking artifact possible, while a perfectly designed fallback sits one branch away.
@@ -1393,7 +1393,7 @@
 - Verified: Confirmed the img at 2107–2114 has referrerPolicy and className but no onError, and the initials tile at 2116–2120 is reachable only via the null branch. Mitigation noted: `referrerPolicy="no-referrer"` (line 2112) already avoids the most common googleusercontent 403, but expired URLs and content blockers remain — hence low, not medium.
 
 **EM-17 · P2 · effort:small — A dead ?quizId deep link is swallowed silently — no explanation why the notification led nowhere**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/DashboardClient.tsx:1551`
 - Evidence: The deep-link consumer strips the param and only acts when the item exists: `const review = upcomingReviews.find(r => r.id === quizId); if (review) startQuiz(review);` (lines 1551–1553) — the not-found path (deleted lecture, other account) does nothing, per the comment 'Consume the deep link EXACTLY ONCE now — whether or not the item is found' (line 1542). Push notifications and calendar events mint exactly these /quiz/<id> links (sw.js lines 26–41; quiz/[id]/page.tsx redirects to /?quizId=).
 - Impact: Tap a 'review due' notification for a lecture you deleted yesterday: the app opens to the plain dashboard with zero acknowledgment. The user can't distinguish 'link broken' from 'app ignored me' — a designed one-line answer is missing.
@@ -1401,7 +1401,7 @@
 - Verified: Confirmed the consumer at 1530–1555: param stripped at 1546–1549, then `if (review) startQuiz(review)` with no else. Confirmed the link supply chain: quiz/[id]/page.tsx redirects to /?quizId=<id> and sw.js notificationclick navigates to the notification's URL (26–41). addToast is in scope in the component, so the one-line fix is trivially available.
 
 **EM-18 · P2 · effort:small — Stats skeleton carries a staggered animationDelay for an animation that doesn't exist**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/components/StatsPanel.tsx:325`
 - Duplicate-of/with: MO-17
 - Evidence: `<div key={i} className="card-surface p-5" style={{ animationDelay: `${i * 120}ms` }}>` (line 325) — no animation is defined on `.card-surface` or any skeleton class (globals.css's only ambient loops are ember-pulse and eq-pulse, lines 735/744, plus tooltip tip-in), and no Tailwind animate-* class is applied. The dashboard skeleton explicitly documents the choice: 'Skeleton — static paper blocks, no shimmer' (DashboardClient line 2217). The delay is dead styling.
@@ -1518,7 +1518,7 @@
 - Verified: Confirmed 4727–4729 description, all three segmented options (4759, 4782, 4805 — pipeline stages, not modules), and the lock condition `(isGenerating || isGrading)` at 4731 with the mismatched EN string at 4734. Found the same DE-correct/EN-stale lock pair duplicated at 4817–4820 (PDF delivery section) — added to evidence; a fix should sweep both. 'Modul' as course-module confirmed throughout (2667, 3067, presets).
 
 **MC-14 · P2 · effort:small — English button-label case drifts into Title Case: 'Browse Files', 'Add Presets', 'Subscribe to Log History', 'Video Archive'**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/DashboardClient.tsx:2743`
 - Evidence: `"Browse Files"` (2743), `"Add Presets"` (2683 — also plural + noun where German says just 'Hinzufügen'), `"Subscribe to Log History"` (4404), modal header `"Video Archive"` (4118). The established system is sentence case everywhere else: 'Generate my quiz set' (2792), 'Start reviewing' (2193), 'Sync to calendar' (2510), 'Try again' (2914), and even the same concept in card footers: 'Video archive (N)' (2388).
 - Impact: Four stray Title Case labels against ~40 sentence-case ones read as inherited from another product. 'Video Archive' vs 'Video archive (2)' is the same feature cased two ways one click apart.
@@ -1526,7 +1526,7 @@
 - Verified: Confirmed all four Title Case sites (2743, 2683, 4404, 4118) and all five sentence-case comparators (2792, 2193, 2510, 2914, 2388) verbatim. The 'Video Archive' modal header (4118) vs the card footer 'Video archive (N)' (2388) pairing is real — same feature, two casings. Overlaps with the done-calendar finding only on the 4404 string; the two findings critique different dimensions (casing vs naming), so both stand.
 
 **MC-15 · P2 · effort:small — Percent formatting is inconsistent: '87 %' with a space in the library, '87%' without in the dashboard rail and stats**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/DashboardClient.tsx:2571`
 - Evidence: No space: pass-rate card `{Math.round((passRate30.passed / passRate30.total) * 100)}%` (2571), StatsPanel `${mod.passRate}%` (551) and the big stat-card suffix `%` (401, 473–474). With space: `Ø {avg} %` (3041), comprehension `{Math.round(item.comprehensionScore)} %` (3121, 3306, 4972), `≈ {summary.mastery} %` (3447), result headline `${Math.round(gradingResult.comprehensionScore)} %` (3773). None of these fork by language.
 - Impact: The same metric family (pass/comprehension percentages) renders '87 %' in the library and '87%' on the dashboard/stats. German typography (DIN 5008) wants the narrow space, English wants none — currently BOTH languages get a random mix depending on which screen they're on.
@@ -1534,7 +1534,7 @@
 - Verified: Recounted every cited call site in both files: no-space at DashboardClient 2571, StatsPanel 551 and the suffix-'%' stat card (suffix declared at 401, rendered at 473–474 — added 401 for precision); spaced at 3041, 3121, 3306, 3447, 3773, 4972 (regular space, not narrow no-break). Confirmed none branch on language. Real split within the same metric family.
 
 **MC-16 · P2 · effort:small — Ellipsis and quote discipline drifts: ASCII '...' bookends in the upload placeholder, inconsistent space-before-ellipsis, straight quotes in one English string**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/DashboardClient.tsx:2771`
 - Duplicate-of/with: TY-13
 - Evidence: Upload textarea placeholder uses ASCII dots on BOTH ends: `"...oder füge deine Vorlesungsskripte, Transkripte oder rohen Text hier ein..."` (2771, EN same). Everywhere else uses the real '…': 'Modul oder Vorlesung suchen…' (2841), 'Frag deinen Tutor…' (TutorPanel:417). Spacing wobbles: 'Schreibe deine Antworten hier …' (4045) and 'Tippe A, B, C oder D …' (3936) put a space before '…' while 'suchen…' and 'Starte KI-Pipeline…' (1608) don't. English straight quotes at 3894 `'· say "next task" to move on'` vs curly '“…”' at 2891; German correctly uses „…“ (1705, 2891, 3894).
@@ -1543,7 +1543,7 @@
 - Verified: Grepped for ASCII '...' across DashboardClient: line 2771 is the only user-facing string using it (both DE and EN, leading and trailing). Confirmed real '…' at 2841, 1608, TutorPanel:417; space-before-… at 4045 and 3936/3937; straight quotes in the EN string at 3894 while its German side uses „…“ and 2891 EN uses proper curly quotes. All evidence exact.
 
 **MC-17 · P2 · effort:small — The done-calendar feed gets a third name mid-section: 'Erledigt-Kalender' heading, then 'Verlaufshistorie abonnieren' / 'Subscribe to Log History' button**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/DashboardClient.tsx:4404`
 - Evidence: Section heading: `{language === "german" ? "Erledigt-Kalender (optional)" : "Done calendar (optional)"}` (4397). The button beneath: `{language === "german" ? "Verlaufshistorie abonnieren" : "Subscribe to Log History"}` (4404). 'Verlaufshistorie' is a tautology (Verlauf = Historie), 'Log History' is doubled jargon, and neither matches the heading it sits under. The caption introduces yet more phrasing: 'Verfolge deinen täglichen Fortschritt durch Abonnieren deiner erledigten Wiederholungen.' (4407–4409).
 - Impact: One small optional feature is named three ways in 60 vertical pixels; the German tautology and English 'Log' read as machine translation in an otherwise carefully written modal ('Subscribe once — all future reviews will automatically appear…', 4347).
@@ -1551,7 +1551,7 @@
 - Verified: Read the calendar modal (4320–4419): heading at 4397, button at 4404, caption at 4406–4409 all confirmed verbatim — three phrasings for one feature within one <div>. The modal's other copy (4344–4390) is indeed carefully written, making the contrast fair. 'Verlaufshistorie' tautology and EN 'Log History' both real.
 
 **MC-18 · P2 · effort:small — Toast close buttons announce 'Close' to screen readers in both languages**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/components/Toast.tsx:74`
 - Duplicate-of/with: AX-12
 - Evidence: `aria-label="Close"` hardcoded on both dismiss buttons (lines 74 and 106). ToastStack's props are only `{ toasts, onDismiss }` (line 44) — no language reaches the component. Contrast with DashboardClient, which localizes even icon-button labels: `aria-label={language === "german" ? … "Menü schließen" … }` (2018) and tooltip labels 'Schließen — Esc' everywhere (e.g. 4119, 4337, 4980).
@@ -1560,7 +1560,7 @@
 - Verified: Read Toast.tsx in full: both aria-label="Close" sites confirmed (74, 106); grepped the file for 'language' — zero hits, and the ToastStack signature (line 44) takes only toasts/onDismiss, so no localization path exists. Confirmed the app's established localized-aria pattern at DashboardClient 2018 and the 'Schließen — Esc' tooltips (4119, 4337, 4980).
 
 **MC-19 · P2 · effort:small — History-modal footnote is changelog-speak frozen into permanent UI: 'Briefe werden ab jetzt … gespeichert'**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/DashboardClient.tsx:4307`
 - Evidence: `{language === "german" ? "Briefe werden ab jetzt bei jeder Bewertung gespeichert — ältere Einträge haben noch keinen." : "Briefs are stored per review from now on — older entries don't have one yet."}` (lines 4305–4309), rendered unconditionally under every non-empty history list. 'ab jetzt'/'from now on' anchors to the deploy date, and 'noch keinen'/'yet' implies old entries will eventually get briefs — they never will.
 - Impact: Release-notes voice leaking into evergreen UI. In a year, 'from now on' under a fully-populated history reads as a bug, and the false promise of 'yet' is exactly the kind of small dishonesty the rest of the copy avoids (cf. the 'Honest footnote' pattern at line 3259).
@@ -1568,7 +1568,7 @@
 - Verified: Confirmed the string at 4305–4309 and that it renders unconditionally inside the non-empty-history branch (no `entry.feedback` check on the footnote itself), so it shows even when every entry has a brief. Per-entry 'kein Brief' badge exists separately at 4260. The 'Honest footnote' comment at 3259 confirmed, making the internal-standard comparison fair.
 
 **MC-20 · P2 · effort:small — Greeting thresholds disagree between languages: German switches off 'Morgen' at 11, English at 12**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/DashboardClient.tsx:2163`
 - Evidence: `const greeting = de ? (hour < 11 ? "Guten Morgen" : hour < 18 ? "Guten Tag" : "Guten Abend") : (hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening");` (lines 2162–2164). Between 11:00 and 11:59 the two languages disagree about what part of day it is. Additionally `hour < 11`/`hour < 12` means 00:00–04:59 renders 'Guten Morgen'/'Good morning' to a 2 a.m. studier.
 - Impact: A user toggling languages before noon sees the app change its mind about the time of day, and the 'kind at 11pm' brand (the Ink theme's own subtitle, line 4475) is undercut when a 1 a.m. session gets a chirpy 'Good morning' instead of acknowledging the late hour.
@@ -1681,7 +1681,7 @@
 - Verified: Checked every cited control at source: .chip height:30px at globals 594 exactly; nav h-[38px] 2050-2076; snooze pill h-7 at 2327 (corrected from 2325); footer links text-xs at 2363/2374; w-8 icon buttons 2339/2408; TTS w-6 h-6 at TutorPanel 379; scribble px-2.5 py-1 at ScribbleCanvas 238/246. Also confirmed the negative-margin precedent (sign-out w-9 h-9 -m-1 at 2131) the fix cites.
 
 **MT-13 · P2 · effort:small — Enter always sends in the tutor composer — a newline is impossible on phone keyboards**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/components/TutorPanel.tsx:412`
 - Evidence: onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(input); } }} — and the hint row advertises '⇧ ↵ neue Zeile' (line 439), a chord that doesn't exist on the iOS software keyboard.
 - Impact: On iPhone the return key fires Enter with no shift modifier available, so a student pasting or structuring a multi-line question (formula on its own line, numbered sub-questions) cannot — every return submits a fragment mid-thought. The footer hint promising Shift+Enter on a device with no Shift+Enter reads as desktop code shipped to mobile.
@@ -1689,7 +1689,7 @@
 - Verified: Confirmed handler at 411-416 and both kbd hints at 438-439 verbatim. The send button at 421-426 is w-11 h-11 (44px), so the recommended mobile path already exists in the UI — the fix is purely gating the keydown.
 
 **MT-14 · P2 · effort:small — Activity heatmap opens scrolled to six months ago — today is off-screen on phones**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/components/StatsPanel.tsx:493`
 - Duplicate-of/with: LS-8
 - Evidence: <div className="overflow-x-auto custom-scrollbar pb-1"><div className="flex gap-1 min-w-max"> — 26 week-columns (built oldest-first: the loop at 226 starts at `firstMonday`, 25 weeks back, and ends at the current week) ≈ 460px wide, with no ref and no scrollLeft initialization anywhere in the file.
@@ -1716,7 +1716,7 @@
 - Verified: Grepped all `fixed inset-0` overlay containers: exactly 7 (matching 7 overlayMotion spreads). Confirmed the split: 4952 and 5008 are `items-end sm:items-center`; 4108, 4160, 4324, 4437, 4903 are `items-center` unconditionally. Corrected the original count (said nine/seven; actual seven/five) and fixed two line refs (feedback 4160, calendar 4324).
 
 **MT-17 · P2 · effort:medium — Zero swipe gestures anywhere — snoozing a card takes three precise taps on 28–32px targets**
-- Status: ⏳ open
+- Status: ⏭ skipped — effort:medium and genuinely risky
 - Where: `src/app/DashboardClient.tsx:2337`
 - Evidence: Snooze flow: first tap arms via a 32px icon button (`onClick={(e) => { e.stopPropagation(); ... setSnoozeArmedId(review.id); }}`), then a second tap on a 28px `h-7` pill (2322–2330). A repo-wide grep for drag/swipe/onPan/onTouch finds only the upload-zone dragover handlers and the scribble canvas pointer events — no gesture support on cards, the tutor panel, the mobile menu, or any modal.
 - Impact: List rows that beg for the platform gesture (swipe a due card left → snooze options, the exact pattern of every iOS mail/todo/SRS app) instead demand a two-step tap dance on sub-HIG targets. The full-screen tutor panel and mobile menu can only be dismissed by reaching the top corners. For a touch-first PWA, the entire gesture vocabulary of the platform is unused — everything is desktop clicks transplanted to glass.
@@ -1724,7 +1724,7 @@
 - Verified: Re-ran the absence grep myself: drag/swipe/onPan/onTouch across src/app hits only upload-zone dragover/drop and ScribbleCanvas pointer handlers — no gesture code exists. Confirmed the snooze two-step (arm at 2337 on w-8 h-8, pills h-7 at 2322-2330). Kept despite its breadth because it's anchored to a concrete measured flow, not generic advice.
 
 **MT-18 · P2 · effort:small — No overscroll-behavior on the page — Android pull-to-refresh can wipe comprehension answers**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/globals.css:293`
 - Evidence: html { color-scheme: light; scroll-behavior: smooth; ... overflow-x: clip; } — no `overscroll-behavior-y` on html/body anywhere in the stylesheet; on mobile the app deliberately uses natural page scroll (DashboardClient.tsx:2141 comment).
 - Impact: In an installed Android PWA, dragging down from the top of the quiz view triggers Chrome's pull-to-refresh reload. Normal quiz drafts survive (autosaved, line 1557), but comprehension-check answers are explicitly not saved (draft effect bails at 1562 `if (comprehensionMode) return;` and the UI says so at 4086: 'Verständnis-Check-Antworten werden nicht als Entwurf gespeichert') — one reflexive over-scroll while reviewing your answers destroys a full quiz's worth of typing.
@@ -1732,7 +1732,7 @@
 - Verified: Read the html block at globals 293-303 — no overscroll-behavior; grepped the whole app: overscroll-contain exists only on modal scrollers and the scribble canvas, never html/body. Verified the data-loss chain end-to-end: autosave effect at 1557 explicitly skips comprehensionMode at 1562, and the UI copy at 4086 confirms comprehension answers are draft-free.
 
 **MT-19 · P2 · effort:small — Manifest ships one 192px PNG doing double duty as 'any maskable' — Android adaptive icons will crop it**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `public/manifest.json:14`
 - Evidence: { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" } — the same bitmap declared for both purposes; the only other icons are SVGs (icon-192.svg, icon-512.svg, no purpose field), and there is no 512px raster.
 - Impact: Maskable icons must keep content inside the central 80% safe zone because Android crops them to circles/squircles; an icon designed for 'any' gets its edges (the brand-tile's rounded corners and gradient rim) sliced off on most Android launchers — combining both purposes in one icon is explicitly discouraged in the spec for this reason. The 512 SVG may cover splash on modern Chrome, but launchers and older Android fall back to the dual-purpose 192 PNG, so the install-surface icon is either cropped or upscaled.
@@ -1809,7 +1809,7 @@
 - Verified: Read the full 47-line sw.js — push/notificationclick/install/activate only, zero fetch/caches usage; confirmed standalone manifest and appleWebApp/apple-touch-icon setup, so the app genuinely targets installed use without any asset caching.
 
 **PP-9 · P2 · effort:small — Redundant review fetches: an immediate refetch on mount right after SSR, and a double fetch on every tab refocus**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/DashboardClient.tsx:951`
 - Evidence: The mount effect always runs `fetchReviews()` (line 951) even though page.tsx delivered fresh `initialItems` milliseconds earlier in the same response. Both `window 'focus'` and `document 'visibilitychange'` handlers call fetchReviews (lines 952–957); when the user returns to the tab both fire in quick succession, and the coalescing logic (`fetchInFlightRef`/`fetchDirtyRef`, lines 903–941) queues the second as a full re-run via setTimeout — two sequential GET /api/reviews per refocus.
 - Impact: Doubled network chatter and two formatItems sorts + tree renders (transition-wrapped, but still work) on every app switch — which on a mobile PWA is many times per session. The mount refetch also races the SSR data it just received.
@@ -1817,7 +1817,7 @@
 - Verified: Confirmed the unconditional mount call, both refocus listeners, and the coalescing path that guarantees a queued second full fetch when two triggers land while one is in flight. Corrected line to 951 (the mount call; 952 is the focus handler). Low is right — updates are startTransition-wrapped so no visible blink, just wasted work.
 
 **PP-10 · P2 · effort:small — backdrop-blur-xl on fixed/sticky bars repaints a 24px blur on every scrolled frame on mobile**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/DashboardClient.tsx:2008`
 - Evidence: Mobile top bar: `className="md:hidden … bg-(--paper-0)/92 backdrop-blur-xl fixed top-0 left-0 right-0 z-50"`. Same pattern on the tutor brief page header: `sticky top-0 … bg-(--paper-0)/92 backdrop-blur-xl` (src/app/tutor/[id]/page.tsx line 40). Grep shows every other blur in the app is a static modal backdrop at `backdrop-blur-[3px]` — the design system otherwise keeps blur cheap.
 - Impact: A full-width 24px backdrop blur sampling the page beneath it re-composites every frame while scrolling — a measurable per-frame cost on mid-range devices, and it sits exactly on the mobile scroll surface. At 92% paper opacity the glass effect is barely perceptible anyway, so the risked dropped frames buy almost nothing visually.
@@ -1825,7 +1825,7 @@
 - Verified: Confirmed both blur-xl sites via grep and that all seven other backdrop-blur uses are 3px modal overlays. The per-frame compositing cost of backdrop-filter under a fixed bar during scroll is real; kept at low since modern iPhones usually absorb it.
 
 **PP-11 · P2 · effort:small — New accounts see skeleton cards that dissolve into an empty state — a loading lie on the first-ever impression**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/DashboardClient.tsx:536`
 - Evidence: `const [isLoadingReviews, setIsLoadingReviews] = useState(initialItems.length === 0);` — but initialItems comes from the server's fetchReviewList (page.tsx lines 22–23), which has no catch and throws on failure, so a rendered page with `[]` authoritatively means 'empty library', never 'unknown'. The dashboard then renders three fake cards (`{[0, 1, 2].map((i) => (<div … className="card-surface p-5 space-y-3">`, lines 2218–2224) and the greeting sub-line "Einen Moment …" (line 2180) until the redundant client refetch returns [] and swaps in the empty state.
 - Impact: A brand-new user's very first frames promise content (three loading cards) and then retract it — skeleton → 'Hier ist noch nichts' is a visible bait-and-switch plus layout swap at the most impressionable moment of the product. The skeleton exists for a state that can currently never be 'loading'.
@@ -1833,7 +1833,7 @@
 - Verified: Verified src/lib/review-query.ts fetchReviewList has no error handling (throws → page error, DashboardClient never mounts), so the claim that SSR `[]` is authoritative holds; confirmed the skeleton block, the 'Einen Moment …' sub-line, and that isLoadingReviews only clears in fetchReviews' finally.
 
 **PP-12 · P2 · effort:small — Stats skeleton doesn't match the final layout it claims to mirror — different stack gap, different grid gap, missing filter row**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/components/StatsPanel.tsx:322`
 - Duplicate-of/with: LS-7
 - Evidence: The skeleton (comment: "mirrors the final layout, so nothing jumps", line 319) renders `<div className="flex flex-col gap-6" …>` with a stat grid `gap-4` (line 323), but the real panel renders `flex flex-col gap-4` (line 423) with a stat grid `gap-3.5` (line 457) — every card below the first row shifts on swap. When more than one semester exists, the real layout also prepends a semester-filter chip row (lines 425–454) that the skeleton omits, pushing all content down by a full chip row when data lands.
@@ -1952,7 +1952,7 @@
 - Verified: CONFIRMED. Read the full modal (L4431–4892) and counted the eight sections; all headers use the identical caps-label class (e.g. L4643 'Language' vs L4811 'Proxy: PDF delivery'), so rank is flat as claimed. The base64/File-API explainer quote at L4812–4815 is verbatim. Panel width/scroll at L4443 as cited.
 
 **IA-14 · P2 · effort:small — Calendar sync's only entry point is conditionally rendered inside the 'Upcoming' section — with no scheduled items the feature is unreachable**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/DashboardClient.tsx:2500`
 - Evidence: The sole trigger for setShowCalendarModal(true) lives inside `{!isLoadingReviews && scheduledItems.length > 0 && (<div className="mt-10">…<button onClick={() => setShowCalendarModal(true)} …>Sync to calendar</button>` (L2500–2511). No entry exists in Settings, the sidebar, or the library.
 - Impact: The placement is contextually smart when the section exists, but the feature's availability is an accident of schedule state: a brand-new user (1 lecture, due today) or a caught-up user whose every item is due right now has literally no path to calendar sync — and a user who remembers 'I set that up somewhere' can't find it again to unsubscribe or re-copy the URL.
@@ -1960,7 +1960,7 @@
 - Verified: CONFIRMED. Grepped all setShowCalendarModal call sites: the only `(true)` opener is L2505, inside the `scheduledItems.length > 0` guard at L2500 (all other references are closers/effects). Read the settings modal and sidebar in full — no other entry point exists. The login page even advertises 'mit Kalender-Sync' (LoginClient L91), sharpening the findability gap.
 
 **IA-15 · P2 · effort:small — 'Upcoming' rows silently start a consequential early review on click — an informational-looking list row and a 'begin exam' action share one affordance**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/DashboardClient.tsx:2519`
 - Evidence: Each scheduled row is fully clickable: `<div onClick={() => startQuiz(review)} className="grid grid-cols-[1fr_auto_auto] … cursor-pointer hover:bg-(--paper-hover)">` (L2517–2521), with no chevron, no button, no 'start early' hint — visually it's a read-only schedule row (title, subject, Level, date). Grading an early-started item moves its real SRS schedule (handleGrade done → nextReviewDate/currentLevel from the server, L1773–1783).
 - Impact: A student scanning their week can tap a row expecting detail (materials, feedback — which live only in the library) and instead find themselves inside a quiz whose completion will rewrite the interval the row just displayed. The due cards earn their whole-card click with a chevron and elevated styling; these rows promise nothing and deliver the app's heaviest action.
@@ -1968,7 +1968,7 @@
 - Verified: CONFIRMED. Read the row markup (L2517–2528): three columns (title/subject, Level, date), no chevron or action affordance, whole row wired to startQuiz. Contrasted with due cards which carry a ChevronRightIcon (L2349) and elevated card styling. Verified grading really reschedules via the done payload (L1773–1783) and 'Zeitplan aktualisiert' copy (L1766).
 
 **IA-16 · P2 · effort:small — The library's student-facing 'Tutor-Brief' chip opens a page titled 'Tutor Prompt' with raw-system-prompt framing and a pass-green level badge**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/tutor/[id]/page.tsx:47`
 - Duplicate-of/with: CC-12
 - Evidence: Library chip label: "Tutor-Brief" / "Tutor brief" (DashboardClient.tsx L3345–3355). The destination page heads itself `Tutor <em …>Prompt</em>` (L46–48, with hardcoded text-amber-600 that ignores the accent token), metadata describes it as "KI-Tutor Systemprompt" (L28), the footer prints a raw DB id — `ID: {item.id}` (L94) — and the level badge borrows verdict colors: `border-(--grade-pass-border) bg-(--grade-pass-wash) … text-(--grade-pass-text)">Level {item.currentLevel + 1}` (L73–75). The page is also hardcoded German ("← Zurück" L57, "Erstellt am…" L93, de-DE locale) regardless of the app's language setting.
@@ -1977,7 +1977,7 @@
 - Verified: CONFIRMED. Read the whole tutor page: heading L46–48, 'KI-Tutor Systemprompt' metadata L28, grade-pass-tokened Level badge L73–75, raw `ID: {item.id}` footer L94, and German-only strings with de-DE date formatting (L57, L92–95) — no language prop reaches the page. Verified the chip label mismatch (DashboardClient L3353) and the 'Passed stays sage, repeat stays clay' contract in settings copy (L4565).
 
 **IA-17 · P2 · effort:small — A debugging tool ('Prompts' viewer) is presented as a peer chip among student study materials**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/DashboardClient.tsx:3422`
 - Evidence: Inside the library's 'Lernmaterialien' chip row, alongside Original-PDF / Tutor-Brief / Audio / Video: `<button onClick={() => setPromptsModal({…})} className="chip cursor-pointer">…Prompts</button>` (L3408–3424). The modal it opens admits its own audience: `{language === "german" ? "Zum Debuggen — öffnet den Prompt-Viewer." : "For debugging — opens the prompt viewer."}` (L4939–4941), and the code comment calls it "a lecture's debug prompts" (L4897).
 - Impact: Study Materials is the library's curated shelf; a chip that the app itself labels 'for debugging' sits at identical visual rank to the lecture PDF. Every scan of the shelf pays a small comprehension tax ('what's a Prompt? do I need it before the exam?'), and it's the only chip whose content is about the app rather than the subject.
@@ -1985,7 +1985,7 @@
 - Verified: CONFIRMED. Verified the Prompts button renders with the same `chip` class as the PDF/Audio/Video materials chips in the same flex row (L3408–3424), and that the destination modal self-describes as a debugging tool at L4939–4941 ('Zum Debuggen — öffnet den Prompt-Viewer' / 'For debugging — opens the prompt viewer'), plus the 'debug prompts' code comment at L4897.
 
 **IA-18 · P2 · effort:small — The login page ignores the app's bilingual IA — hardcoded German copy with a stray English tagline in the footer**
-- Status: ⏳ open
+- Status: ✅ fixed (design-polish 2026-07-11)
 - Where: `src/app/login/LoginClient.tsx:160`
 - Evidence: All auth copy is German-only: ERROR_MESSAGES (L14–21), "Lerne weniger. Behalte mehr." (L75–78), "Willkommen zurück" (L108), "Mit Google anmelden" (L136) — no language prop or navigator.language branch exists in the component. Then the footer switches languages: `© {new Date().getFullYear()} SRS Master · Built for serious students` (L160).
 - Impact: The first-time-user path starts at the only screen that ignores the language system the rest of the app is scrupulous about (every other string in the codebase is de/en paired). An English-preference user is onboarded in German; and for everyone, the German page ends on an English marketing line — a small tonal seam on the app's front door, exactly where craft impressions form.

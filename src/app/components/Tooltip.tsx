@@ -76,6 +76,18 @@ export function Tip({ label, children, side }: {
     };
   }, [pos, hide]);
 
+  // AX-14 (WCAG 1.4.13, dismissible): while a tooltip is showing on a focused
+  // control, Escape hides it without moving focus off the control. Registered
+  // only while `pos` is set so it never shadows Escape elsewhere.
+  useEffect(() => {
+    if (!pos) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") hide();
+    };
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => document.removeEventListener("keydown", onKeyDown, true);
+  }, [pos, hide]);
+
   useEffect(() => clear, [clear]);
 
   // Mirror the label into aria-label when the control doesn't bring its own.

@@ -39,10 +39,12 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   const de = language !== "english";
   if (!item) return { title: de ? "Nicht gefunden" : "Not found" };
   return {
-    title: `Tutor Prompt – ${item.subjectMain}`,
+    // IA-16: name the page after the student-facing library chip ("Tutor-Brief"),
+    // not the developer-facing "Prompt / system prompt" framing.
+    title: `${de ? "Tutor-Brief" : "Tutor brief"} – ${item.subjectMain}`,
     description: de
-      ? `KI-Tutor Systemprompt für ${item.subjectMain} – ${item.subjectSub}`
-      : `AI tutor system prompt for ${item.subjectMain} – ${item.subjectSub}`,
+      ? `KI-Tutor-Brief für ${item.subjectMain} – ${item.subjectSub}`
+      : `AI tutor brief for ${item.subjectMain} – ${item.subjectSub}`,
   };
 }
 
@@ -61,8 +63,14 @@ export default async function TutorPage({ params }: { params: Params }) {
             <span className="font-display italic font-semibold text-lg text-(--accent-on) -translate-y-px">S</span>
           </div>
           <div className="min-w-0 flex-1">
+            {/* IA-16: matches the "Tutor-Brief" chip. CC-12: brand italic uses
+                the accent-text token, not a hardcoded (low-contrast) amber-600. */}
             <h1 className="truncate font-display text-lg font-semibold text-ink-900">
-              Tutor <em className="font-display italic text-amber-600">Prompt</em>
+              {de ? (
+                <>Tutor<em className="font-display italic text-(--accent-text)">-Brief</em></>
+              ) : (
+                <>Tutor <em className="font-display italic text-(--accent-text)">brief</em></>
+              )}
             </h1>
             <p className="truncate text-sm text-ink-600">
               {item.subjectMain} – {item.subjectSub}
@@ -89,7 +97,9 @@ export default async function TutorPage({ params }: { params: Params }) {
             <span className="inline-flex items-center gap-1.5 rounded-full border border-(--line-soft) bg-paper-2 px-4 py-1.5 text-xs font-medium text-ink-600">
               {item.subjectSub}
             </span>
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-(--grade-pass-border) bg-(--grade-pass-wash) px-4 py-1.5 text-xs font-semibold text-(--grade-pass-text)">
+            {/* IA-16: neutral level badge — sage-green is contractually reserved
+                for PASS verdicts, so it must not tint a positional "Level N" pill. */}
+            <span className="badge-level inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-semibold">
               Level {item.currentLevel + 1}
             </span>
           </div>

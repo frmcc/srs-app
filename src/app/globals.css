@@ -85,6 +85,10 @@
     --shadow-e2: 0 1px 2px rgba(50, 38, 20, 0.05), 0 14px 36px -22px rgba(50, 38, 20, 0.2);
     --shadow-e2-hover: 0 2px 4px rgba(50, 38, 20, 0.06), 0 20px 44px -20px rgba(50, 38, 20, 0.28);
     --shadow-e3: 0 2px 6px rgba(50, 38, 20, 0.06), 0 24px 56px -24px rgba(50, 38, 20, 0.32);
+    /* EL-13: the "ink chip" drop shadow shared by the tooltip and the undo
+       pill — the two dark-surface overlays. Tokenized so retuning one keeps
+       the other in sync, and so it joins the dark shadow ramp in ink theme. */
+    --shadow-ink-chip: 0 6px 16px -6px rgba(33, 27, 18, 0.4);
 
     /* Chart & misc neutrals (ink theme re-tunes these) */
     --chip-hover: #e9e2d4;
@@ -188,6 +192,7 @@
     --shadow-e2: 0 1px 2px rgba(0, 0, 0, 0.3), 0 14px 36px -22px rgba(0, 0, 0, 0.5);
     --shadow-e2-hover: 0 2px 4px rgba(0, 0, 0, 0.35), 0 20px 44px -20px rgba(0, 0, 0, 0.6);
     --shadow-e3: 0 2px 6px rgba(0, 0, 0, 0.25), 0 32px 72px -32px rgba(0, 0, 0, 0.55);
+    --shadow-ink-chip: 0 6px 16px -6px rgba(0, 0, 0, 0.5);
 
     --chip-hover: #2e2820;
     --chart-zero: #2a241c;
@@ -317,6 +322,11 @@
     -webkit-tap-highlight-color: transparent;
     /* Prevent horizontal overflow at the root level */
     overflow-x: clip;
+    /* MT-18: contain vertical overscroll so an installed Android PWA's
+       pull-to-refresh can't reload the page mid-quiz and wipe unsaved
+       comprehension answers (those are intentionally not draft-saved). iOS
+       standalone has no pull-to-refresh, so nothing regresses there. */
+    overscroll-behavior-y: contain;
   }
   html[data-theme="ink"] {
     color-scheme: dark;
@@ -929,7 +939,7 @@
   line-height: 1.4;
   padding: 6px 9px;
   border-radius: 8px;
-  box-shadow: 0 6px 16px -6px rgba(33, 27, 18, 0.4);
+  box-shadow: var(--shadow-ink-chip); /* EL-13 — shared with the undo pill */
   pointer-events: none;
   animation: tip-in 140ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }

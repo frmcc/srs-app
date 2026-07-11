@@ -134,7 +134,10 @@ export default async function RootLayout({
           }}
         />
       </head>
-      <body className="min-h-full flex flex-col bg-background text-foreground font-sans selection:bg-amber-500/20 selection:text-ink-900">
+      {/* CC-10: no selection:* utilities here — Tailwind's selection variant
+          would cascade after (and override) the design-system ::selection token
+          in globals.css. The token (30% accent wash, theme/accent aware) owns it. */}
+      <body className="min-h-full flex flex-col bg-background text-foreground font-sans">
         <Providers>
           {children}
         </Providers>

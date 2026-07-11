@@ -24,7 +24,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 type StrokePoint = { x: number; y: number; w: number };
 type Stroke = StrokePoint[];
 
-const INK = "#1c1917"; // warm near-black, matches the app's ink tones
+// CC-11: the app's warm ink (--ink-900), NOT Tailwind's cooler stone-900. Kept
+// as a fixed literal on purpose — the pad is a light, theme-independent surface
+// so the exported PNG never leaks a dark-mode UI into the grader's image.
+const INK = "#211b12";
 const BASE_WIDTH = 2.4; // logical px; modulated by pointer pressure
 
 function strokeWidthFor(e: PointerEvent | React.PointerEvent): number {
@@ -67,7 +70,9 @@ export function ScribbleCanvas({
 
     ctx.save();
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.fillStyle = "#ffffff";
+    // CC-11: paper-1 (the app's warmest white) rather than a max-glare #fff — a
+    // fixed light fill so the export stays grader-friendly in either theme.
+    ctx.fillStyle = "#fffefb";
     ctx.fillRect(0, 0, cssW, cssH);
     const base = baseImageRef.current;
     if (base) ctx.drawImage(base, 0, 0, cssW, cssH);
@@ -220,7 +225,7 @@ export function ScribbleCanvas({
         onPointerMove={handlePointerMove}
         onPointerUp={endStroke}
         onPointerCancel={endStroke}
-        className="block w-full rounded-[12px] border border-(--hairline) bg-white cursor-crosshair select-none"
+        className="block w-full rounded-[12px] border border-(--hairline) bg-[#fffefb] cursor-crosshair select-none"
         style={{ touchAction: "none", overscrollBehavior: "contain" }}
         aria-label={de ? "Scribble-Feld für handschriftliche Antworten" : "Scribble pad for handwritten answers"}
       />
@@ -235,7 +240,7 @@ export function ScribbleCanvas({
             type="button"
             onClick={undo}
             disabled={strokeCount === 0}
-            className="text-xs font-semibold px-2.5 py-1 rounded-full bg-paper-2 text-ink-600 hover:text-ink-900 disabled:opacity-40 disabled:cursor-default cursor-pointer transition-colors"
+            className="text-xs font-semibold px-2.5 py-1 rounded-full bg-paper-2 text-ink-600 hover:text-ink-900 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
           >
             {de ? "Rückgängig" : "Undo"}
           </button>
@@ -243,7 +248,7 @@ export function ScribbleCanvas({
             type="button"
             onClick={clear}
             disabled={empty}
-            className="text-xs font-semibold px-2.5 py-1 rounded-full bg-paper-2 text-ink-600 hover:text-ink-900 disabled:opacity-40 disabled:cursor-default cursor-pointer transition-colors"
+            className="text-xs font-semibold px-2.5 py-1 rounded-full bg-paper-2 text-ink-600 hover:text-ink-900 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
           >
             {de ? "Leeren" : "Clear"}
           </button>

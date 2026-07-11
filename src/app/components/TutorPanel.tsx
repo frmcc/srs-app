@@ -88,6 +88,11 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
   const [messages, setMessages] = useState<TutorMessage[]>(() => loadHistory(itemId));
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
+  // MT-13: on a coarse pointer (phone/tablet keyboard) there is no Shift+Enter,
+  // so Enter must insert a newline instead of sending — the send button is the
+  // submit affordance. Resolved after mount, so SSR/first render (fine pointer,
+  // Enter-sends) stays stable and only touch devices flip.
+  const [coarsePointer, setCoarsePointer] = useState(false);
   // AX-10: completed replies (or failures) are announced once via a hidden
   // polite live region — never every streamed token.
   const [liveNote, setLiveNote] = useState("");
@@ -117,6 +122,14 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
     setMessages(loadHistory(itemId));
     setInput("");
   }, [itemId]);
+
+  // MT-13: detect a coarse pointer once after mount.
+  useEffect(() => {
+    if (typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- pointer capability only known client-side
+      setCoarsePointer(true);
+    }
+  }, []);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -530,7 +543,8 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
+                  // MT-13: coarse pointers let Enter insert a newline (send button submits).
+                  if (!coarsePointer && e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
                     send(input);
                   }
@@ -560,8 +574,13 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
             </div>
             <p className="text-[11px] text-ink-400 mt-2 px-1 flex items-center gap-1.5 flex-wrap">
               <span>{de ? "Der Tutor sieht Quiz + Entwürfe." : "The tutor sees quiz + drafts."}</span>
-              <span className="inline-flex items-center gap-1"><span className="kbd">↵</span> {de ? "senden" : "send"}</span>
-              <span className="inline-flex items-center gap-1"><span className="kbd">⇧</span><span className="kbd">↵</span> {de ? "neue Zeile" : "new line"}</span>
+              {/* MT-13: the Enter/Shift+Enter chords don't exist on a touch keyboard. */}
+              {!coarsePointer && (
+                <>
+                  <span className="inline-flex items-center gap-1"><span className="kbd">↵</span> {de ? "senden" : "send"}</span>
+                  <span className="inline-flex items-center gap-1"><span className="kbd">⇧</span><span className="kbd">↵</span> {de ? "neue Zeile" : "new line"}</span>
+                </>
+              )}
             </p>
           </div>
         </motion.aside>
