@@ -4307,6 +4307,7 @@ export default function DashboardClient({
                   language={language}
                   tasks={parsedTasks}
                   getDraft={getInteractiveAnswer}
+                  getSketch={(taskId) => answerSketches[taskId]}
                   focusedTaskId={focusedTaskId}
                 />
 

@@ -56,6 +56,9 @@ interface TutorPanelProps {
   language: string;
   tasks: TutorTask[];
   getDraft: (taskId: string) => string;
+  /** Scribbled answer (PNG data URL) for a task, if the user drew one. Sent to
+   *  the tutor when the chat is focused on that task. */
+  getSketch?: (taskId: string) => string | undefined;
   /** When set, the matching task is pinned at the top of the chat so the
    *  original question stays in view through a long conversation. */
   focusedTaskId?: string | null;
@@ -86,11 +89,15 @@ function saveHistory(itemId: string, messages: TutorMessage[]) {
   }
 }
 
-export default function TutorPanel({ open, onClose, itemId, subject, topic, language, tasks, getDraft, focusedTaskId }: TutorPanelProps) {
+export default function TutorPanel({ open, onClose, itemId, subject, topic, language, tasks, getDraft, getSketch, focusedTaskId }: TutorPanelProps) {
   const de = language !== "english";
   const focusedTask = focusedTaskId ? tasks.find((t) => t.id === focusedTaskId) ?? null : null;
+  // Each task's tutor chat is its OWN thread; the header (global) tutor keeps the
+  // bare-itemId thread. Keying the stored history by task means a per-task
+  // conversation never bleeds into another task's chat or the global one.
+  const threadKey = focusedTaskId ? `${itemId}::${focusedTaskId}` : itemId;
 
-  const [messages, setMessages] = useState<TutorMessage[]>(() => loadHistory(itemId));
+  const [messages, setMessages] = useState<TutorMessage[]>(() => loadHistory(threadKey));
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   // MT-13: on a coarse pointer (phone/tablet keyboard) there is no Shift+Enter,
@@ -115,18 +122,19 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const panelRef = useRef<HTMLElement | null>(null);
   const mountedRef = useRef(false);
-  // Tracks the CURRENTLY displayed module so an in-flight stream can tell whether
-  // the user has since switched away (and must not persist into the wrong thread).
-  const itemIdRef = useRef(itemId);
+  // Tracks the CURRENTLY displayed thread (module + focused task) so an in-flight
+  // stream can tell whether the user has since switched away (and must not
+  // persist into the wrong thread).
+  const threadKeyRef = useRef(threadKey);
 
-  // Switch module → abort any in-flight stream, then load that module's thread.
+  // Switch task or module → abort any in-flight stream, then load that thread.
   useEffect(() => {
     abortRef.current?.abort();
-    itemIdRef.current = itemId;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- swap persisted thread when the module changes
-    setMessages(loadHistory(itemId));
+    threadKeyRef.current = threadKey;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- swap persisted thread when the task/module changes
+    setMessages(loadHistory(threadKey));
     setInput("");
-  }, [itemId]);
+  }, [threadKey]);
 
   // MT-13: detect a coarse pointer once after mount.
   useEffect(() => {
@@ -265,7 +273,7 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
     // reply could overwrite an OLD message and duplicate React keys.
     const userMsg: TutorMessage = { id: `u-${crypto.randomUUID()}`, role: "user", text };
     const modelMsg: TutorMessage = { id: `m-${crypto.randomUUID()}`, role: "model", text: "" };
-    const streamItemId = itemId; // the module this exchange belongs to
+    const streamThreadKey = threadKey; // the (module + task) thread this exchange belongs to
     // `base` lets "Erneut senden" resend on a thread with the failed exchange
     // pruned. Error rows never reach the model (EM-10).
     const thread = base ?? messages;
@@ -283,6 +291,14 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
     let failure: string | null = null;
 
     try {
+      // Per-task chat: tell the tutor to concentrate on THIS task, and send the
+      // student's work on it — the typed draft and (once, at the start of the
+      // thread) the scribbled answer image, if any.
+      const focusDraft = focusedTask ? (getDraft(focusedTask.id) || "").trim() : "";
+      const rawSketch = focusedTask && getSketch ? getSketch(focusedTask.id) : undefined;
+      const focusSketch = thread.length === 0 && rawSketch
+        ? rawSketch.replace(/^data:[^,]*,/, "")
+        : undefined;
       const res = await fetch("/api/tutor/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -291,6 +307,10 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
           language: de ? "german" : "english",
           drafts: buildDrafts(),
           messages: historyForApi,
+          focusedTask: focusedTask
+            ? { label: focusedTask.label, questionText: focusedTask.questionText, draft: focusDraft }
+            : undefined,
+          focusedSketch: focusSketch,
         }),
         signal: ctrl.signal,
       });
@@ -321,7 +341,7 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
         // If the user switched modules while this streamed, `prev` now holds the
         // OTHER module's messages — persisting here would overwrite that thread.
         // Only commit/persist when we're still on the module this exchange began.
-        if (itemIdRef.current === streamItemId) {
+        if (threadKeyRef.current === streamThreadKey) {
           const finalText = acc.trim();
           // EM-10: failures are a distinct system row, not tutor speech.
           const failureText = failure !== null
@@ -345,7 +365,7 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
             }
             // Never persist error rows — and never persist a partial reply that
             // errored as if the tutor completed it.
-            saveHistory(streamItemId, next.filter((m) => m.role !== "error" && !(failureText && m.id === modelMsg.id)));
+            saveHistory(streamThreadKey, next.filter((m) => m.role !== "error" && !(failureText && m.id === modelMsg.id)));
             return next;
           });
           // AX-10: announce the completed reply (or the failure) exactly once.
@@ -354,7 +374,7 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
         }
       }
     }
-  }, [messages, streaming, itemId, de, buildDrafts]);
+  }, [messages, streaming, itemId, threadKey, de, buildDrafts, focusedTask, getDraft, getSketch]);
 
   /** "Erneut senden" on an error row: prune the failed exchange, resend the same text. */
   const retrySend = useCallback((errRow: TutorMessage) => {
@@ -371,11 +391,11 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
     setMessages([]);
     setStreaming(false);
     try {
-      sessionStorage.removeItem(storageKey(itemId));
+      sessionStorage.removeItem(storageKey(threadKey));
     } catch {
       /* noop */
     }
-  }, [itemId, stopSpeaking]);
+  }, [threadKey, stopSpeaking]);
 
   const suggestions = useMemo(() => {
     const first = tasks[0]?.label ?? (de ? "Aufgabe 1" : "Task 1");
@@ -469,26 +489,36 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
                   <SparklesIcon className="w-6 h-6 text-amber-500" strokeWidth={1.6} />
                 </div>
                 <p className="text-ink-900 text-sm font-semibold mb-1.5">
-                  {de ? "Dein Tutor kennt diese Vorlesung." : "Your tutor knows this lecture."}
+                  {focusedTask
+                    ? (de ? "Fokus auf diese Aufgabe." : "Focused on this task.")
+                    : (de ? "Dein Tutor kennt diese Vorlesung." : "Your tutor knows this lecture.")}
                 </p>
                 <p className="text-ink-400 text-xs leading-relaxed mb-6 max-w-[280px]">
-                  {de
-                    ? `${subject} · ${topic} — er sieht die Aufgaben und deine Entwürfe und hilft mit Hinweisen statt Fertiglösungen.`
-                    : `${subject} · ${topic} — it sees the tasks and your drafts and helps with hints instead of ready-made solutions.`}
+                  {focusedTask
+                    ? (de
+                        ? "Er sieht diese Frage und deine bisherige Antwort und hilft mit Hinweisen statt Fertiglösungen. Frag einfach los."
+                        : "It sees this question and your current answer, and helps with hints instead of ready-made solutions. Just ask.")
+                    : (de
+                        ? `${subject} · ${topic} — er sieht die Aufgaben und deine Entwürfe und hilft mit Hinweisen statt Fertiglösungen.`
+                        : `${subject} · ${topic} — it sees the tasks and your drafts and helps with hints instead of ready-made solutions.`)}
                 </p>
-                <div className="flex flex-col gap-2 w-full">
-                  {suggestions.map((s) => (
-                    <motion.button
-                      key={s}
-                      whileTap={{ scale: 0.985 }}
-                      transition={springTactile}
-                      onClick={() => send(s)}
-                      className="text-left text-xs text-ink-600 hover:text-ink-900 bg-paper-1 hover:bg-paper-2 border border-(--hairline-card) rounded-xl px-4 py-3 leading-relaxed transition-colors cursor-pointer"
-                    >
-                      {s}
-                    </motion.button>
-                  ))}
-                </div>
+                {/* Suggestion chips are for the general chat only — a per-task
+                    chat is already scoped, so they'd just be noise. */}
+                {!focusedTask && (
+                  <div className="flex flex-col gap-2 w-full">
+                    {suggestions.map((s) => (
+                      <motion.button
+                        key={s}
+                        whileTap={{ scale: 0.985 }}
+                        transition={springTactile}
+                        onClick={() => send(s)}
+                        className="text-left text-xs text-ink-600 hover:text-ink-900 bg-paper-1 hover:bg-paper-2 border border-(--hairline-card) rounded-xl px-4 py-3 leading-relaxed transition-colors cursor-pointer"
+                      >
+                        {s}
+                      </motion.button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 

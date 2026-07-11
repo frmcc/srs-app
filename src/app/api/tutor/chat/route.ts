@@ -32,6 +32,12 @@ interface ChatRequestBody {
   /** Formatted current draft answers (client-built, optional). */
   drafts?: string;
   language?: string;
+  /** Set when the chat was opened from ONE task's Tutor button — the tutor is
+   *  told to concentrate on it, and its question + draft are attached. */
+  focusedTask?: { label?: string; questionText?: string; draft?: string };
+  /** Base64 PNG (no data: prefix) of the scribbled answer for the focused task,
+   *  sent once at the start of a per-task thread. */
+  focusedSketch?: string;
 }
 
 function defaultTutorRole(subject: string): string {
@@ -103,11 +109,33 @@ export async function POST(req: NextRequest) {
   const languageInstruction = `\n\nCRITICAL: Antworte ausschließlich auf ${language === "english" ? "ENGLISCH" : "DEUTSCH"}.`;
   const systemInstruction = `${baseRole}\n\n${technical}${languageInstruction}`;
 
-  // Attach current drafts to the LAST user turn (they change every message).
+  // Attach current drafts (and, for a per-task chat, the focused task + its
+  // scribble) to the LAST user turn — this context changes every message.
   const drafts = (body.drafts || "").trim().slice(0, MAX_DRAFT_CHARS);
+  const focused = body.focusedTask;
+  const focusSketch =
+    typeof body.focusedSketch === "string" && body.focusedSketch.length < 8_000_000
+      ? body.focusedSketch
+      : "";
+  type Part = { text: string } | { inlineData: { data: string; mimeType: string } };
   const contents = messages.map((m, idx) => {
-    const parts: { text: string }[] = [];
-    if (idx === messages.length - 1 && drafts) {
+    const parts: Part[] = [];
+    const isLast = idx === messages.length - 1;
+    if (isLast && focused && (focused.label || focused.questionText)) {
+      const q = (focused.questionText || "").trim();
+      const d = (focused.draft || "").trim().slice(0, MAX_DRAFT_CHARS);
+      parts.push({
+        text:
+          "FOKUS-AUFGABE — der Student fragt gezielt zu DIESER Aufgabe. Bleib bei ihr, außer er wechselt selbst das Thema.\n" +
+          `${focused.label || ""}${q ? `\n${q}` : ""}` +
+          (d ? `\n\nAktueller Antwort-Entwurf des Studenten zu dieser Aufgabe:\n${d}` : ""),
+      });
+      if (focusSketch) {
+        parts.push({ text: "Handschriftliche/gescribbelte Antwort des Studenten zu dieser Aufgabe (Bild):" });
+        parts.push({ inlineData: { data: focusSketch, mimeType: "image/png" } });
+      }
+    }
+    if (isLast && drafts) {
       parts.push({ text: `AKTUELLE ANTWORT-ENTWÜRFE DES STUDENTEN (Kontext, nur bei Bedarf nutzen):\n${drafts}` });
     }
     parts.push({ text: m.text });
