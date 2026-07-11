@@ -164,8 +164,22 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
     const apply = () => {
       const el = panelRef.current;
       if (!el) return;
-      el.style.top = `${vv.offsetTop}px`;
-      el.style.height = `${vv.height}px`;
+      const docked = window.innerWidth >= 640; // Tailwind sm — the right-sidebar layout.
+      if (docked) {
+        // Full-height sidebar rides the visual viewport so its pinned composer
+        // stays above the keyboard.
+        el.style.top = `${vv.offsetTop}px`;
+        el.style.height = `${vv.height}px`;
+        el.style.bottom = "";
+      } else {
+        // Mobile floating card: keep it anchored by the bottom (CSS owns the
+        // resting offset above the orb). Only when the keyboard is up do we lift
+        // it above the keys; otherwise clear the inline style so CSS wins.
+        el.style.top = "";
+        el.style.height = "";
+        const keyboardInset = window.innerHeight - vv.height - vv.offsetTop;
+        el.style.bottom = keyboardInset > 24 ? `${keyboardInset + 12}px` : "";
+      }
     };
     apply();
     vv.addEventListener("resize", apply);
@@ -401,7 +415,13 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
           // instead of reusing the decelerating entrance curve.
           exit={{ x: 24, opacity: 0, transition: { duration: 0.2, ease: EASE_IN_OUT } }}
           transition={{ duration: 0.24, ease: EASE_OUT }}
-          className="fixed inset-y-0 right-0 z-[70] w-full sm:w-[376px] bg-(--paper-tutor) border-l border-(--hairline-card) flex flex-col print:hidden shadow-(--shadow-e3) xl:shadow-none"
+          className="fixed z-[70] flex flex-col print:hidden overflow-hidden
+            left-3 right-3 bottom-[calc(140px+env(safe-area-inset-bottom))] top-auto max-h-[54dvh]
+            rounded-[26px] border border-(--hairline-card) shadow-(--shadow-e3)
+            bg-[color-mix(in_srgb,var(--paper-tutor)_82%,transparent)] backdrop-blur-2xl
+            sm:left-auto sm:right-0 sm:top-0 sm:bottom-0 sm:w-[376px] sm:max-h-none
+            sm:rounded-none sm:border sm:border-l sm:border-y-0 sm:border-r-0 sm:border-(--hairline-card)
+            sm:bg-(--paper-tutor) sm:backdrop-blur-none sm:overflow-visible xl:shadow-none"
           aria-label={de ? "Live Tutor Chat" : "Live tutor chat"}
         >
           {/* Header */}
@@ -554,7 +574,8 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
                 autoFocus
                 aria-label={de ? "Frag deinen Tutor" : "Ask your tutor"}
                 placeholder={de ? "Frag deinen Tutor…" : "Ask your tutor…"}
-                className="input-dark flex-1 px-4 py-3 text-sm leading-relaxed resize-none overflow-hidden min-h-[2.9rem] max-h-40 !bg-paper-1"
+                /* text-base (16px) on mobile stops iOS auto-zooming on focus; sm+ keeps 14px. */
+                className="input-dark flex-1 px-4 py-3 text-base sm:text-sm leading-relaxed resize-none overflow-hidden min-h-[2.9rem] max-h-40 !bg-paper-1"
               />
               <Tip label={de ? "Senden — ↵" : "Send — ↵"}>
                 <motion.button

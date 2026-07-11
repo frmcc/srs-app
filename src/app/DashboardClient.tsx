@@ -4191,7 +4191,7 @@ export default function DashboardClient({
                 initial="initial"
                 animate="animate"
                 exit="exit"
-                className={`max-w-3xl mx-auto ${showTutorPanel ? "xl:pr-[392px]" : ""}`}
+                className={showTutorPanel ? "max-w-3xl mx-auto xl:max-w-none xl:mr-[404px] xl:ml-0" : "max-w-3xl mx-auto"}
               >
                 <button
                   onClick={() => {
@@ -4305,6 +4305,45 @@ export default function DashboardClient({
                   tasks={parsedTasks}
                   getDraft={getInteractiveAnswer}
                 />
+
+                {/* Mobile-only floating Tutor orb — toggles the floating chat so the
+                    quiz stays fully in view (no full-screen takeover). Portaled to
+                    <body> so `position:fixed` escapes framer's transformed ancestors.
+                    z-[71] keeps it tappable above the panel (z-[70]); hidden while the
+                    interactive voice bar owns the bottom of the screen. */}
+                {createPortal(
+                  <AnimatePresence>
+                    {!interactive.active && (
+                      <motion.button
+                        key="tutor-orb"
+                        initial={{ opacity: 0, scale: 0.8, y: 8 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.8, y: 8, transition: { duration: 0.16, ease: EASE_IN } }}
+                        transition={springSoft}
+                        whileTap={{ scale: 0.9 }}
+                        onClick={() => setShowTutorPanel(prev => !prev)}
+                        aria-pressed={showTutorPanel}
+                        aria-label={showTutorPanel
+                          ? (language === "german" ? "Tutor schließen" : "Close tutor")
+                          : (language === "german" ? "Tutor öffnen" : "Open tutor")}
+                        className="sm:hidden fixed right-4 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-[71] w-14 h-14 rounded-full flex items-center justify-center cursor-pointer bg-paper-1 border border-(--line) shadow-(--shadow-e3) text-ink-900 active:bg-paper-2"
+                      >
+                        <AnimatePresence mode="wait" initial={false}>
+                          {showTutorPanel ? (
+                            <motion.span key="x" initial={{ opacity: 0, rotate: -30 }} animate={{ opacity: 1, rotate: 0 }} exit={{ opacity: 0, rotate: 30 }} transition={{ duration: 0.14 }}>
+                              <XMarkIcon className="w-6 h-6" strokeWidth={1.7} />
+                            </motion.span>
+                          ) : (
+                            <motion.span key="cap" initial={{ opacity: 0, rotate: 30 }} animate={{ opacity: 1, rotate: 0 }} exit={{ opacity: 0, rotate: -30 }} transition={{ duration: 0.14 }}>
+                              <AcademicCapIcon className="w-6 h-6" strokeWidth={1.6} />
+                            </motion.span>
+                          )}
+                        </AnimatePresence>
+                      </motion.button>
+                    )}
+                  </AnimatePresence>,
+                  document.body
+                )}
 
                 {/* Floating interactive control bar — portaled to <body> so `position:fixed`
                     escapes framer-motion's transformed ancestors and truly sticks to the
