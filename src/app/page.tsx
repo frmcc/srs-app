@@ -12,9 +12,7 @@ export const dynamic = "force-dynamic";
 export default async function Page() {
   // Belt & suspenders with the middleware: no session → branded Google login.
   const session = await getServerSession(authOptions);
-  // TEMP design-review bypass: only when auth is unconfigured in dev (NEXTAUTH_SECRET empty).
-  const devOpen = process.env.NODE_ENV !== "production" && !process.env.NEXTAUTH_SECRET;
-  if (!session?.user && !devOpen) redirect("/login");
+  if (!session?.user) redirect("/login");
 
   // The extra reads kill first-paint flashes: without them the client briefly
   // rendered German UI for English users, a late-popping pass-rate card, a
