@@ -11,6 +11,7 @@ import {
   pressable,
   hoverLift,
   EASE_OUT,
+  EASE_IN,
   EASE_IN_OUT,
   DUR,
   springSoft,
@@ -78,6 +79,16 @@ const libLevelFull = (l: number, language: string) => `${language === "german" ?
 /** MC-3: bilingual, blame-free fallback when a stream error event carries no message. */
 const fallbackErrorMsg = (language: string) =>
   language === "german" ? "Etwas ist schiefgelaufen — bitte erneut versuchen." : "Something went wrong — please try again.";
+
+/**
+ * IA-5: the model picker used to sit at full control height beside Generate and
+ * Submit — model-ID jargon splitting the weight of the app's two most important
+ * buttons. It's demoted to a quiet, compact secondary control above each action,
+ * so the action row itself is exactly one full-width primary button. Same look at
+ * all three sites (upload generate, quiz grade × 2).
+ */
+const MODEL_PICKER_CLASS =
+  "text-xs text-ink-600 bg-transparent border border-(--line) rounded-lg h-8 pl-2.5 pr-8 cursor-pointer appearance-none focus-visible:border-(--accent-border-strong) focus-visible:shadow-[0_0_0_3px_var(--accent-ring)] bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M5%208l5%205%205-5%22%20stroke%3D%22%23A89D8B%22%20stroke-width%3D%222%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-no-repeat bg-[position:right_0.55rem_center]";
 
 // Scribble key for the free-form (unstructured) answer box — the per-task
 // sketches are keyed by task.id, this one has no task to hang off.
@@ -396,7 +407,7 @@ function MasteryBadge({ level, language, className = "" }: { level: number; lang
     <Tip label={language === "german"
       ? `Alle 7 Level bestanden — ${laps}× durch die Meister-Schleife (Tag 365)`
       : `All 7 levels cleared — ${laps}× through the mastery loop (Day 365)`}>
-      <span className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-[0.08em] px-2 py-0.5 rounded-full bg-amber-400/[0.14] border border-(--accent-border-soft) text-(--accent-text-strong) whitespace-nowrap ${className}`}>
+      <span className={`inline-flex items-center gap-1 text-[9.5px] font-bold uppercase tracking-[0.12em] px-2 py-0.5 rounded-full bg-amber-400/[0.14] border border-(--accent-border-soft) text-(--accent-text-strong) whitespace-nowrap ${className}`}>
         <AcademicCapIcon className="w-3 h-3" strokeWidth={2} />
         {language === "german" ? "Meister" : "Mastery"} ×{laps}
       </span>
@@ -482,6 +493,28 @@ function latestVideoUrlOf(videoUrl: string | null): string | null {
     }
   }
   return null;
+}
+
+/**
+ * IA-11: the full stored video history (level + url), so the Library can offer the
+ * same "Video-Archiv" the due card does. Older-level recap videos were otherwise
+ * only reachable while an item happened to be due — the permanent home held less
+ * than the transient dashboard card.
+ */
+function videoHistoryOf(videoUrl: string | null): { level: number; url: string; date?: string }[] {
+  if (!videoUrl) return [];
+  if (videoUrl.startsWith("http")) return [{ level: 0, url: videoUrl }];
+  if (videoUrl.startsWith("[")) {
+    try {
+      const arr = JSON.parse(videoUrl) as { level?: number; url?: string; date?: string }[];
+      return arr
+        .filter((v): v is { level?: number; url: string; date?: string } => typeof v?.url === "string" && v.url.startsWith("http"))
+        .map((v) => ({ level: v.level ?? 0, url: v.url, date: v.date }));
+    } catch {
+      return [];
+    }
+  }
+  return [];
 }
 
 /**
@@ -663,6 +696,9 @@ export default function DashboardClient({
   const activeTabRef = useRef(activeTab);
   useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
   const [isGenerating, setIsGenerating] = useState(false);
+  /** IA-8 — generation finished: hold on the success screen (checklist + explicit
+   *  next-step fork) instead of auto-yanking to the dashboard on a 3s timer. */
+  const [generationDone, setGenerationDone] = useState(false);
   const [generationModel, setGenerationModel] = useState("gemini-3.5-flash");
   const [gradingModel, setGradingModel] = useState("gemini-3.5-flash");
   const [progressStep, setProgressStep] = useState(0);
@@ -705,6 +741,9 @@ export default function DashboardClient({
   const [wrapperMode, setWrapperMode] = useState<string>(initialWrapperMode);
   const [fileTransport, setFileTransport] = useState<string>(initialFileTransport);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  /** IA-13/LIVE-9 — the "Erweitert / Advanced" disclosure (dictation, AI connection,
+   *  PDF delivery). Default closed; reset to closed each time Settings closes. */
+  const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [newPresetInput, setNewPresetInput] = useState("");
 
@@ -808,21 +847,47 @@ export default function DashboardClient({
   // File transport ("inline" base64 vs "file_api" upload) — persisted in
   // AppConfig; the grading/generation pipelines read it per run.
   const updateFileTransport = useCallback((mode: "inline" | "file_api") => {
+    // IS-7 — flip the segment immediately, revert if the round-trip fails.
+    const prev = fileTransport;
+    setFileTransport(mode);
     fetch('/api/settings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'update_file_transport', fileTransport: mode })
     }).then(res => res.json()).then(data => {
       if (data.error) {
+        setFileTransport(prev);
         addToast("error", `${language === "german" ? "Fehler" : "Error"}: ${data.error}`);
         return;
       }
       if (data.fileTransport) setFileTransport(data.fileTransport);
     }).catch(err => {
       console.error(err);
+      setFileTransport(prev);
       addToast("error", language === "german" ? "Einstellung konnte nicht gespeichert werden." : "Failed to save setting.");
     });
-  }, [addToast, language]);
+  }, [addToast, language, fileTransport]);
+  // IS-7 — AI-connection segment: flip immediately, revert if the POST fails.
+  const updateWrapperMode = useCallback((mode: "all" | "generation_only" | "none") => {
+    const prev = wrapperMode;
+    setWrapperMode(mode);
+    fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'update_wrapper_toggle', wrapperMode: mode })
+    }).then(res => res.json()).then(data => {
+      if (data.error) {
+        setWrapperMode(prev);
+        addToast("error", `${language === "german" ? "Fehler" : "Error"}: ${data.error}`);
+        return;
+      }
+      if (data.wrapperMode) setWrapperMode(data.wrapperMode);
+    }).catch(err => {
+      console.error(err);
+      setWrapperMode(prev);
+      addToast("error", language === "german" ? "Einstellung konnte nicht gespeichert werden." : "Failed to save setting.");
+    });
+  }, [addToast, language, wrapperMode]);
   const handleInteractiveAnswer = useCallback((taskId: string, text: string) => {
     setIndividualAnswers(prev => ({ ...prev, [taskId]: text }));
   }, []);
@@ -878,6 +943,7 @@ export default function DashboardClient({
     setShowSettingsModal(false);
     setConfirmingNewSemester(false);
     setConfirmingResetSemester(false);
+    setShowAdvancedSettings(false); // IA-13/LIVE-9 — reopen with Advanced collapsed
   }, []);
   const [isSemesterActionBusy, setIsSemesterActionBusy] = useState(false);
 
@@ -928,6 +994,10 @@ export default function DashboardClient({
   // Push notification state
   const [pushPermission, setPushPermission] = useState<string>("default");
   const [pushSubscribed, setPushSubscribed] = useState(false);
+  // IS-12 — in-flight guard: the subscribe/unsubscribe flow awaits a permission
+  // prompt + serviceWorker.ready + a network round-trip, so the toggle needs a
+  // busy state (disables re-entrant taps, shows the knob mid-travel).
+  const [pushBusy, setPushBusy] = useState(false);
 
   // Check notification permission on mount. Must run in an effect (not a
   // lazy initializer) so SSR markup and the first client render agree.
@@ -1009,30 +1079,37 @@ export default function DashboardClient({
   }, [addToast, language, vapidPublicKey]);
 
   const togglePush = useCallback(async () => {
-    if (pushSubscribed) {
-      try {
-        const reg = await navigator.serviceWorker.ready;
-        const sub = await reg.pushManager.getSubscription();
-        if (sub) {
-          const endpoint = sub.endpoint;
-          await sub.unsubscribe();
-          const res = await fetch("/api/push/subscribe", {
-            method: "DELETE",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ endpoint }),
-          });
-          if (!res.ok) throw new Error(`unsubscribe failed: HTTP ${res.status}`);
+    // IS-12 — ignore re-entrant taps while a subscribe/unsubscribe is in flight.
+    if (pushBusy) return;
+    setPushBusy(true);
+    try {
+      if (pushSubscribed) {
+        try {
+          const reg = await navigator.serviceWorker.ready;
+          const sub = await reg.pushManager.getSubscription();
+          if (sub) {
+            const endpoint = sub.endpoint;
+            await sub.unsubscribe();
+            const res = await fetch("/api/push/subscribe", {
+              method: "DELETE",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ endpoint }),
+            });
+            if (!res.ok) throw new Error(`unsubscribe failed: HTTP ${res.status}`);
+          }
+          setPushSubscribed(false);
+          addToast("success", language === "german" ? "Mitteilungen deaktiviert." : "Notifications disabled.");
+        } catch (err) {
+          console.error("Push unsubscribe error:", err);
+          addToast("error", language === "german" ? "Mitteilungen konnten nicht deaktiviert werden." : "Couldn't disable notifications.");
         }
-        setPushSubscribed(false);
-        addToast("success", language === "german" ? "Mitteilungen deaktiviert." : "Notifications disabled.");
-      } catch (err) {
-        console.error("Push unsubscribe error:", err);
-        addToast("error", language === "german" ? "Mitteilungen konnten nicht deaktiviert werden." : "Couldn't disable notifications.");
+      } else {
+        await subscribeToPush();
       }
-    } else {
-      subscribeToPush();
+    } finally {
+      setPushBusy(false);
     }
-  }, [pushSubscribed, subscribeToPush, addToast, language]);
+  }, [pushBusy, pushSubscribed, subscribeToPush, addToast, language]);
 
   // Guards against overlapping refetches (mount + focus + interval can race).
   const fetchInFlightRef = useRef(false);
@@ -1050,6 +1127,15 @@ export default function DashboardClient({
 
   // Library search field — focused by the global ⌘K shortcut (CRAFT.md §3).
   const librarySearchRef = useRef<HTMLInputElement | null>(null);
+
+  // AX-13 — a stable ref callback that moves focus INTO a two-step confirm
+  // control the instant it mounts (arming snooze/delete unmounts the focused
+  // trigger, which would otherwise drop focus to <body>). Stable identity means
+  // React only invokes it on mount (node) and unmount (null), so it fires once
+  // per arm rather than on every render.
+  const focusOnArm = useCallback((el: HTMLElement | null) => {
+    el?.focus({ preventScroll: true });
+  }, []);
 
   // LIVE-1/PP-2 — every tab change lands at the top. On md+ the scroller is
   // <main> (.app-shell-main), so window.scrollTo alone was a no-op there; on
@@ -1794,6 +1880,7 @@ export default function DashboardClient({
     if ((!textInput.trim() && uploadedFiles.length === 0) || !subjectInput.trim()) return;
     if (isGenerating) return; // double-submit guard
     setIsGenerating(true);
+    setGenerationDone(false); // IA-8 — leaving the success screen back into a run
     setUploadError(""); // a fresh run clears the previous failure record (EM-1)
     setProgressStep(0);
     setProgressMsg(language === "german" ? "Starte KI-Pipeline…" : "Starting AI pipeline…");
@@ -1834,17 +1921,14 @@ export default function DashboardClient({
           // `srsItem` here is the FULL created row — never append it to the
           // slim list state; refetch the slim list instead.
           fetchReviews();
-          setTimeout(() => {
-            setIsGenerating(false);
-            setTopicInput("");
-            setSubjectInput(modulePresets[0] ?? "");
-            setTextInput("");
-            setUploadedFiles([]);
-            // Only auto-navigate if the user is still on the upload flow — don't
-            // yank them back to the dashboard if they've moved on (e.g. ⌘K into
-            // the library) during the 3s success screen.
-            if (activeTabRef.current === "upload") setActiveTab("dashboard");
-          }, 3000);
+          // IA-8 — the upload flow exists for batch uploads (a whole day of
+          // lectures). Instead of a 3s timer that resets the form and yanks the
+          // user to the dashboard mid-flow, keep the completed checklist on screen
+          // and offer the fork explicitly (upload another / go to dashboard).
+          // generationDone (not isGenerating) drives the success screen, so no
+          // stray "AI task running" lock lingers in Settings afterwards.
+          setIsGenerating(false);
+          setGenerationDone(true);
         } else if (evt.event === "error") {
           const msg = evt.data.message ?? fallbackErrorMsg(language);
           setProgressMsg(msg);
@@ -1877,8 +1961,9 @@ export default function DashboardClient({
       fetchReviews();
     } finally {
       window.clearTimeout(timeoutId);
-      // Always clear the busy state. After `done`, the success screen stays
-      // visible for 3s and its own timer above clears it.
+      // Always clear the busy state — EXCEPT after `done`, where the success
+      // screen stays mounted (isGenerating kept true, generationDone flips the
+      // screen to its completed state) until the user picks a next step (IA-8).
       if (!sawDone) setIsGenerating(false);
     }
   };
@@ -2254,9 +2339,11 @@ export default function DashboardClient({
           </button>
         </div>
 
-        {/* Spacer for fixed Mobile Top Bar */}
-        <div className="md:hidden px-5 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] opacity-0 pointer-events-none">
-          <div className="h-7"></div>
+        {/* Spacer for fixed Mobile Top Bar — LS-4: mirrors the bar's real box
+            exactly (same paddings + border, inner h-10 = the 40px menu-button
+            row) so in-flow content clears the bar instead of tucking 13px under it. */}
+        <div className="md:hidden px-5 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] border-b border-transparent opacity-0 pointer-events-none">
+          <div className="h-10"></div>
         </div>
 
         {/* Sidebar (desktop) + mobile menu overlay (MO-2/MT-3/MT-15) — one body,
@@ -2267,6 +2354,14 @@ export default function DashboardClient({
             mirrors the top bar's real height formula instead of the old
             hardcoded 61px. */}
         {(() => {
+          // IA-7: the quiz view renders as a tab with no nav entry of its own, so
+          // during a quiz every nav item sat idle — the shell couldn't answer
+          // "where am I?". Keep the origin lit: Library for comprehension checks
+          // (started from the library), Dashboard for graded reviews (started from
+          // a due card / "review ahead").
+          const quizOrigin = comprehensionMode ? "library" : "dashboard";
+          const dashActive = activeTab === "dashboard" || (activeTab === "quiz" && quizOrigin === "dashboard");
+          const libActive = activeTab === "library" || (activeTab === "quiz" && quizOrigin === "library");
           const sidebarBody = (
             <>
           <button onClick={() => { setActiveTab("dashboard"); setShowMobileMenu(false); }} className="hidden md:flex items-center gap-[11px] px-2 cursor-pointer text-left transition-opacity hover:opacity-80">
@@ -2282,19 +2377,19 @@ export default function DashboardClient({
           </button>
 
           <nav className="flex flex-col gap-0.5 md:mt-[30px]">
-            <button onClick={() => { setActiveTab("dashboard"); setShowMobileMenu(false); }} className={`flex items-center gap-3 h-[38px] px-3 cursor-pointer press-row ${activeTab === 'dashboard' ? 'nav-item-active' : 'nav-item-idle'}`}>
-              <CalendarDaysIcon className={`w-[18px] h-[18px] shrink-0 ${activeTab === 'dashboard' ? 'text-ink-900' : 'text-ink-400'}`} strokeWidth={1.6} />
-              <span className={`text-sm whitespace-nowrap ${activeTab === 'dashboard' ? 'font-semibold' : 'font-medium'}`}>Dashboard</span>
+            <button onClick={() => { setActiveTab("dashboard"); setShowMobileMenu(false); }} aria-current={dashActive ? "page" : undefined} className={`flex items-center gap-3 h-[38px] px-3 cursor-pointer press-row ${dashActive ? 'nav-item-active' : 'nav-item-idle'}`}>
+              <CalendarDaysIcon className={`w-[18px] h-[18px] shrink-0 ${dashActive ? 'text-ink-900' : 'text-ink-400'}`} strokeWidth={1.6} />
+              <span className={`text-sm whitespace-nowrap ${dashActive ? 'font-semibold' : 'font-medium'}`}>Dashboard</span>
             </button>
-            <button onClick={() => { setActiveTab("upload"); setShowMobileMenu(false); }} className={`flex items-center gap-3 h-[38px] px-3 cursor-pointer press-row ${activeTab === 'upload' ? 'nav-item-active' : 'nav-item-idle'}`}>
+            <button onClick={() => { setActiveTab("upload"); setShowMobileMenu(false); }} aria-current={activeTab === 'upload' ? "page" : undefined} className={`flex items-center gap-3 h-[38px] px-3 cursor-pointer press-row ${activeTab === 'upload' ? 'nav-item-active' : 'nav-item-idle'}`}>
               <CloudArrowUpIcon className={`w-[18px] h-[18px] shrink-0 ${activeTab === 'upload' ? 'text-ink-900' : 'text-ink-400'}`} strokeWidth={1.6} />
               <span className={`text-sm whitespace-nowrap ${activeTab === 'upload' ? 'font-semibold' : 'font-medium'}`}>{language === 'german' ? 'Material hochladen' : 'Upload material'}</span>
             </button>
-            <button onClick={() => { setActiveTab("library"); setShowMobileMenu(false); }} className={`flex items-center gap-3 h-[38px] px-3 cursor-pointer press-row ${activeTab === 'library' ? 'nav-item-active' : 'nav-item-idle'}`}>
-              <BookOpenIcon className={`w-[18px] h-[18px] shrink-0 ${activeTab === 'library' ? 'text-ink-900' : 'text-ink-400'}`} strokeWidth={1.6} />
-              <span className={`text-sm whitespace-nowrap ${activeTab === 'library' ? 'font-semibold' : 'font-medium'}`}>{language === 'german' ? 'Bibliothek' : 'Library'}</span>
+            <button onClick={() => { setActiveTab("library"); setShowMobileMenu(false); }} aria-current={libActive ? "page" : undefined} className={`flex items-center gap-3 h-[38px] px-3 cursor-pointer press-row ${libActive ? 'nav-item-active' : 'nav-item-idle'}`}>
+              <BookOpenIcon className={`w-[18px] h-[18px] shrink-0 ${libActive ? 'text-ink-900' : 'text-ink-400'}`} strokeWidth={1.6} />
+              <span className={`text-sm whitespace-nowrap ${libActive ? 'font-semibold' : 'font-medium'}`}>{language === 'german' ? 'Bibliothek' : 'Library'}</span>
             </button>
-            <button onClick={() => { setActiveTab("stats"); setShowMobileMenu(false); }} className={`flex items-center gap-3 h-[38px] px-3 cursor-pointer press-row ${activeTab === 'stats' ? 'nav-item-active' : 'nav-item-idle'}`}>
+            <button onClick={() => { setActiveTab("stats"); setShowMobileMenu(false); }} aria-current={activeTab === 'stats' ? "page" : undefined} className={`flex items-center gap-3 h-[38px] px-3 cursor-pointer press-row ${activeTab === 'stats' ? 'nav-item-active' : 'nav-item-idle'}`}>
               <ChartBarIcon className={`w-[18px] h-[18px] shrink-0 ${activeTab === 'stats' ? 'text-ink-900' : 'text-ink-400'}`} strokeWidth={1.6} />
               <span className={`text-sm whitespace-nowrap ${activeTab === 'stats' ? 'font-semibold' : 'font-medium'}`}>{language === 'german' ? 'Statistik' : 'Statistics'}</span>
             </button>
@@ -2305,28 +2400,9 @@ export default function DashboardClient({
           </nav>
 
           <div className="mt-auto flex flex-col pt-8">
-            {/* Push Notification Toggle */}
-            <button
-              onClick={togglePush}
-              className="flex items-center gap-3 h-[38px] px-3 cursor-pointer nav-item-idle"
-            >
-              {pushPermission === "granted" && pushSubscribed ? (
-                <BellIcon className="w-[18px] h-[18px] shrink-0 text-ink-400" strokeWidth={1.6} />
-              ) : (
-                <BellSlashIcon className="w-[18px] h-[18px] shrink-0 text-ink-400" strokeWidth={1.6} />
-              )}
-              <span className="font-medium text-[13px] whitespace-nowrap flex-1 text-left">
-                {pushPermission === "granted" && pushSubscribed
-                  ? language === "german" ? "Mitteilungen an" : "Notifications on"
-                  : pushPermission === "denied"
-                  ? language === "german" ? "Mitteilungen blockiert" : "Notifications blocked"
-                  : language === "german" ? "Mitteilungen aus" : "Notifications off"}
-              </span>
-              <span className={`w-7 h-[17px] rounded-full relative inline-block transition-colors ${pushPermission === "granted" && pushSubscribed ? "bg-ink-900" : "bg-[color-mix(in_srgb,var(--foreground)_18%,transparent)]"}`}>
-                <span className={`absolute top-0.5 w-[13px] h-[13px] rounded-full bg-paper-1 transition-transform ${pushPermission === "granted" && pushSubscribed ? "right-0.5" : "left-0.5"}`}></span>
-              </span>
-            </button>
-
+            {/* IA-12 — the notifications control moved out of the nav list (it was the
+                only "nav item" that didn't navigate) and into Settings, where its scope
+                line already promises to cover the app's preferences. */}
             {/* IA-3 — the Live Tutor is SHIPPED (Tutor toggle in every quiz), so the
                 card points at it instead of advertising it as locked/coming soon. */}
             <div className="mt-3 card-surface p-4">
@@ -2365,7 +2441,7 @@ export default function DashboardClient({
               <Tip label={language === "german" ? "Abmelden" : "Sign out"}>
                 <button
                   onClick={() => signOut({ callbackUrl: "/login" })}
-                  className="w-9 h-9 -m-1 flex items-center justify-center rounded-[9px] text-ink-400 hover:text-(--grade-fail-accent) hover:bg-(--grade-fail-wash) transition-all cursor-pointer shrink-0"
+                  className="w-9 h-9 -m-1 flex items-center justify-center rounded-[10px] text-ink-400 hover:text-(--grade-fail-accent) hover:bg-(--grade-fail-wash) transition-all cursor-pointer shrink-0"
                 >
                   <ArrowRightOnRectangleIcon className="w-[15px] h-[15px]" strokeWidth={1.6} />
                 </button>
@@ -2396,7 +2472,7 @@ export default function DashboardClient({
                     initial={{ y: -8, opacity: 0 }}
                     animate={{ y: 0, opacity: 1, transition: { duration: 0.24, ease: EASE_OUT } }}
                     exit={{ y: -8, opacity: 0, transition: { duration: 0.2, ease: EASE_IN_OUT } }}
-                    className="md:hidden fixed inset-x-0 bottom-0 top-[calc(max(0.75rem,env(safe-area-inset-top))_+_2.5rem)] z-40 flex flex-col sidebar-gradient px-[18px] pt-[26px] pb-[calc(4.5rem_+_env(safe-area-inset-bottom))] overflow-y-auto overscroll-contain custom-scrollbar"
+                    className="md:hidden fixed inset-x-0 bottom-0 top-[calc(max(0.75rem,env(safe-area-inset-top))_+_3.25rem_+_1px)] z-40 flex flex-col sidebar-gradient px-[18px] pt-[26px] pb-[calc(4.5rem_+_env(safe-area-inset-bottom))] overflow-y-auto overscroll-contain custom-scrollbar"
                   >
                     {sidebarBody}
                   </motion.aside>
@@ -2442,7 +2518,7 @@ export default function DashboardClient({
                 initial="initial"
                 animate="animate"
                 exit="exit"
-                className="max-w-[980px] mx-auto"
+                className="max-w-5xl mx-auto"
               >
                 {(() => {
                   const de = language === "german";
@@ -2531,7 +2607,7 @@ export default function DashboardClient({
                           ) : upcomingReviews.length === 0 ? (
                             /* Empty state */
                             <div className="card-surface-elevated p-9 flex flex-col items-start">
-                              <div className="w-[52px] h-[52px] rounded-2xl bg-paper-2 flex items-center justify-center">
+                              <div className="w-[52px] h-[52px] rounded-[14px] bg-paper-2 flex items-center justify-center">
                                 <BookOpenIcon className="w-6 h-6 text-ink-400" strokeWidth={1.6} />
                               </div>
                               <h3 className="font-display text-[22px] text-ink-900 mt-4" style={{ fontWeight: 470 }}>
@@ -2647,10 +2723,16 @@ export default function DashboardClient({
                                             Level&nbsp;{review.level + 1}&nbsp;{de ? "von" : "of"}&nbsp;7
                                           </span>
                                         )}
+                                        {/* MO-9/AX-13 — the armed pills now exit on EASE_IN (no raw pop) and
+                                            focus jumps into the first pill on arm so keyboard users don't lose
+                                            their place. mode="wait" keeps the 32px slot from widening mid-swap. */}
+                                        <AnimatePresence mode="wait" initial={false}>
                                         {snoozeArmedId === review.id && !snoozingIds[review.id] ? (
                                           <motion.div
+                                            key="snooze-armed"
                                             initial={{ opacity: 0, scale: 0.9, y: -4 }}
                                             animate={{ opacity: 1, scale: 1, y: 0 }}
+                                            exit={{ opacity: 0, scale: 0.92, transition: { duration: 0.12, ease: EASE_IN } }}
                                             transition={springTactile}
                                             className="flex items-center gap-1"
                                             onClick={(e) => e.stopPropagation()}
@@ -2658,7 +2740,7 @@ export default function DashboardClient({
                                             {[1, 3, 7].map(days => (
                                               <Tip key={days} label={de ? `Um ${days} Tag${days > 1 ? "e" : ""} verschieben` : `Snooze by ${days} day${days > 1 ? "s" : ""}`}>
                                               <button
-                                                 
+                                                ref={days === 1 ? focusOnArm : undefined}
                                                 onClick={(e) => handleSnooze(e, review.id, days)}
                                                 className="h-7 px-2.5 rounded-full border border-(--line) bg-paper-1 hover:bg-paper-2 text-[11px] font-semibold text-ink-600 whitespace-nowrap cursor-pointer transition-colors"
                                               >
@@ -2668,7 +2750,7 @@ export default function DashboardClient({
                                             ))}
                                           </motion.div>
                                         ) : (
-                                          <Tip label={de ? "Wiederholung verschieben" : "Snooze review"}>
+                                          <Tip key="snooze-idle" label={de ? "Wiederholung verschieben" : "Snooze review"}>
                                           <button
                                             onClick={(e) => { e.stopPropagation(); if (!snoozingIds[review.id]) setSnoozeArmedId(review.id); }}
                                             disabled={!!snoozingIds[review.id]}
@@ -2682,6 +2764,7 @@ export default function DashboardClient({
                                           </button>
                                           </Tip>
                                         )}
+                                        </AnimatePresence>
                                         <ChevronRightIcon className="w-4 h-4 text-ink-300 shrink-0" strokeWidth={1.8} />
                                       </div>
 
@@ -2725,10 +2808,15 @@ export default function DashboardClient({
                                             </button>
                                           )}
                                           <span className="flex-1" />
+                                          {/* MO-9/AX-13 — confirm chip exits on EASE_IN and takes focus on arm. */}
+                                          <AnimatePresence mode="wait" initial={false}>
                                           {confirmingDeleteId === review.id && !deletingIds[review.id] ? (
                                             <motion.button
+                                              key="delete-armed"
+                                              ref={focusOnArm}
                                               initial={{ opacity: 0, scale: 0.92 }}
                                               animate={{ opacity: 1, scale: 1 }}
+                                              exit={{ opacity: 0, scale: 0.92, transition: { duration: 0.12, ease: EASE_IN } }}
                                               transition={springTactile}
                                               onClick={(e) => handleDeleteModule(e, review.id)}
                                               className="inline-flex items-center gap-1.5 h-[30px] px-3 rounded-[10px] bg-(--grade-fail-wash) text-(--grade-fail-text) text-xs font-semibold cursor-pointer"
@@ -2737,7 +2825,7 @@ export default function DashboardClient({
                                               {de ? "Wirklich löschen?" : "Really delete?"}
                                             </motion.button>
                                           ) : (
-                                            <Tip label={de ? "Vorlesung löschen" : "Delete lecture"}>
+                                            <Tip key="delete-idle" label={de ? "Vorlesung löschen" : "Delete lecture"}>
                                             <button
                                               onClick={(e) => handleDeleteModule(e, review.id)}
                                               disabled={!!deletingIds[review.id]}
@@ -2751,6 +2839,7 @@ export default function DashboardClient({
                                             </button>
                                             </Tip>
                                           )}
+                                          </AnimatePresence>
                                         </div>
 
                                         <AnimatePresence initial={false}>
@@ -2955,12 +3044,14 @@ export default function DashboardClient({
                   <p className="text-ink-600 text-sm sm:text-[15px] leading-relaxed">{language === 'german' ? 'Lade dein Material hoch — Blueprint, Quiz und Tutor entstehen automatisch. Die erste Wiederholung kommt morgen.' : 'Upload your material — the blueprint, quiz and tutor draft themselves. The first review lands tomorrow.'}</p>
                 </header>
 
-                {isGenerating ? (
+                {isGenerating || generationDone ? (
                   <div className="card-surface-elevated px-8 py-12 md:py-14 flex flex-col items-center justify-center text-center">
                     <div className="w-16 h-16 rounded-[18px] bg-(--accent-wash-soft) border border-(--accent-border-soft) flex items-center justify-center mb-6">
-                      <ArrowPathIcon className="w-7 h-7 text-(--accent-text-strong) animate-spin" strokeWidth={1.6} />
+                      {generationDone
+                        ? <CheckIcon className="w-7 h-7 text-(--accent-text-strong)" strokeWidth={2} />
+                        : <ArrowPathIcon className="w-7 h-7 text-(--accent-text-strong) animate-spin" strokeWidth={1.6} />}
                     </div>
-                    <h3 className="font-display text-[26px] text-ink-900 mb-2" style={{ fontWeight: 470 }}>{language === 'german' ? 'Deine Vorlesung entsteht' : 'Building your lecture'}</h3>
+                    <h3 className="font-display text-[26px] text-ink-900 mb-2" style={{ fontWeight: 470 }}>{generationDone ? (language === 'german' ? 'Deine Vorlesung ist fertig' : 'Your lecture is ready') : (language === 'german' ? 'Deine Vorlesung entsteht' : 'Building your lecture')}</h3>
                     <p className="text-ink-600 mb-9 text-sm">{progressMsg}</p>
 
                     <div className="progress-track w-full max-w-[460px] h-1 overflow-hidden">
@@ -3007,6 +3098,45 @@ export default function DashboardClient({
                         </motion.div>
                       ))}
                     </div>
+                    {/* IA-8 — explicit next-step fork replaces the 3s auto-navigate. "Next
+                        lecture" keeps the module preselected (only topic/text/files clear) so
+                        batch-uploading a day of lectures into one module is friction-free. */}
+                    {generationDone && (
+                      <div className="w-full max-w-[460px] mt-9 flex flex-col sm:flex-row gap-3">
+                        <button
+                          onClick={() => {
+                            setGenerationDone(false);
+                            setIsGenerating(false);
+                            setProgressStep(0);
+                            setProgressMsg("");
+                            setTopicInput("");
+                            setTextInput("");
+                            setUploadedFiles([]);
+                            // keep subjectInput (the module) for the next lecture
+                          }}
+                          className="btn-primary flex-1 h-12 text-sm flex items-center justify-center gap-2.5 cursor-pointer"
+                        >
+                          <CloudArrowUpIcon className="w-[18px] h-[18px]" strokeWidth={1.6} />
+                          {language === "german" ? "Nächste Vorlesung hochladen" : "Upload next lecture"}
+                        </button>
+                        <button
+                          onClick={() => {
+                            setGenerationDone(false);
+                            setIsGenerating(false);
+                            setProgressStep(0);
+                            setProgressMsg("");
+                            setTopicInput("");
+                            setSubjectInput(modulePresets[0] ?? "");
+                            setTextInput("");
+                            setUploadedFiles([]);
+                            setActiveTab("dashboard");
+                          }}
+                          className="btn-secondary flex-1 h-12 text-sm flex items-center justify-center gap-2 cursor-pointer"
+                        >
+                          {language === "german" ? "Zum Dashboard" : "Go to dashboard"}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <>
@@ -3032,14 +3162,15 @@ export default function DashboardClient({
                     <div className="flex flex-col sm:flex-row gap-5">
                       <div className="flex-1 flex flex-col justify-end">
                         <div className="flex items-start justify-between mb-2 gap-2">
-                          <label className="caps-label leading-tight">{language === "german" ? `Modul (Semester ${currentSemester})` : `Module (Semester ${currentSemester})`}</label>
+                          <label htmlFor="upload-module" className="caps-label leading-tight">{language === "german" ? `Modul (Semester ${currentSemester})` : `Module (Semester ${currentSemester})`}</label>
                           <button onClick={() => { setShowSettingsModal(true); }} className="text-xs text-(--accent-text) hover:text-(--accent-text-strong) transition-colors shrink-0 cursor-pointer" style={{ fontWeight: 550 }}>{language === "german" ? "Verwalten" : "Manage"}</button>
                         </div>
                         {modulePresets.length > 0 ? (
                           <select
+                            id="upload-module"
                             value={subjectInput}
                             onChange={e => setSubjectInput(e.target.value)}
-                            className="input-dark w-full h-12 px-4 appearance-none cursor-pointer"
+                            className="input-dark w-full h-12 pl-4 pr-10 appearance-none cursor-pointer bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M5%208l5%205%205-5%22%20stroke%3D%22%23A89D8B%22%20stroke-width%3D%222%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-no-repeat bg-[position:right_1rem_center]"
                           >
                             {modulePresets.map(preset => (
                               <option key={preset} value={preset}>{preset}</option>
@@ -3053,8 +3184,9 @@ export default function DashboardClient({
                         )}
                       </div>
                       <div className="flex-1 flex flex-col justify-end">
-                        <label className="caps-label block mb-2">{language === "german" ? "Thema" : "Topic"}</label>
+                        <label htmlFor="upload-topic" className="caps-label block mb-2">{language === "german" ? "Thema" : "Topic"}</label>
                         <input
+                          id="upload-topic"
                           type="text"
                           value={topicInput}
                           onChange={e => setTopicInput(e.target.value)}
@@ -3064,7 +3196,7 @@ export default function DashboardClient({
                       </div>
                     </div>
                     <div>
-                      <label className="caps-label block mb-2.5">{language === "german" ? "Vorlesungsmaterial (Dateien oder Text)" : "Lecture material (files or text)"}</label>
+                      <label htmlFor="upload-material" className="caps-label block mb-2.5">{language === "german" ? "Vorlesungsmaterial (Dateien oder Text)" : "Lecture material (files or text)"}</label>
                       <div
                         className={`w-full border-[1.5px] border-dashed rounded-[18px] p-6 md:p-10 mb-4 flex flex-col items-center justify-center transition-colors ${isDragging ? 'border-(--accent-border-strong) bg-(--accent-wash-softer)' : 'border-[color-mix(in_srgb,var(--foreground)_16%,transparent)] bg-(--paper-hover)'}`}
                         onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
@@ -3090,11 +3222,13 @@ export default function DashboardClient({
                         <p className="text-ink-400 text-[13px] text-center mt-1.5 mb-4">
                           {language === "german" ? "PDF, DOCX, XLSX, CSV oder TXT · oder füge unten Text ein" : "PDF, DOCX, XLSX, CSV or TXT · or paste text below"}
                         </p>
+                        {/* IS-6 — sr-only (not display:none) keeps the file input in the tab
+                            order; the peer class drives the Browse label's focus ring. */}
                         <input
                           type="file"
                           multiple
                           accept=".pdf,.xlsx,.csv,.docx,.txt"
-                          className="hidden"
+                          className="sr-only peer"
                           id="file-upload"
                           onChange={(e) => {
                             // Snapshot the files BEFORE resetting value: React's state updater
@@ -3107,7 +3241,7 @@ export default function DashboardClient({
                             }
                           }}
                         />
-                        <label htmlFor="file-upload" className="btn-secondary px-4 py-2 text-sm cursor-pointer">
+                        <label htmlFor="file-upload" className="btn-secondary px-4 py-2 text-sm cursor-pointer peer-focus-visible:border-(--accent-border-strong) peer-focus-visible:shadow-[0_0_0_3px_var(--accent-ring)]">
                           {language === "german" ? "Dateien durchsuchen" : "Browse Files"}
                         </label>
                       </div>
@@ -3134,6 +3268,7 @@ export default function DashboardClient({
                       )}
 
                       <textarea
+                        id="upload-material"
                         value={textInput}
                         onChange={e => setTextInput(e.target.value)}
                         placeholder={language === "german" ? "...oder füge deine Vorlesungsskripte, Transkripte oder rohen Text hier ein..." : "...or paste your lecture notes, transcript, or raw text here..."}
@@ -3141,25 +3276,28 @@ export default function DashboardClient({
                       />
                     </div>
                     <div>
-                      <div className="flex flex-col sm:flex-row gap-3">
+                      {/* IA-5 — the model choice is a quiet control above; the action row is one full-width primary button */}
+                      <div className="flex items-center justify-end gap-2 mb-3">
+                        <label htmlFor="generation-model" className="caps-label">{language === "german" ? "Modell" : "Model"}</label>
                         <select
+                          id="generation-model"
                           value={generationModel}
                           onChange={e => setGenerationModel(e.target.value)}
-                          className="input-dark sm:w-[200px] h-[52px] px-4 text-base sm:text-sm cursor-pointer appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M5%208l5%205%205-5%22%20stroke%3D%22%23A89D8B%22%20stroke-width%3D%222%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-no-repeat bg-[position:right_1rem_center]"
+                          className={MODEL_PICKER_CLASS}
                         >
                           <option value="gemini-3.5-flash">3.5 Flash (Standard)</option>
                           <option value="gemini-3.1-pro-preview">3.1 Pro (Preview)</option>
                           <option value="gemini-3.1-flash-lite">3.1 Flash-Lite</option>
                         </select>
-                        <button
-                          onClick={handleGenerate}
-                          disabled={isGenerating || (!textInput.trim() && uploadedFiles.length === 0) || !subjectInput.trim()}
-                          className="btn-primary flex-none sm:flex-1 h-14 sm:h-[52px] text-[15px] sm:text-sm flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-40"
-                        >
-                          <SparklesIcon className="w-[18px] h-[18px]" strokeWidth={1.6} />
-                          {language === "german" ? "Erstelle mein Quiz-Set" : "Generate my quiz set"}
-                        </button>
                       </div>
+                      <button
+                        onClick={handleGenerate}
+                        disabled={isGenerating || (!textInput.trim() && uploadedFiles.length === 0) || !subjectInput.trim()}
+                        className="btn-primary w-full h-14 sm:h-[52px] text-[15px] sm:text-sm flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-40"
+                      >
+                        <SparklesIcon className="w-[18px] h-[18px]" strokeWidth={1.6} />
+                        {language === "german" ? "Erstelle mein Quiz-Set" : "Generate my quiz set"}
+                      </button>
                       <p className="text-[13px] text-ink-400 text-center mt-4">
                         {language === "german"
                           ? "Sechs Schritte laufen automatisch — Blueprint, erstes Quiz, Tutor-Brief, Audio und Terminierung. Dauert etwa eine Minute."
@@ -3208,6 +3346,7 @@ export default function DashboardClient({
                         if (e.target.value.trim()) { setLibraryEditing(false); setConfirmingDeleteModuleKey(null); }
                       }}
                       placeholder={language === "german" ? "Modul oder Vorlesung suchen…" : "Search module or lecture…"}
+                      aria-label={language === "german" ? "Modul oder Vorlesung suchen" : "Search module or lecture"}
                       className="input-dark w-full h-12 pl-11 pr-10 text-base sm:text-sm"
                     />
                     {!librarySearching && (
@@ -3265,7 +3404,7 @@ export default function DashboardClient({
                 {/* ── Fetch-error state (distinct from empty) ─────────────── */}
                 {rawItems.length === 0 && !isLoadingReviews && reviewsError && (
                   <div className="card-surface p-12 md:p-16 flex flex-col items-center text-center">
-                    <div className="w-[52px] h-[52px] rounded-2xl bg-paper-2 flex items-center justify-center mb-6">
+                    <div className="w-[52px] h-[52px] rounded-[14px] bg-paper-2 flex items-center justify-center mb-6">
                       <BookOpenIcon className="w-6 h-6 text-ink-400" strokeWidth={1.6} />
                     </div>
                     <h3 className="font-display text-[22px] text-ink-900 mb-2.5" style={{ fontWeight: 480 }}>
@@ -3288,7 +3427,7 @@ export default function DashboardClient({
                 {/* ── Empty state ─────────────────────────────────────────── */}
                 {rawItems.length === 0 && !isLoadingReviews && !reviewsError && (
                   <div className="card-surface p-12 md:p-16 flex flex-col items-center text-center">
-                    <div className="w-[52px] h-[52px] rounded-2xl bg-paper-2 flex items-center justify-center mb-6">
+                    <div className="w-[52px] h-[52px] rounded-[14px] bg-paper-2 flex items-center justify-center mb-6">
                       <BookOpenIcon className="w-6 h-6 text-ink-400" strokeWidth={1.6} />
                     </div>
                     <h3 className="font-display text-[22px] text-ink-900 mb-2.5" style={{ fontWeight: 480 }}>
@@ -3336,12 +3475,12 @@ export default function DashboardClient({
                           {sem}
                         </span>
                         {isCurrentSemester && (
-                          <span className="text-[10px] uppercase tracking-[0.12em] px-2 py-0.5 rounded-full bg-(--accent-wash-soft) border border-(--accent-border-soft) text-(--accent-text-strong)" style={{ fontWeight: 700 }}>
+                          <span className="text-[9.5px] font-bold uppercase tracking-[0.12em] px-2 py-0.5 rounded-full bg-(--accent-wash-soft) border border-(--accent-border-soft) text-(--accent-text-strong)">
                             {language === "german" ? "Aktiv" : "Active"}
                           </span>
                         )}
                         <div className="flex-1 h-px bg-(--hairline) mx-1" />
-                        <span className="text-[11px] text-ink-400 font-medium whitespace-nowrap">
+                        <span className="text-[11px] text-ink-400 font-medium tnum whitespace-nowrap">
                           {modules.size} {language === "german" ? (modules.size === 1 ? "Modul" : "Module") : (modules.size === 1 ? "module" : "modules")} · {totalLectures} {language === "german" ? (totalLectures === 1 ? "Vorlesung" : "Vorlesungen") : (totalLectures === 1 ? "lecture" : "lectures")}
                         </span>
                       </button>
@@ -3393,7 +3532,7 @@ export default function DashboardClient({
                                           <span className="sm:hidden w-[7px] h-[7px] rounded-full bg-amber-500 shrink-0">
                                             <span className="sr-only">{dueCount} {language === "german" ? "fällig" : "due"}</span>
                                           </span>
-                                          <span className="hidden sm:inline-flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-[0.12em] px-2 py-0.5 rounded-full badge-due shrink-0">
+                                          <span className="hidden sm:inline-flex items-center gap-1.5 text-[9.5px] font-bold uppercase tracking-[0.12em] px-2 py-0.5 rounded-full badge-due shrink-0">
                                             <span className="w-[5px] h-[5px] rounded-full bg-amber-500" />
                                             {dueCount} {language === "german" ? "fällig" : "due"}
                                           </span>
@@ -3415,7 +3554,7 @@ export default function DashboardClient({
                                               </Tip>
                                             );
                                           })()}
-                                          <span className="text-[11px] text-ink-400 font-medium shrink-0">
+                                          <span className="text-[11px] text-ink-400 font-medium tnum shrink-0">
                                             {lectures.length} {language === "german" ? (lectures.length === 1 ? "Vorlesung" : "Vorlesungen") : (lectures.length === 1 ? "lecture" : "lectures")}
                                           </span>
                                         </>
@@ -3505,28 +3644,16 @@ export default function DashboardClient({
                                                         <span className="sm:hidden w-[7px] h-[7px] rounded-full bg-amber-500 shrink-0">
                                                           <span className="sr-only">{language === "german" ? "Fällig" : "Due"}</span>
                                                         </span>
-                                                        <span className="hidden sm:inline text-[9px] font-bold uppercase tracking-[0.12em] px-2 py-0.5 rounded-full badge-due shrink-0">
+                                                        <span className="hidden sm:inline text-[9.5px] font-bold uppercase tracking-[0.12em] px-2 py-0.5 rounded-full badge-due shrink-0">
                                                           {language === "german" ? "Fällig" : "Due"}
                                                         </span>
                                                       </>
                                                     )}
-                                                    {/* 7-dot level progress */}
-                                                    <div className="hidden sm:flex items-center gap-0.5 shrink-0">
-                                                      {item.generatedLevels.map((generated, l) => (
-                                                        <Tip key={l} label={`Level ${l+1} (${libLevelFull(l, language)}): ${l < item.currentLevel ? (language === "german" ? "Bestanden" : "Passed") : l === item.currentLevel ? (language === "german" ? "Aktuell" : "Current") : generated ? (language === "german" ? "Generiert" : "Generated") : (language === "german" ? "Ausstehend" : "Pending")}`}>
-                                                        <div
-                                                          className={`w-[7px] h-[7px] rounded-full transition-all ${
-                                                            l < item.currentLevel
-                                                              ? "bg-amber-500"
-                                                              : l === item.currentLevel
-                                                                ? "bg-(--accent-border) shadow-[0_0_0_1.5px_color-mix(in_srgb,var(--a-g2)_40%,transparent)]"
-                                                                : "bg-(--line-soft)"
-                                                          }`}
-                                                        />
-                                                        </Tip>
-                                                      ))}
-                                                    </div>
-                                                    <span className="text-xs text-ink-400 font-medium shrink-0 w-8 text-right">
+                                                    {/* IA-9: the collapsed row keeps ONE level encoding — the compact
+                                                        "L4" text. The 7-dot strip (a second encoding of the same value,
+                                                        and hardcoded amber that diluted the "amber = due" signal next to
+                                                        the Due badge) is reserved for the expanded interval stepper. */}
+                                                    <span className="text-xs text-ink-400 font-medium tnum shrink-0 w-8 text-right">
                                                       L{item.currentLevel + 1}
                                                     </span>
                                                     {/* Attempt marker: ×2 = second try at the current level (after 1 fail) */}
@@ -3650,10 +3777,13 @@ export default function DashboardClient({
                                                                 disabled={!!compGen}
                                                                 className="chip chip-amber !cursor-pointer disabled:!cursor-wait disabled:opacity-60"
                                                               >
+                                                                {/* IS-8 — the chip label stays fixed while loading (spinner swaps
+                                                                    in for the icon); the streaming progress shows on a quiet line
+                                                                    below so the button never resizes per NDJSON tick. */}
                                                                 {compGen?.itemId === item.id ? (
                                                                   <>
                                                                     <ArrowPathIcon className="w-3.5 h-3.5 animate-spin" strokeWidth={1.6} />
-                                                                    <span className="max-w-[260px] truncate">{compGen.message}</span>
+                                                                    {language === "german" ? "Startet…" : "Starting…"}
                                                                   </>
                                                                 ) : (
                                                                   <>
@@ -3669,19 +3799,22 @@ export default function DashboardClient({
                                                                   onClick={(e) => { e.stopPropagation(); setCompFeedback(item); }}
                                                                   className="flex items-center gap-2.5 bg-paper-0 hover:bg-(--paper-hover) rounded-xl border border-(--hairline-card) px-3 py-1.5 transition-colors cursor-pointer group/cf"
                                                                 >
-                                                                  <span className={`text-[9px] font-bold uppercase tracking-[0.12em] px-2 py-0.5 rounded-full border shrink-0 ${item.comprehensionPassed ? "bg-(--grade-pass-wash) text-(--grade-pass-text) border-(--grade-pass-border)" : "bg-(--grade-fail-wash) text-(--grade-fail-text) border-(--grade-fail-border)"}`}>
+                                                                  <span className={`text-[9.5px] font-bold uppercase tracking-[0.12em] px-2 py-0.5 rounded-full border shrink-0 ${item.comprehensionPassed ? "bg-(--grade-pass-wash) text-(--grade-pass-text) border-(--grade-pass-border)" : "bg-(--grade-fail-wash) text-(--grade-fail-text) border-(--grade-fail-border)"}`}>
                                                                     {item.comprehensionPassed ? (language === "german" ? "Bestanden" : "Passed") : (language === "german" ? "Wiederholen" : "Repeat")}
                                                                   </span>
                                                                   <span className={`text-xs font-semibold tnum shrink-0 ${item.comprehensionPassed ? "text-(--grade-pass-text)" : "text-(--grade-fail-text)"}`}>
                                                                     {fmtPercent(item.comprehensionScore, language)}
                                                                   </span>
                                                                   {item.comprehensionAt && (
-                                                                    <span className="text-[11px] text-ink-400 shrink-0">{new Date(item.comprehensionAt).toLocaleDateString(language === "german" ? "de-DE" : "en-GB")}</span>
+                                                                    <span className="text-[11px] text-ink-400 tnum shrink-0">{new Date(item.comprehensionAt).toLocaleDateString(language === "german" ? "de-DE" : "en-GB")}</span>
                                                                   )}
                                                                   <ChevronRightIcon className="w-3.5 h-3.5 text-ink-300 group-hover/cf:text-ink-600 transition-colors shrink-0" strokeWidth={2} />
                                                                 </button>
                                                               )}
                                                             </div>
+                                                            {compGen?.itemId === item.id && compGen.message && (
+                                                              <p className="text-[11px] text-ink-400 mt-2 leading-snug" aria-live="polite">{compGen.message}</p>
+                                                            )}
                                                             <p className="text-[10px] text-ink-400 mt-2">
                                                               {language === "german"
                                                                 ? "Misst dein tatsächliches Verständnis anhand deiner bisherigen Bewertungen — Zeitplan und Level bleiben unberührt. Jeder Lauf überschreibt das letzte Ergebnis."
@@ -3775,6 +3908,21 @@ export default function DashboardClient({
                                                                     </div>
                                                                   );
                                                                 })()}
+                                                                {/* IA-11: older-level videos are reachable here (the library is the
+                                                                    permanent home), not only from a due card's footer. Same modal. */}
+                                                                {(() => {
+                                                                  const archive = videoHistoryOf(item.videoUrl).slice(0, -1);
+                                                                  if (archive.length === 0) return null;
+                                                                  return (
+                                                                    <button
+                                                                      onClick={() => setArchiveModalData(archive)}
+                                                                      className="chip cursor-pointer"
+                                                                    >
+                                                                      <VideoCameraIcon className="w-3.5 h-3.5" strokeWidth={1.6} />
+                                                                      {language === "german" ? `Video-Archiv (${archive.length})` : `Video archive (${archive.length})`}
+                                                                    </button>
+                                                                  );
+                                                                })()}
                                                                 {(item.prePodcastPrompt || item.postPodcastPrompt || item.lastVideoPrompt1 || item.lastVideoPrompt2) && (
                                                                   <button
                                                                     onClick={() => setPromptsModal({
@@ -3809,7 +3957,7 @@ export default function DashboardClient({
                                                                   className="w-full flex items-center gap-2.5 text-left bg-paper-0 hover:bg-(--paper-hover) rounded-xl border border-(--hairline-card) px-4 py-3 transition-colors cursor-pointer group/fb"
                                                                 >
                                                                   {summary.decision && (
-                                                                    <span className={`text-[9px] font-bold uppercase tracking-[0.12em] px-2 py-0.5 rounded-full border shrink-0 ${summary.decision === "PASS" ? "bg-(--grade-pass-wash) text-(--grade-pass-text) border-(--grade-pass-border)" : "bg-(--grade-fail-wash) text-(--grade-fail-text) border-(--grade-fail-border)"}`}>
+                                                                    <span className={`text-[9.5px] font-bold uppercase tracking-[0.12em] px-2 py-0.5 rounded-full border shrink-0 ${summary.decision === "PASS" ? "bg-(--grade-pass-wash) text-(--grade-pass-text) border-(--grade-pass-border)" : "bg-(--grade-fail-wash) text-(--grade-fail-text) border-(--grade-fail-border)"}`}>
                                                                       {summary.decision === "PASS" ? (language === "german" ? "Bestanden" : "Passed") : (language === "german" ? "Wiederholen" : "Repeat")}
                                                                     </span>
                                                                   )}
@@ -3896,7 +4044,7 @@ export default function DashboardClient({
                 initial="initial"
                 animate="animate"
                 exit="exit"
-                className={`max-w-4xl mx-auto ${showTutorPanel ? "xl:pr-[392px]" : ""}`}
+                className={`max-w-3xl mx-auto ${showTutorPanel ? "xl:pr-[392px]" : ""}`}
               >
                 <button
                   onClick={() => {
@@ -3958,6 +4106,7 @@ export default function DashboardClient({
                       <motion.button
                         {...pressable}
                         onClick={() => setShowTutorPanel(prev => !prev)}
+                        aria-pressed={showTutorPanel}
                         className={`flex items-center gap-2 h-9 px-4 text-[13px] font-semibold cursor-pointer rounded-xl transition-colors ${showTutorPanel ? "bg-paper-2 text-ink-900 border border-(--line) shadow-(--shadow-e1)" : "btn-secondary"}`}
                       >
                         <AcademicCapIcon className="w-4 h-4" strokeWidth={1.6} />
@@ -4008,10 +4157,17 @@ export default function DashboardClient({
                 {/* Floating interactive control bar — portaled to <body> so `position:fixed`
                     escapes framer-motion's transformed ancestors and truly sticks to the
                     viewport (otherwise it anchors to the scrolling page and sits at the bottom). */}
-                {interactive.active && createPortal(
+                {/* MO-7 — the portal always mounts an AnimatePresence so the bar can
+                    play its exit (opacity + slide down on EASE_IN) instead of blinking
+                    out the frame interactive mode stops. */}
+                {createPortal(
+                  <AnimatePresence>
+                  {interactive.active && (
                   <motion.div
+                    key="interactive-bar"
                     initial={{ opacity: 0, y: 16 }}
                     animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 16, transition: { duration: 0.16, ease: EASE_IN } }}
                     transition={springSoft}
                     className="fixed bottom-[calc(4rem_+_env(safe-area-inset-bottom))] md:bottom-[max(1.25rem,env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 z-[60] flex items-center gap-1.5 px-3 py-2 rounded-[18px] bg-paper-1 border border-(--hairline-card)"
                     style={{ boxShadow: "var(--shadow-e3)" }}
@@ -4047,7 +4203,9 @@ export default function DashboardClient({
                         <StopIcon className="w-4 h-4" strokeWidth={1.6} />
                       </button>
                     </Tip>
-                  </motion.div>,
+                  </motion.div>
+                  )}
+                  </AnimatePresence>,
                   document.body
                 )}
 
@@ -4131,15 +4289,23 @@ export default function DashboardClient({
                     </p>
                   </div>
                 ) : gradingResult ? (
-                  <div className="space-y-5">
-                    <div className="card-surface-elevated p-6 md:p-8 relative">
+                  /* MO-5 — the earned verdict rises in on a stagger (pill → card →
+                     brief → buttons) instead of popping in raw; the pill also gets a
+                     spring scale. The 1s amber thread stays the finale (delay 0.2). */
+                  <motion.div variants={staggerContainer} initial="initial" animate="animate" className="space-y-5">
+                    <motion.div variants={riseChild} className="card-surface-elevated p-6 md:p-8 relative">
                       <div className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-6">
                         <div>
-                          <span className={`inline-flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-full ${gradingResult.isPass ? 'bg-(--grade-pass-wash) text-(--grade-pass-text)' : 'bg-(--grade-fail-wash) text-(--grade-fail-text)'}`}>
+                          <motion.span
+                            initial={{ opacity: 0, scale: 0.85 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            transition={{ ...springTactile, delay: 0.12 }}
+                            className={`inline-flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-full ${gradingResult.isPass ? 'bg-(--grade-pass-wash) text-(--grade-pass-text)' : 'bg-(--grade-fail-wash) text-(--grade-fail-text)'}`}
+                          >
                             {gradingResult.isPass
                               ? (language === "german" ? "Bestanden" : "Passed")
                               : (language === "german" ? "Wiederholen" : "Repeat")}
-                          </span>
+                          </motion.span>
                           <h2 className="font-display text-[34px] sm:text-[40px] text-ink-900 mt-4 tracking-[-0.02em] leading-[1.05]" style={{ fontWeight: 470 }}>
                             {gradingResult.comprehension
                               ? <>
@@ -4187,9 +4353,9 @@ export default function DashboardClient({
                       ) : (
                         <div className="h-px mt-7 bg-(--hairline)" />
                       )}
-                    </div>
+                    </motion.div>
 
-                    <div className="card-surface-elevated">
+                    <motion.div variants={riseChild} className="card-surface-elevated">
                       <div className="overflow-hidden rounded-[inherit]">
                       <div className="border-b border-(--hairline) bg-(--paper-hover) px-6 py-4 flex items-center gap-2.5">
                         <DocumentTextIcon className={`w-4 h-4 ${gradingResult.isPass ? "text-(--accent-text-strong)" : "text-(--grade-fail-accent)"}`} strokeWidth={1.6} />
@@ -4203,9 +4369,9 @@ export default function DashboardClient({
                         <FeedbackBody text={gradingResult.feedback} />
                       </div>
                       </div>
-                    </div>
+                    </motion.div>
 
-                    <div className="flex flex-wrap items-center gap-2.5">
+                    <motion.div variants={riseChild} className="flex flex-wrap items-center gap-2.5">
                       <button
                         onClick={() => {
                           setActiveTab(gradingResult.comprehension ? "library" : "dashboard");
@@ -4225,8 +4391,8 @@ export default function DashboardClient({
                           {language === "german" ? "Audio · vorher abspielen" : "Play pre-lecture audio"}
                         </a>
                       )}
-                    </div>
-                  </div>
+                    </motion.div>
+                  </motion.div>
                 ) : (
                   /* Quiz taking UI */
                   <div className="flex flex-col gap-6 pb-24">
@@ -4313,6 +4479,7 @@ export default function DashboardClient({
                                 </div>
                                 <AutoGrowTextarea
                                   value={individualAnswers[task.id] || ""}
+                                  aria-label={`${task.label} — ${language === "german" ? "Deine Antwort" : "Your answer"}`}
                                   onChange={e => {
                                     setIndividualAnswers(prev => ({
                                       ...prev,
@@ -4326,8 +4493,22 @@ export default function DashboardClient({
                                 />
                                 {/* Scribble pad (allowlist feature): a WIDER canvas breaks out of the
                                     card padding so formulas/structures have room to breathe. */}
+                                {/* MO-8 — the pad opens/closes on the shared accordion (like the
+                                    materials disclosure) instead of slamming 340px in/out. The -mx
+                                    breakout lives on the overflow-clipped wrapper so the wider canvas
+                                    isn't clipped horizontally. */}
+                                <AnimatePresence initial={false}>
                                 {scribbleEnabled && openScribbles[task.id] && (
-                                  <div className="mt-3 -mx-[12px] md:-mx-[16px]">
+                                  <motion.div
+                                    key="scribble-task"
+                                    variants={accordion}
+                                    initial="initial"
+                                    animate="animate"
+                                    exit="exit"
+                                    className="-mx-[12px] md:-mx-[16px]"
+                                    style={{ overflow: "hidden" }}
+                                  >
+                                    <div className="mt-3">
                                     <ScribbleCanvas
                                       initialDataUrl={answerSketches[task.id] || null}
                                       language={language}
@@ -4337,8 +4518,10 @@ export default function DashboardClient({
                                         return next;
                                       })}
                                     />
-                                  </div>
+                                    </div>
+                                  </motion.div>
                                 )}
+                                </AnimatePresence>
                                 {scribbleEnabled && !openScribbles[task.id] && answerSketches[task.id] && (
                                   <button
                                     type="button"
@@ -4364,26 +4547,43 @@ export default function DashboardClient({
                         })}
 
                         <div className="pt-3">
-                          <div className="flex flex-col sm:flex-row gap-3 sm:gap-2.5">
+                          {/* IA-6 — orientation cue at the point of no return: how many tasks are
+                              actually answered (a typed draft or a scribble counts). A long quiz can
+                              span several screens; the submit button looks identical whether 1 or all
+                              are done, and a blank answer costs a real SRS interval. */}
+                          {(() => {
+                            const answeredCount = parsedTasks.filter(task => (individualAnswers[task.id] || "").trim().length > 0 || !!answerSketches[task.id]).length;
+                            const allAnswered = answeredCount === parsedTasks.length;
+                            return (
+                              <div className="flex items-center justify-center gap-1.5 mb-3 text-xs">
+                                <span className={`tnum font-semibold ${allAnswered ? "text-(--grade-pass-text)" : "text-ink-900"}`}>{answeredCount}</span>
+                                <span className="text-ink-400">{language === "german" ? `von ${parsedTasks.length} beantwortet` : `of ${parsedTasks.length} answered`}</span>
+                              </div>
+                            );
+                          })()}
+                          {/* IA-5 — quiet model picker above; the action row is one full-width primary button */}
+                          <div className="flex items-center justify-end gap-2 mb-2.5">
+                            <label htmlFor="grading-model-tasks" className="caps-label">{language === "german" ? "Modell" : "Model"}</label>
                             <select
+                              id="grading-model-tasks"
                               value={gradingModel}
                               onChange={e => setGradingModel(e.target.value)}
-                              className="btn-secondary sm:w-[200px] h-12 px-4 text-base sm:text-[13px] cursor-pointer appearance-none focus-visible:border-(--accent-border-strong) focus-visible:shadow-[0_0_0_3px_var(--accent-ring)] bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M5%208l5%205%205-5%22%20stroke%3D%22%23A89D8B%22%20stroke-width%3D%222%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-no-repeat bg-[position:right_0.9rem_center]"
+                              className={MODEL_PICKER_CLASS}
                             >
                               <option value="gemini-3.5-flash">3.5 Flash (Standard)</option>
                               <option value="gemini-3.1-pro-preview">3.1 Pro (Preview)</option>
                               <option value="gemini-3.1-flash-lite">3.1 Flash-Lite</option>
                             </select>
-                            <motion.button
-                              {...pressable}
-                              onClick={handleGrade}
-                              disabled={isGrading || !parsedTasks.some(task => (individualAnswers[task.id] || "").trim().length > 0 || !!answerSketches[task.id])}
-                              className="btn-primary flex-none sm:flex-1 h-14 sm:h-12 text-[15px] sm:text-sm flex items-center justify-center gap-2.5 cursor-pointer"
-                            >
-                              <SparklesIcon className="w-[18px] h-[18px]" strokeWidth={1.6} />
-                              {language === "german" ? "Zur Bewertung einreichen" : "Submit for grading"}
-                            </motion.button>
                           </div>
+                          <motion.button
+                            {...pressable}
+                            onClick={handleGrade}
+                            disabled={isGrading || !parsedTasks.some(task => (individualAnswers[task.id] || "").trim().length > 0 || !!answerSketches[task.id])}
+                            className="btn-primary w-full h-14 sm:h-12 text-[15px] sm:text-sm flex items-center justify-center gap-2.5 cursor-pointer"
+                          >
+                            <SparklesIcon className="w-[18px] h-[18px]" strokeWidth={1.6} />
+                            {language === "german" ? "Zur Bewertung einreichen" : "Submit for grading"}
+                          </motion.button>
                           <p className="text-center text-xs text-ink-400 mt-3">
                             {/* Comprehension checks are draft-free (see startQuiz) — don't promise a saved draft there. */}
                             {comprehensionMode
@@ -4428,12 +4628,23 @@ export default function DashboardClient({
                         </div>
                         <textarea
                           value={studentAnswers}
+                          aria-label={language === "german" ? "Deine Antwort" : "Your answer"}
                           onChange={e => setStudentAnswers(e.target.value)}
                           placeholder={language === "german" ? "Schreibe deine Antworten hier …" : "Write your answers here …"}
                           className="input-inset flex-1 w-full p-5 text-base sm:text-sm leading-relaxed resize-none min-h-[300px] mb-5"
                         />
+                        {/* MO-8 — free-answer pad opens on the shared accordion. */}
+                        <AnimatePresence initial={false}>
                         {scribbleEnabled && openScribbles[FREE_SKETCH_KEY] && (
-                          <div className="mb-5">
+                          <motion.div
+                            key="scribble-free"
+                            variants={accordion}
+                            initial="initial"
+                            animate="animate"
+                            exit="exit"
+                            style={{ overflow: "hidden" }}
+                          >
+                            <div className="mb-5">
                             <ScribbleCanvas
                               initialDataUrl={answerSketches[FREE_SKETCH_KEY] || null}
                               language={language}
@@ -4444,28 +4655,33 @@ export default function DashboardClient({
                                 return next;
                               })}
                             />
-                          </div>
+                            </div>
+                          </motion.div>
                         )}
-                        <div className="flex flex-col sm:flex-row gap-3 sm:gap-2.5">
+                        </AnimatePresence>
+                        {/* IA-5 — quiet model picker above; the action row is one full-width primary button */}
+                        <div className="flex items-center justify-end gap-2 mb-2.5">
+                          <label htmlFor="grading-model-free" className="caps-label">{language === "german" ? "Modell" : "Model"}</label>
                           <select
+                            id="grading-model-free"
                             value={gradingModel}
                             onChange={e => setGradingModel(e.target.value)}
-                            className="btn-secondary sm:w-[200px] h-12 px-4 text-base sm:text-[13px] cursor-pointer appearance-none focus-visible:border-(--accent-border-strong) focus-visible:shadow-[0_0_0_3px_var(--accent-ring)] bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M5%208l5%205%205-5%22%20stroke%3D%22%23A89D8B%22%20stroke-width%3D%222%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-no-repeat bg-[position:right_0.9rem_center]"
+                            className={MODEL_PICKER_CLASS}
                           >
                             <option value="gemini-3.5-flash">3.5 Flash (Standard)</option>
                             <option value="gemini-3.1-pro-preview">3.1 Pro (Preview)</option>
                             <option value="gemini-3.1-flash-lite">3.1 Flash-Lite</option>
                           </select>
-                          <motion.button
-                            {...pressable}
-                            onClick={handleGrade}
-                            disabled={isGrading || (!studentAnswers.trim() && !answerSketches[FREE_SKETCH_KEY])}
-                            className="btn-primary flex-none sm:flex-1 h-14 sm:h-12 text-[15px] sm:text-sm flex items-center justify-center gap-2.5 cursor-pointer"
-                          >
-                            <SparklesIcon className="w-[18px] h-[18px]" strokeWidth={1.6} />
-                            {language === "german" ? "Zur Bewertung einreichen" : "Submit for grading"}
-                          </motion.button>
                         </div>
+                        <motion.button
+                          {...pressable}
+                          onClick={handleGrade}
+                          disabled={isGrading || (!studentAnswers.trim() && !answerSketches[FREE_SKETCH_KEY])}
+                          className="btn-primary w-full h-14 sm:h-12 text-[15px] sm:text-sm flex items-center justify-center gap-2.5 cursor-pointer"
+                        >
+                          <SparklesIcon className="w-[18px] h-[18px]" strokeWidth={1.6} />
+                          {language === "german" ? "Zur Bewertung einreichen" : "Submit for grading"}
+                        </motion.button>
                         <p className="text-center text-xs text-ink-400 mt-3">
                           {/* Comprehension checks are draft-free (see startQuiz) — don't promise a saved draft there. */}
                           {comprehensionMode
@@ -4492,21 +4708,20 @@ export default function DashboardClient({
               <motion.div
                 {...overlayMotion}
                 key="archive-overlay"
-                className="fixed inset-0 z-50 flex items-center justify-center p-4"
+                className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-(--overlay) backdrop-blur-[3px]"
                 onClick={() => setArchiveModalData(null)}
               >
-                <div className="fixed -inset-6 -z-10 bg-(--overlay) backdrop-blur-[3px]" aria-hidden="true" />
                 <ModalDialog
                   labelledBy="archive-modal-title"
                   onClick={(e) => e.stopPropagation()}
                   className="card-glass w-full max-w-lg overflow-hidden flex flex-col max-h-[85dvh] border border-(--line-soft)"
                 >
                   <div className="px-6 py-5 border-b border-(--hairline-card) flex justify-between items-center">
-                    <h3 id="archive-modal-title" className="font-display text-xl font-medium text-ink-900">{language === "german" ? "Video-Archiv" : "Video Archive"}</h3>
+                    <h3 id="archive-modal-title" className="font-display text-xl tracking-[-0.015em] text-ink-900" style={{ fontWeight: 480 }}>{language === "german" ? "Video-Archiv" : "Video Archive"}</h3>
                     <Tip label={language === "german" ? "Schließen — Esc" : "Close — Esc"}>
                       <button
                         onClick={() => setArchiveModalData(null)}
-                        className="w-8 h-8 rounded-full bg-paper-2 hover:bg-paper-2 flex items-center justify-center text-ink-600 hover:text-ink-900 transition-colors cursor-pointer"
+                        className="w-8 h-8 flex items-center justify-center rounded-[10px] text-ink-400 hover:text-ink-900 hover:bg-(--hairline) transition-colors cursor-pointer shrink-0"
                       >
                         <XMarkIcon className="w-4 h-4" />
                       </button>
@@ -4544,10 +4759,9 @@ export default function DashboardClient({
             <motion.div
               {...overlayMotion}
               key="feedback-overlay"
-              className="fixed inset-0 z-50 flex items-center justify-center p-4"
+              className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-(--overlay) backdrop-blur-[3px]"
               onClick={() => setActiveFeedbackItem(null)}
             >
-              <div className="fixed -inset-6 -z-10 bg-(--overlay) backdrop-blur-[3px]" aria-hidden="true" />
               <ModalDialog
                 labelledBy="feedback-modal-title"
                 onClick={(e) => e.stopPropagation()}
@@ -4556,13 +4770,13 @@ export default function DashboardClient({
                 {/* Header */}
                 <div className="px-6 py-5 border-b border-(--hairline-card) flex justify-between items-center">
                   <div>
-                    <h3 id="feedback-modal-title" className="font-display text-xl font-medium text-ink-900">{activeFeedbackItem.subjectSub}</h3>
+                    <h3 id="feedback-modal-title" className="font-display text-xl tracking-[-0.015em] text-ink-900" style={{ fontWeight: 480 }}>{activeFeedbackItem.subjectSub}</h3>
                     <p className="text-xs text-ink-600 mt-1">{activeFeedbackItem.subjectMain} — Level {activeFeedbackItem.currentLevel + 1}</p>
                   </div>
                   <Tip label={language === "german" ? "Schließen — Esc" : "Close — Esc"}>
                     <button
                       onClick={() => setActiveFeedbackItem(null)}
-                      className="w-8 h-8 rounded-full bg-paper-2 hover:bg-paper-2 flex items-center justify-center text-ink-600 hover:text-ink-900 transition-colors cursor-pointer"
+                      className="w-8 h-8 flex items-center justify-center rounded-[10px] text-ink-400 hover:text-ink-900 hover:bg-(--hairline) transition-colors cursor-pointer shrink-0"
                     >
                       <XMarkIcon className="w-4 h-4" />
                     </button>
@@ -4627,13 +4841,13 @@ export default function DashboardClient({
                                 disabled={!entry.feedback}
                                 className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${entry.feedback ? "cursor-pointer hover:bg-paper-0" : "cursor-default"} press-row`}
                               >
-                                <span className={`text-[9px] font-bold uppercase tracking-[0.12em] px-2 py-0.5 rounded-full border shrink-0 ${entry.passed ? "bg-(--grade-pass-wash) text-(--grade-pass-text) border-(--grade-pass-border)" : "bg-(--grade-fail-wash) text-(--grade-fail-text) border-(--grade-fail-border)"}`}>
+                                <span className={`text-[9.5px] font-bold uppercase tracking-[0.12em] px-2 py-0.5 rounded-full border shrink-0 ${entry.passed ? "bg-(--grade-pass-wash) text-(--grade-pass-text) border-(--grade-pass-border)" : "bg-(--grade-fail-wash) text-(--grade-fail-text) border-(--grade-fail-border)"}`}>
                                   {entry.passed ? (language === "german" ? "Bestanden" : "Passed") : (language === "german" ? "Wiederholen" : "Repeat")}
                                 </span>
                                 <span className="text-[10px] font-semibold text-ink-600 bg-paper-2 px-2 py-0.5 rounded-full border border-(--hairline-card) shrink-0">
                                   Level {entry.level + 1}
                                 </span>
-                                <span className="text-xs text-ink-600 flex-1 truncate">
+                                <span className="text-xs text-ink-600 tnum flex-1 truncate">
                                   {new Date(entry.completedAt).toLocaleDateString(language === "german" ? "de-DE" : "en-GB")}{" "}
                                   <span className="text-ink-300">
                                     {new Date(entry.completedAt).toLocaleTimeString(language === "german" ? "de-DE" : "en-GB", { hour: "2-digit", minute: "2-digit" })}
@@ -4708,22 +4922,21 @@ export default function DashboardClient({
           {showCalendarModal && (
             <motion.div
               {...overlayMotion}
-              className="fixed inset-0 z-50 flex items-center justify-center p-4"
+              className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-(--overlay) backdrop-blur-[3px]"
               onClick={() => setShowCalendarModal(false)}
             >
-              <div className="fixed -inset-6 -z-10 bg-(--overlay) backdrop-blur-[3px]" aria-hidden="true" />
               <ModalDialog
                 labelledBy="calendar-modal-title"
                 className="card-glass p-6 md:p-8 max-w-[560px] w-full border border-(--line-soft) max-h-[85dvh] overflow-y-auto overscroll-contain custom-scrollbar"
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="flex items-center justify-between mb-2">
-                  <h2 id="calendar-modal-title" className="font-display text-2xl text-ink-900 tracking-[-0.015em]" style={{ fontWeight: 480 }}>
+                  <h2 id="calendar-modal-title" className="font-display text-xl text-ink-900 tracking-[-0.015em]" style={{ fontWeight: 480 }}>
                     {language === "german" ? "Kalender-Sync" : "Calendar sync"}
                   </h2>
                   <Tip label={language === "german" ? "Schließen — Esc" : "Close — Esc"}>
-                    <button onClick={() => setShowCalendarModal(false)} className="text-ink-600 hover:text-ink-900 p-2 transition-colors cursor-pointer">
-                      <XMarkIcon className="w-5 h-5" />
+                    <button onClick={() => setShowCalendarModal(false)} className="w-8 h-8 flex items-center justify-center rounded-[10px] text-ink-400 hover:text-ink-900 hover:bg-(--hairline) transition-colors cursor-pointer shrink-0">
+                      <XMarkIcon className="w-4 h-4" />
                     </button>
                   </Tip>
                 </div>
@@ -4821,10 +5034,9 @@ export default function DashboardClient({
           <motion.div
             key="settings-overlay"
             {...overlayMotion}
-            className="fixed inset-0 flex items-center justify-center p-4 z-[60]"
+            className="fixed inset-0 flex items-center justify-center p-4 z-[80] bg-(--overlay) backdrop-blur-[3px]"
             onClick={closeSettingsModal}
           >
-            <div className="fixed -inset-6 -z-10 bg-(--overlay) backdrop-blur-[3px]" aria-hidden="true" />
             <ModalDialog
               labelledBy="settings-modal-title"
               className="card-glass p-6 md:p-8 w-full max-w-[560px] border border-(--line-soft) max-h-[85dvh] overflow-y-auto overscroll-contain custom-scrollbar"
@@ -4832,7 +5044,7 @@ export default function DashboardClient({
             >
               <div className="flex justify-between items-start mb-7">
                 <div>
-                  <h3 id="settings-modal-title" className="font-display text-2xl text-ink-900 tracking-[-0.015em]" style={{ fontWeight: 480 }}>
+                  <h3 id="settings-modal-title" className="font-display text-xl text-ink-900 tracking-[-0.015em]" style={{ fontWeight: 480 }}>
                     {language === "german" ? "Einstellungen" : "Settings"}
                   </h3>
                   <p className="text-[13px] text-ink-600 mt-1.5">
@@ -4842,9 +5054,9 @@ export default function DashboardClient({
                 <Tip label={language === "german" ? "Schließen — Esc" : "Close — Esc"}>
                   <button
                     onClick={closeSettingsModal}
-                    className="p-2 hover:bg-paper-2 rounded-full transition-colors text-ink-600 hover:text-ink-900 cursor-pointer"
+                    className="w-8 h-8 flex items-center justify-center rounded-[10px] text-ink-400 hover:text-ink-900 hover:bg-(--hairline) transition-colors cursor-pointer shrink-0"
                   >
-                    <XMarkIcon className="w-5 h-5" />
+                    <XMarkIcon className="w-4 h-4" />
                   </button>
                 </Tip>
               </div>
@@ -4870,6 +5082,7 @@ export default function DashboardClient({
                           whileHover={{ y: -1 }}
                           whileTap={{ scale: 0.98 }}
                           onClick={() => updateAppearance({ mode })}
+                          aria-pressed={selected}
                           className="flex-1 min-w-0 text-left bg-paper-1 rounded-2xl p-[7px] pb-[11px] cursor-pointer shadow-(--shadow-e1)"
                           style={{ border: `1.5px solid ${selected ? "var(--a-g2)" : "var(--hairline-card)"}`, transition: "border-color 300ms cubic-bezier(0.16,1,0.3,1), background-color 400ms cubic-bezier(0.16,1,0.3,1)" }}
                         >
@@ -4927,6 +5140,8 @@ export default function DashboardClient({
                           whileHover={{ scale: 1.09 }}
                           whileTap={{ scale: 0.94 }}
                           onClick={() => updateAppearance({ accent })}
+                          aria-pressed={selected}
+                          aria-label={ACCENT_COPY[accent].name}
                           className="w-10 h-10 rounded-full cursor-pointer flex items-center justify-center shrink-0"
                           style={{
                             background: `linear-gradient(165deg, ${g1} 0%, ${g2} 58%, ${g3} 100%)`,
@@ -5031,50 +5246,137 @@ export default function DashboardClient({
                   <div className="segmented">
                     <button
                       onClick={() => {
+                        // IS-7 — switch the UI language optimistically, revert on failure.
+                        const prev = language;
+                        setLanguage('german');
                         fetch('/api/settings', {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({ action: 'update_language', language: 'german' })
                         }).then(res => res.json()).then(data => {
                           if (data.error) {
-                            addToast("error", `${language === "german" ? "Fehler" : "Error"}: ${data.error}`);
+                            setLanguage(prev);
+                            addToast("error", `${prev === "german" ? "Fehler" : "Error"}: ${data.error}`);
                             return;
                           }
                           if (data.language) setLanguage(data.language);
                         }).catch(err => {
                           console.error(err);
-                          addToast("error", language === "german" ? "Einstellung konnte nicht gespeichert werden." : "Failed to save setting.");
+                          setLanguage(prev);
+                          addToast("error", prev === "german" ? "Einstellung konnte nicht gespeichert werden." : "Failed to save setting.");
                         });
                       }}
                       className="segmented-item"
                       data-active={language === 'german'}
+                      aria-pressed={language === 'german'}
                     >
                       Deutsch
                     </button>
                     <button
                       onClick={() => {
+                        const prev = language;
+                        setLanguage('english');
                         fetch('/api/settings', {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({ action: 'update_language', language: 'english' })
                         }).then(res => res.json()).then(data => {
                           if (data.error) {
-                            addToast("error", `${language === "german" ? "Fehler" : "Error"}: ${data.error}`);
+                            setLanguage(prev);
+                            addToast("error", `${prev === "german" ? "Fehler" : "Error"}: ${data.error}`);
                             return;
                           }
                           if (data.language) setLanguage(data.language);
                         }).catch(err => {
                           console.error(err);
-                          addToast("error", language === "german" ? "Einstellung konnte nicht gespeichert werden." : "Failed to save setting.");
+                          setLanguage(prev);
+                          addToast("error", prev === "german" ? "Einstellung konnte nicht gespeichert werden." : "Failed to save setting.");
                         });
                       }}
                       className="segmented-item"
                       data-active={language === 'english'}
+                      aria-pressed={language === 'english'}
                     >
                       English
                     </button>
                   </div>
                 </div>
+
+                {/* IA-12 — notifications live in Settings now (they were the only
+                    non-navigating "nav item"). The iOS add-to-home-screen guidance,
+                    previously only a transient error toast, is stated inline. */}
+                <div className="pt-6 border-t border-(--hairline-card)">
+                  <h4 className="caps-label mb-3">{language === "german" ? "Mitteilungen" : "Notifications"}</h4>
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3 min-w-0">
+                      {pushPermission === "granted" && pushSubscribed ? (
+                        <BellIcon className="w-[18px] h-[18px] shrink-0 text-ink-400" strokeWidth={1.6} />
+                      ) : (
+                        <BellSlashIcon className="w-[18px] h-[18px] shrink-0 text-ink-400" strokeWidth={1.6} />
+                      )}
+                      <span className="text-sm text-ink-900 font-medium">
+                        {pushBusy
+                          ? language === "german" ? "Einen Moment…" : "One moment…"
+                          : pushPermission === "granted" && pushSubscribed
+                          ? language === "german" ? "Mitteilungen an" : "Notifications on"
+                          : pushPermission === "denied"
+                          ? language === "german" ? "Mitteilungen blockiert" : "Notifications blocked"
+                          : language === "german" ? "Mitteilungen aus" : "Notifications off"}
+                      </span>
+                    </div>
+                    <button
+                      onClick={togglePush}
+                      role="switch"
+                      aria-checked={pushPermission === "granted" && pushSubscribed}
+                      aria-busy={pushBusy}
+                      disabled={pushBusy}
+                      aria-label={language === "german" ? "Mitteilungen umschalten" : "Toggle notifications"}
+                      className="shrink-0 cursor-pointer disabled:cursor-wait p-2 -m-2"
+                    >
+                      <span className={`w-9 h-[22px] rounded-full relative inline-block transition-colors ${pushPermission === "granted" && pushSubscribed ? "bg-ink-900" : "bg-[color-mix(in_srgb,var(--foreground)_18%,transparent)]"}`}>
+                        {/* IS-12 — knob pulses in place while the async subscribe/unsubscribe is in flight. */}
+                        <span className={`absolute top-[3px] w-4 h-4 rounded-full bg-paper-1 transition-transform ${pushBusy ? "animate-pulse" : ""} ${pushPermission === "granted" && pushSubscribed ? "right-[3px]" : "left-[3px]"}`}></span>
+                      </span>
+                    </button>
+                  </div>
+                  <p className="text-xs text-ink-600 mt-3 leading-relaxed">
+                    {language === "german"
+                      ? "Wir erinnern dich, wenn Wiederholungen fällig sind. Auf dem iPhone/iPad zuerst über Teilen → Zum Home-Bildschirm hinzufügen, dann hier aktivieren."
+                      : "We'll remind you when reviews are due. On iPhone/iPad, first add the app via Share → Add to Home Screen, then enable it here."}
+                  </p>
+                  {pushPermission === "denied" && (
+                    <p className="text-xs text-(--grade-fail-text) mt-2 leading-relaxed">
+                      {language === "german"
+                        ? "In den Browser- oder Systemeinstellungen sind Mitteilungen für diese Seite blockiert."
+                        : "Notifications are blocked for this site in your browser or system settings."}
+                    </p>
+                  )}
+                </div>
+
+                {/* IA-13/LIVE-9 — dictation, AI connection and PDF delivery are developer
+                    plumbing that sat at equal rank with Language. Collapse them behind an
+                    "Erweitert / Advanced" disclosure (default closed) so changing the
+                    language or a module preset no longer scrolls past Cloud-Run proxy
+                    vocabulary. Semesterwechsel stays OUT (student-facing) and visible below. */}
+                <div className="pt-6 border-t border-(--hairline-card)">
+                  <button
+                    type="button"
+                    onClick={() => setShowAdvancedSettings(v => !v)}
+                    aria-expanded={showAdvancedSettings}
+                    className="w-full flex items-center justify-between gap-3 cursor-pointer group text-left"
+                  >
+                    <div>
+                      <h4 className="caps-label">{language === "german" ? "Erweitert" : "Advanced"}</h4>
+                      <p className="text-xs text-ink-400 mt-1">{language === "german" ? "Diktat, KI-Verbindung, PDF-Übertragung" : "Dictation, AI connection, PDF delivery"}</p>
+                    </div>
+                    <motion.span animate={{ rotate: showAdvancedSettings ? 180 : 0 }} transition={springTactile} className="shrink-0 text-ink-400 group-hover:text-ink-600 transition-colors">
+                      <ChevronDownIcon className="w-4 h-4" strokeWidth={2} />
+                    </motion.span>
+                  </button>
+                  <AnimatePresence initial={false}>
+                    {showAdvancedSettings && (
+                      <motion.div key="advanced-settings" variants={accordion} initial="initial" animate="animate" exit="exit" style={{ overflow: "hidden" }}>
+                        <div className="space-y-7">
 
                 <div className="pt-6 border-t border-(--hairline-card)">
                   <h4 className="caps-label mb-3">{language === "german" ? "Interaktiver Modus · Diktat" : "Interactive mode · dictation"}</h4>
@@ -5088,6 +5390,7 @@ export default function DashboardClient({
                       onClick={() => updateDictationMode("hybrid")}
                       className="segmented-item"
                       data-active={dictationMode === 'hybrid'}
+                      aria-pressed={dictationMode === 'hybrid'}
                     >
                       {language === "german" ? "Hybrid · empfohlen" : "Hybrid · recommended"}
                     </button>
@@ -5095,6 +5398,7 @@ export default function DashboardClient({
                       onClick={() => updateDictationMode("gemini")}
                       className="segmented-item"
                       data-active={dictationMode === 'gemini'}
+                      aria-pressed={dictationMode === 'gemini'}
                     >
                       Gemini
                     </button>
@@ -5102,6 +5406,7 @@ export default function DashboardClient({
                       onClick={() => updateDictationMode("browser")}
                       className="segmented-item"
                       data-active={dictationMode === 'browser'}
+                      aria-pressed={dictationMode === 'browser'}
                     >
                       Browser
                     </button>
@@ -5124,70 +5429,28 @@ export default function DashboardClient({
                   <div className="segmented">
                     <button
                       disabled={isGenerating || isGrading}
-                      onClick={() => {
-                        fetch('/api/settings', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ action: 'update_wrapper_toggle', wrapperMode: "all" })
-                        }).then(res => res.json()).then(data => {
-                          if (data.error) {
-                            addToast("error", `${language === "german" ? "Fehler" : "Error"}: ${data.error}`);
-                            return;
-                          }
-                          if (data.wrapperMode) setWrapperMode(data.wrapperMode);
-                        }).catch(err => {
-                          console.error(err);
-                          addToast("error", language === "german" ? "Einstellung konnte nicht gespeichert werden." : "Failed to save setting.");
-                        });
-                      }}
+                      onClick={() => updateWrapperMode("all")}
                       className={`segmented-item ${(isGenerating || isGrading) ? 'opacity-50 !cursor-not-allowed' : ''}`}
                       data-active={wrapperMode === "all"}
+                      aria-pressed={wrapperMode === "all"}
                     >
                       {language === "german" ? "Proxy für alles" : "Proxy for all"}
                     </button>
                     <button
                       disabled={isGenerating || isGrading}
-                      onClick={() => {
-                        fetch('/api/settings', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ action: 'update_wrapper_toggle', wrapperMode: "generation_only" })
-                        }).then(res => res.json()).then(data => {
-                          if (data.error) {
-                            addToast("error", `${language === "german" ? "Fehler" : "Error"}: ${data.error}`);
-                            return;
-                          }
-                          if (data.wrapperMode) setWrapperMode(data.wrapperMode);
-                        }).catch(err => {
-                          console.error(err);
-                          addToast("error", language === "german" ? "Einstellung konnte nicht gespeichert werden." : "Failed to save setting.");
-                        });
-                      }}
+                      onClick={() => updateWrapperMode("generation_only")}
                       className={`segmented-item ${(isGenerating || isGrading) ? 'opacity-50 !cursor-not-allowed' : ''}`}
                       data-active={wrapperMode === "generation_only"}
+                      aria-pressed={wrapperMode === "generation_only"}
                     >
                       {language === "german" ? "Nur Generierung" : "Generation only"}
                     </button>
                     <button
                       disabled={isGenerating || isGrading}
-                      onClick={() => {
-                        fetch('/api/settings', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ action: 'update_wrapper_toggle', wrapperMode: "none" })
-                        }).then(res => res.json()).then(data => {
-                          if (data.error) {
-                            addToast("error", `${language === "german" ? "Fehler" : "Error"}: ${data.error}`);
-                            return;
-                          }
-                          if (data.wrapperMode) setWrapperMode(data.wrapperMode);
-                        }).catch(err => {
-                          console.error(err);
-                          addToast("error", language === "german" ? "Einstellung konnte nicht gespeichert werden." : "Failed to save setting.");
-                        });
-                      }}
+                      onClick={() => updateWrapperMode("none")}
                       className={`segmented-item ${(isGenerating || isGrading) ? 'opacity-50 !cursor-not-allowed' : ''}`}
                       data-active={wrapperMode === "none"}
+                      aria-pressed={wrapperMode === "none"}
                     >
                       {language === "german" ? "Nur Fallback" : "Fallback only"}
                     </button>
@@ -5223,6 +5486,7 @@ export default function DashboardClient({
                       onClick={() => updateFileTransport("inline")}
                       className={`segmented-item ${(isGenerating || isGrading) ? 'opacity-50 !cursor-not-allowed' : ''}`}
                       data-active={fileTransport === "inline"}
+                      aria-pressed={fileTransport === "inline"}
                     >
                       {language === "german" ? "Inline (Base64)" : "Inline (base64)"}
                     </button>
@@ -5231,11 +5495,19 @@ export default function DashboardClient({
                       onClick={() => updateFileTransport("file_api")}
                       className={`segmented-item ${(isGenerating || isGrading) ? 'opacity-50 !cursor-not-allowed' : ''}`}
                       data-active={fileTransport === "file_api"}
+                      aria-pressed={fileTransport === "file_api"}
                     >
                       {language === "german" ? "File-Upload" : "File upload"}
                     </button>
                   </div>
                 </div>
+
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+                {/* /IA-13 Advanced disclosure — Semesterwechsel stays outside it */}
 
                 <div className="pt-6 border-t border-(--grade-fail-border)">
                   <h4 className="caps-label !text-(--grade-fail-text) mb-2">{language === "german" ? "Semesterwechsel" : "Semester change"}</h4>
@@ -5329,10 +5601,9 @@ export default function DashboardClient({
           <motion.div
             {...overlayMotion}
             key="prompts-list-backdrop"
-            className="fixed inset-0 z-[80] flex items-center justify-center p-4"
+            className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-(--overlay) backdrop-blur-[3px]"
             onClick={() => setPromptsModal(null)}
           >
-            <div className="fixed -inset-6 -z-10 bg-(--overlay) backdrop-blur-[3px]" aria-hidden="true" />
             <ModalDialog
               key="prompts-list-modal"
               labelledBy="prompts-modal-title"
@@ -5378,10 +5649,9 @@ export default function DashboardClient({
           <motion.div
             {...overlayMotion}
             key="comp-feedback-backdrop"
-            className="fixed inset-0 z-[80] flex items-center justify-center p-4"
+            className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-(--overlay) backdrop-blur-[3px]"
             onClick={() => setCompFeedback(null)}
           >
-            <div className="fixed -inset-6 -z-10 bg-(--overlay) backdrop-blur-[3px]" aria-hidden="true" />
             <ModalDialog
               key="comp-feedback-modal"
               labelledBy="comp-feedback-modal-title"
@@ -5393,7 +5663,7 @@ export default function DashboardClient({
                   <p className="caps-label mb-1">{language === "german" ? "Verständnis-Check" : "Comprehension check"}</p>
                   <h3 id="comp-feedback-modal-title" className="text-[15px] font-semibold text-ink-900 truncate">{compFeedback.subjectSub}</h3>
                   <div className="flex items-center gap-2.5 mt-2">
-                    <span className={`text-[9px] font-bold uppercase tracking-[0.12em] px-2 py-0.5 rounded-full border shrink-0 ${compFeedback.comprehensionPassed ? "bg-(--grade-pass-wash) text-(--grade-pass-text) border-(--grade-pass-border)" : "bg-(--grade-fail-wash) text-(--grade-fail-text) border-(--grade-fail-border)"}`}>
+                    <span className={`text-[9.5px] font-bold uppercase tracking-[0.12em] px-2 py-0.5 rounded-full border shrink-0 ${compFeedback.comprehensionPassed ? "bg-(--grade-pass-wash) text-(--grade-pass-text) border-(--grade-pass-border)" : "bg-(--grade-fail-wash) text-(--grade-fail-text) border-(--grade-fail-border)"}`}>
                       {compFeedback.comprehensionPassed ? (language === "german" ? "Bestanden" : "Passed") : (language === "german" ? "Wiederholen" : "Repeat")}
                     </span>
                     {typeof compFeedback.comprehensionScore === "number" && (
@@ -5402,7 +5672,7 @@ export default function DashboardClient({
                       </span>
                     )}
                     {compFeedback.comprehensionAt && (
-                      <span className="text-[11px] text-ink-400">{new Date(compFeedback.comprehensionAt).toLocaleDateString(language === "german" ? "de-DE" : "en-GB")}</span>
+                      <span className="text-[11px] text-ink-400 tnum">{new Date(compFeedback.comprehensionAt).toLocaleDateString(language === "german" ? "de-DE" : "en-GB")}</span>
                     )}
                   </div>
                 </div>
@@ -5434,10 +5704,9 @@ export default function DashboardClient({
         {promptModal && (
           <motion.div
             {...overlayMotion}
-            className="fixed inset-0 z-[90] flex items-center justify-center p-4"
+            className="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-(--overlay) backdrop-blur-[3px]"
             onClick={() => setPromptModal(null)}
           >
-            <div className="fixed -inset-6 -z-10 bg-(--overlay) backdrop-blur-[3px]" aria-hidden="true" />
             <ModalDialog
               labelledBy="prompt-modal-title"
               onClick={(e) => e.stopPropagation()}
@@ -5463,7 +5732,7 @@ export default function DashboardClient({
                   <Tip label={language === "german" ? "Schließen — Esc" : "Close — Esc"}>
                     <button
                       onClick={() => setPromptModal(null)}
-                      className="w-8 h-8 flex items-center justify-center rounded-lg bg-paper-2 hover:bg-paper-2 text-ink-600 hover:text-ink-900 transition-all cursor-pointer"
+                      className="w-8 h-8 flex items-center justify-center rounded-[10px] text-ink-400 hover:text-ink-900 hover:bg-(--hairline) transition-colors cursor-pointer shrink-0"
                     >
                       <XMarkIcon className="w-4 h-4" />
                     </button>
