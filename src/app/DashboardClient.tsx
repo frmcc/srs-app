@@ -498,6 +498,148 @@ function FeedbackBody({ text, size = "base" }: { text: string; size?: "base" | "
   return <div className="flex flex-col gap-[3px]">{out}</div>;
 }
 
+/** One task's slice of a graded brief. */
+interface PerTaskAssessment {
+  heading: string;        // "Aufgabe 1"
+  index: number;          // 1-based task number parsed from the heading
+  mastery: number | null; // estimated mastery 0–100
+  body: string;           // the per-task write-up (markdown-ish)
+}
+
+/**
+ * Split a graded brief into the short summary (shown by default) and the
+ * per-task assessment blocks the pipeline appends under "# Bewertung pro
+ * Aufgabe" / "# Per-Task Assessment" (each a "## Aufgabe N" section carrying
+ * "Geschätzte Beherrschung dieser Aufgabe: N %").
+ */
+function splitFeedback(feedback: string): { brief: string; perTasks: PerTaskAssessment[] } {
+  if (!feedback) return { brief: "", perTasks: [] };
+  const m = feedback.match(/\n#{1,3}\s*(?:Bewertung pro Aufgabe|Per-Task Assessment)\s*\n/i);
+  if (!m || m.index === undefined) return { brief: feedback.trim(), perTasks: [] };
+  const brief = feedback.slice(0, m.index).replace(/\s*-{3,}\s*$/, "").trim();
+  const raw = feedback.slice(m.index + m[0].length);
+  const perTasks: PerTaskAssessment[] = [];
+  for (const part of raw.split(/\n(?=#{1,3}\s+(?:Aufgabe|Task)\b)/i)) {
+    const h = part.match(/^#{1,3}\s+(.+?)\s*$/m);
+    if (!h) continue;
+    const heading = h[1].replace(/\*\*/g, "").trim();
+    const num = heading.match(/(\d+)/);
+    const masteryM =
+      part.match(/Beherrschung dieser Aufgabe:?\s*(\d{1,3})\s*%/i) ||
+      part.match(/mastery[^\d%]{0,24}(\d{1,3})\s*%/i);
+    perTasks.push({
+      heading,
+      index: num ? parseInt(num[1], 10) : perTasks.length + 1,
+      mastery: masteryM ? Math.max(0, Math.min(100, parseInt(masteryM[1], 10))) : null,
+      body: part.replace(/^#{1,3}\s+.+?(?:\n|$)/, "").trim(),
+    });
+  }
+  return { brief, perTasks };
+}
+
+/** Mastery % → grade tone (sage pass / grade-mid / clay fail — never the accent). */
+function masteryTone(pct: number | null): string {
+  if (pct === null) return "bg-paper-2 text-ink-400";
+  if (pct >= 80) return "bg-(--grade-pass-wash) text-(--grade-pass-text)";
+  if (pct >= 50) return "bg-paper-2 text-(--grade-mid)";
+  return "bg-(--grade-fail-wash) text-(--grade-fail-text)";
+}
+
+/**
+ * One read-only task card in the task-by-task assessment: the question, the
+ * student's submitted answer (typed or scribbled, read-only) when available,
+ * the mastery badge, an expandable per-task write-up, and — on the live result
+ * screen — the per-task Tutor button.
+ */
+function TaskReviewCard({
+  number, label, questionText, assessment, typedAnswer, sketch, onTutor, tutorActive, language,
+}: {
+  number: number;
+  label: string;
+  questionText?: string;
+  assessment: PerTaskAssessment | null;
+  /** undefined = answers unavailable (history); "" = answered-but-empty is treated as not answered. */
+  typedAnswer?: string;
+  sketch?: string;
+  onTutor?: () => void;
+  tutorActive?: boolean;
+  language: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const de = language === "german";
+  const pct = assessment?.mastery ?? null;
+  const showAnswer = typedAnswer !== undefined || sketch !== undefined;
+  const answered = (typedAnswer && typedAnswer.trim()) || !!sketch;
+  return (
+    <div className="card-surface-elevated p-6 md:p-8">
+      <div className="flex items-start justify-between gap-3 mb-4">
+        <div className="flex items-center gap-3 min-w-0">
+          <span className="font-display text-xl italic leading-none text-ink-300">{String(number).padStart(2, "0")}</span>
+          <h3 className="caps-label !text-ink-600 truncate">{label}</h3>
+        </div>
+        {pct !== null && (
+          <span className={`tnum text-[11px] font-bold px-2.5 py-1 rounded-full whitespace-nowrap shrink-0 ${masteryTone(pct)}`}>
+            {fmtPercent(pct, language)}
+          </span>
+        )}
+      </div>
+
+      {questionText && (
+        <div className="text-[15px] text-ink-900 whitespace-pre-wrap leading-[1.65] mb-5">{questionText}</div>
+      )}
+
+      {showAnswer && (
+        <div className="border-t border-(--hairline) pt-5">
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <span className="caps-label">{de ? "Deine Antwort" : "Your answer"}</span>
+            {onTutor && (
+              <button
+                type="button"
+                onClick={onTutor}
+                className={`inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full transition-colors cursor-pointer ${tutorActive ? "bg-(--accent-wash) text-(--accent-text-strong)" : "bg-paper-2 text-ink-600 hover:text-ink-900"}`}
+              >
+                <AcademicCapIcon className="w-3.5 h-3.5" strokeWidth={1.8} />
+                Tutor
+              </button>
+            )}
+          </div>
+          {sketch ? (
+            // eslint-disable-next-line @next/next/no-img-element -- client-only data-URL of the user's own drawing
+            <img src={sketch} alt={de ? "Gescribbelte Antwort" : "Scribbled answer"} className="max-w-full rounded-xl border border-(--hairline-card) bg-white" />
+          ) : answered ? (
+            <p className="text-[15px] text-ink-900 whitespace-pre-wrap leading-[1.6]">{typedAnswer}</p>
+          ) : (
+            <p className="text-sm text-ink-400 italic">{de ? "Nicht beantwortet." : "Not answered."}</p>
+          )}
+        </div>
+      )}
+
+      {assessment?.body && (
+        <div className={showAnswer || questionText ? "border-t border-(--hairline) mt-5 pt-4" : ""}>
+          <button
+            type="button"
+            onClick={() => setOpen((o) => !o)}
+            aria-expanded={open}
+            className="flex items-center gap-1.5 caps-label !text-(--accent-text-strong) cursor-pointer"
+          >
+            <ChevronDownIcon className={`w-3.5 h-3.5 transition-transform duration-200 ${open ? "rotate-180" : ""}`} strokeWidth={2} />
+            {de ? "Bewertung dieser Aufgabe" : "Assessment of this task"}
+          </button>
+          <AnimatePresence initial={false}>
+            {open && (
+              <motion.div key="body" variants={accordion} initial="initial" animate="animate" exit="exit" className="overflow-hidden">
+                <div className="pt-3">
+                  <FeedbackBody text={assessment.body} size="sm" />
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** Resolve the latest playable video URL from the stored value (plain URL or a JSON history array). */
 function latestVideoUrlOf(videoUrl: string | null): string | null {
   if (!videoUrl) return null;
@@ -959,6 +1101,23 @@ export default function DashboardClient({
   const [gradingMsg, setGradingMsg] = useState("");
   const [gradingError, setGradingError] = useState("");
   const [gradingResult, setGradingResult] = useState<GradingOutcome | null>(null);
+  // Task-by-task assessment view on the result screen (default off — the short
+  // brief shows first). Reset whenever a fresh result arrives.
+  const [showTaskReview, setShowTaskReview] = useState(false);
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- collapse the detail view when a fresh result arrives
+  useEffect(() => { setShowTaskReview(false); }, [gradingResult]);
+  // Parse the graded brief into the short summary + per-task assessments, and
+  // map each per-task block onto the current quiz's tasks (by 1-based index).
+  const taskReview = useMemo(() => {
+    const { brief, perTasks } = splitFeedback(gradingResult?.feedback || "");
+    const byIndex = new Map(perTasks.map((p) => [p.index, p]));
+    const byTask = new Map<string, PerTaskAssessment>();
+    parsedTasks.forEach((t, i) => {
+      const a = byIndex.get(i + 1);
+      if (a) byTask.set(t.id, a);
+    });
+    return { brief, perTasks, byTask };
+  }, [gradingResult, parsedTasks]);
 
   // Inline delete confirmation (two-step button) + per-item busy state
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
@@ -984,6 +1143,13 @@ export default function DashboardClient({
 
   // Historical feedback modal (+ per-module feedback history from ReviewLog)
   const [activeFeedbackItem, setActiveFeedbackItem] = useState<RawReviewItem | null>(null);
+  // Task-by-task toggle inside the history modal (assessment-only — the filled
+  // answers aren't stored). Reset each time a different item's history opens.
+  const [showHistTaskReview, setShowHistTaskReview] = useState(false);
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- collapse the detail view when a different item's history opens
+  useEffect(() => { setShowHistTaskReview(false); }, [activeFeedbackItem]);
+  // Per past-review task-by-task toggles inside the "Review history" list.
+  const [openReviewTasks, setOpenReviewTasks] = useState<Set<string>>(new Set());
   const [feedbackHistory, setFeedbackHistory] = useState<FeedbackHistoryEntry[] | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [expandedHistoryIds, setExpandedHistoryIds] = useState<Set<string>>(new Set());
@@ -4308,6 +4474,7 @@ export default function DashboardClient({
                   tasks={parsedTasks}
                   getDraft={getInteractiveAnswer}
                   getSketch={(taskId) => answerSketches[taskId]}
+                  getAssessment={(taskId) => taskReview.byTask.get(taskId)?.body}
                   focusedTaskId={focusedTaskId}
                 />
 
@@ -4522,10 +4689,50 @@ export default function DashboardClient({
                         </h3>
                       </div>
                       <div className="p-6 md:p-8">
-                        <FeedbackBody text={gradingResult.feedback} />
+                        <FeedbackBody text={taskReview.brief || gradingResult.feedback} />
                       </div>
                       </div>
                     </motion.div>
+
+                    {/* Task-by-task assessment: a read-only replay of the quiz with
+                        your submitted answers, per-task mastery, and the per-task
+                        tutor. Off by default — the short brief above is the overview. */}
+                    {taskReview.perTasks.length > 0 && (
+                      <motion.div variants={riseChild} className="flex flex-col gap-4">
+                        <button
+                          onClick={() => setShowTaskReview((v) => !v)}
+                          aria-expanded={showTaskReview}
+                          className="btn-secondary h-11 px-5 text-sm flex items-center justify-center gap-2 cursor-pointer self-start"
+                        >
+                          {showTaskReview
+                            ? (language === "german" ? "Aufgaben-Bewertung ausblenden" : "Hide task-by-task")
+                            : (language === "german" ? "Aufgabe für Aufgabe ansehen" : "Review task by task")}
+                          <ChevronDownIcon className={`w-4 h-4 transition-transform duration-200 ${showTaskReview ? "rotate-180" : ""}`} strokeWidth={2} />
+                        </button>
+                        <AnimatePresence initial={false}>
+                          {showTaskReview && (
+                            <motion.div key="task-review" variants={accordion} initial="initial" animate="animate" exit="exit" className="overflow-hidden">
+                              <div className="flex flex-col gap-4">
+                                {parsedTasks.map((task, i) => (
+                                  <TaskReviewCard
+                                    key={task.id}
+                                    number={i + 1}
+                                    label={task.label}
+                                    questionText={task.questionText}
+                                    assessment={taskReview.byTask.get(task.id) ?? null}
+                                    typedAnswer={individualAnswers[task.id] ?? ""}
+                                    sketch={answerSketches[task.id]}
+                                    tutorActive={showTutorPanel && focusedTaskId === task.id}
+                                    onTutor={() => { setFocusedTaskId(task.id); setShowTutorPanel(true); }}
+                                    language={language}
+                                  />
+                                ))}
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </motion.div>
+                    )}
 
                     <motion.div variants={riseChild} className="flex flex-wrap items-center gap-2.5">
                       <button
@@ -4979,7 +5186,46 @@ export default function DashboardClient({
 
                 {/* Body */}
                 <div className="flex-1 overflow-y-auto overscroll-contain p-6 md:p-8 custom-scrollbar">
-                  <FeedbackBody text={feedbackTranslation && !showFeedbackOriginal ? feedbackTranslation : (activeFeedbackItem.lastFeedback ?? "")} />
+                  {(() => {
+                    const histText = feedbackTranslation && !showFeedbackOriginal ? feedbackTranslation : (activeFeedbackItem.lastFeedback ?? "");
+                    const { brief: histBrief, perTasks: histPerTasks } = splitFeedback(histText);
+                    return (
+                      <>
+                        <FeedbackBody text={histBrief || histText} />
+                        {histPerTasks.length > 0 && (
+                          <div className="mt-6 flex flex-col gap-4">
+                            <button
+                              onClick={() => setShowHistTaskReview((v) => !v)}
+                              aria-expanded={showHistTaskReview}
+                              className="btn-secondary h-10 px-4 text-xs flex items-center justify-center gap-2 cursor-pointer self-start"
+                            >
+                              {showHistTaskReview
+                                ? (language === "german" ? "Aufgaben-Bewertung ausblenden" : "Hide task-by-task")
+                                : (language === "german" ? "Aufgabe für Aufgabe ansehen" : "Review task by task")}
+                              <ChevronDownIcon className={`w-3.5 h-3.5 transition-transform duration-200 ${showHistTaskReview ? "rotate-180" : ""}`} strokeWidth={2} />
+                            </button>
+                            <AnimatePresence initial={false}>
+                              {showHistTaskReview && (
+                                <motion.div key="hist-review" variants={accordion} initial="initial" animate="animate" exit="exit" className="overflow-hidden">
+                                  <div className="flex flex-col gap-4">
+                                    {histPerTasks.map((a) => (
+                                      <TaskReviewCard
+                                        key={a.index}
+                                        number={a.index}
+                                        label={a.heading}
+                                        assessment={a}
+                                        language={language}
+                                      />
+                                    ))}
+                                  </div>
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
 
                   {/* Review history: every graded attempt of this module (ReviewLog) */}
                   <div className="mt-8 pt-6 border-t border-(--hairline-card)">
@@ -5063,7 +5309,39 @@ export default function DashboardClient({
                                               </p>
                                             )}
                                             <div tabIndex={0} role="region" aria-label={language === "german" ? "Gutachter-Brief" : "Examiner's brief"} className="max-h-64 overflow-y-auto custom-scrollbar">
-                                              <FeedbackBody text={translated && !showFeedbackOriginal ? translated : (entry.feedback ?? "")} size="sm" />
+                                              {(() => {
+                                                const entryText = translated && !showFeedbackOriginal ? translated : (entry.feedback ?? "");
+                                                const { brief: eBrief, perTasks: ePerTasks } = splitFeedback(entryText);
+                                                const openTasks = openReviewTasks.has(entry.id);
+                                                return (
+                                                  <>
+                                                    <FeedbackBody text={eBrief || entryText} size="sm" />
+                                                    {ePerTasks.length > 0 && (
+                                                      <div className="mt-3">
+                                                        <button
+                                                          onClick={() => setOpenReviewTasks((prev) => { const n = new Set(prev); if (n.has(entry.id)) n.delete(entry.id); else n.add(entry.id); return n; })}
+                                                          aria-expanded={openTasks}
+                                                          className="inline-flex items-center gap-1.5 caps-label !text-(--accent-text-strong) cursor-pointer"
+                                                        >
+                                                          <ChevronDownIcon className={`w-3.5 h-3.5 transition-transform duration-200 ${openTasks ? "rotate-180" : ""}`} strokeWidth={2} />
+                                                          {language === "german" ? "Aufgabe für Aufgabe" : "Task by task"}
+                                                        </button>
+                                                        <AnimatePresence initial={false}>
+                                                          {openTasks && (
+                                                            <motion.div key="entry-tasks" variants={accordion} initial="initial" animate="animate" exit="exit" className="overflow-hidden">
+                                                              <div className="flex flex-col gap-3 pt-3">
+                                                                {ePerTasks.map((a) => (
+                                                                  <TaskReviewCard key={a.index} number={a.index} label={a.heading} assessment={a} language={language} />
+                                                                ))}
+                                                              </div>
+                                                            </motion.div>
+                                                          )}
+                                                        </AnimatePresence>
+                                                      </div>
+                                                    )}
+                                                  </>
+                                                );
+                                              })()}
                                             </div>
                                           </>
                                         );

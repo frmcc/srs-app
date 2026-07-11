@@ -33,8 +33,9 @@ interface ChatRequestBody {
   drafts?: string;
   language?: string;
   /** Set when the chat was opened from ONE task's Tutor button — the tutor is
-   *  told to concentrate on it, and its question + draft are attached. */
-  focusedTask?: { label?: string; questionText?: string; draft?: string };
+   *  told to concentrate on it, and its question + draft (+ grader assessment
+   *  when opened from the task-by-task review) are attached. */
+  focusedTask?: { label?: string; questionText?: string; draft?: string; assessment?: string };
   /** Base64 PNG (no data: prefix) of the scribbled answer for the focused task,
    *  sent once at the start of a per-task thread. */
   focusedSketch?: string;
@@ -124,11 +125,13 @@ export async function POST(req: NextRequest) {
     if (isLast && focused && (focused.label || focused.questionText)) {
       const q = (focused.questionText || "").trim();
       const d = (focused.draft || "").trim().slice(0, MAX_DRAFT_CHARS);
+      const a = (focused.assessment || "").trim().slice(0, MAX_DRAFT_CHARS);
       parts.push({
         text:
           "FOKUS-AUFGABE — der Student fragt gezielt zu DIESER Aufgabe. Bleib bei ihr, außer er wechselt selbst das Thema.\n" +
           `${focused.label || ""}${q ? `\n${q}` : ""}` +
-          (d ? `\n\nAktueller Antwort-Entwurf des Studenten zu dieser Aufgabe:\n${d}` : ""),
+          (d ? `\n\nAktueller Antwort-Entwurf des Studenten zu dieser Aufgabe:\n${d}` : "") +
+          (a ? `\n\nBewertung des Prüfers zu dieser Aufgabe (nutze sie, um gezielt an den Lücken zu arbeiten):\n${a}` : ""),
       });
       if (focusSketch) {
         parts.push({ text: "Handschriftliche/gescribbelte Antwort des Studenten zu dieser Aufgabe (Bild):" });

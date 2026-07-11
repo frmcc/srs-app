@@ -59,6 +59,9 @@ interface TutorPanelProps {
   /** Scribbled answer (PNG data URL) for a task, if the user drew one. Sent to
    *  the tutor when the chat is focused on that task. */
   getSketch?: (taskId: string) => string | undefined;
+  /** Grader's per-task assessment (after grading), so a per-task chat opened from
+   *  the task-by-task review carries that task's evaluation in its context. */
+  getAssessment?: (taskId: string) => string | undefined;
   /** When set, the matching task is pinned at the top of the chat so the
    *  original question stays in view through a long conversation. */
   focusedTaskId?: string | null;
@@ -89,7 +92,7 @@ function saveHistory(itemId: string, messages: TutorMessage[]) {
   }
 }
 
-export default function TutorPanel({ open, onClose, itemId, subject, topic, language, tasks, getDraft, getSketch, focusedTaskId }: TutorPanelProps) {
+export default function TutorPanel({ open, onClose, itemId, subject, topic, language, tasks, getDraft, getSketch, getAssessment, focusedTaskId }: TutorPanelProps) {
   const de = language !== "english";
   const focusedTask = focusedTaskId ? tasks.find((t) => t.id === focusedTaskId) ?? null : null;
   // Each task's tutor chat is its OWN thread; the header (global) tutor keeps the
@@ -295,6 +298,7 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
       // student's work on it — the typed draft and (once, at the start of the
       // thread) the scribbled answer image, if any.
       const focusDraft = focusedTask ? (getDraft(focusedTask.id) || "").trim() : "";
+      const focusAssessment = focusedTask && getAssessment ? (getAssessment(focusedTask.id) || "").trim() : "";
       const rawSketch = focusedTask && getSketch ? getSketch(focusedTask.id) : undefined;
       const focusSketch = thread.length === 0 && rawSketch
         ? rawSketch.replace(/^data:[^,]*,/, "")
@@ -308,7 +312,7 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
           drafts: buildDrafts(),
           messages: historyForApi,
           focusedTask: focusedTask
-            ? { label: focusedTask.label, questionText: focusedTask.questionText, draft: focusDraft }
+            ? { label: focusedTask.label, questionText: focusedTask.questionText, draft: focusDraft, assessment: focusAssessment || undefined }
             : undefined,
           focusedSketch: focusSketch,
         }),
@@ -374,7 +378,7 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
         }
       }
     }
-  }, [messages, streaming, itemId, threadKey, de, buildDrafts, focusedTask, getDraft, getSketch]);
+  }, [messages, streaming, itemId, threadKey, de, buildDrafts, focusedTask, getDraft, getSketch, getAssessment]);
 
   /** "Erneut senden" on an error row: prune the failed exchange, resend the same text. */
   const retrySend = useCallback((errRow: TutorMessage) => {
