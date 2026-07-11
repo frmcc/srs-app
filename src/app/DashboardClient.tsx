@@ -822,6 +822,9 @@ export default function DashboardClient({
   const [selectedReview, setSelectedReview] = useState<ReviewCard | null>(null);
   // Live Tutor slide-over (web twin of the iPad audio tutor)
   const [showTutorPanel, setShowTutorPanel] = useState(false);
+  // When the tutor is opened from a specific task's button, that task is pinned
+  // at the top of the chat. null = opened generally (header button), no pin.
+  const [focusedTaskId, setFocusedTaskId] = useState<string | null>(null);
   const [studentAnswers, setStudentAnswers] = useState("");
   const [parsedTasks, setParsedTasks] = useState<ReturnType<typeof parseQuizTasks>>([]);
   const [individualAnswers, setIndividualAnswers] = useState<Record<string, string>>({});
@@ -4256,7 +4259,7 @@ export default function DashboardClient({
                       <Tip label={language === "german" ? "Live Tutor: kennt deine Vorlesung, das Quiz und deine Entwürfe" : "Live tutor: knows your lecture, the quiz, and your drafts"}>
                       <motion.button
                         {...pressable}
-                        onClick={() => setShowTutorPanel(prev => !prev)}
+                        onClick={() => { setFocusedTaskId(null); setShowTutorPanel(prev => !prev); }}
                         aria-pressed={showTutorPanel}
                         className={`flex items-center gap-2 h-9 px-4 text-[13px] font-semibold cursor-pointer rounded-xl transition-colors ${showTutorPanel ? "bg-paper-2 text-ink-900 border border-(--line) shadow-(--shadow-e1)" : "btn-secondary"}`}
                       >
@@ -4304,46 +4307,8 @@ export default function DashboardClient({
                   language={language}
                   tasks={parsedTasks}
                   getDraft={getInteractiveAnswer}
+                  focusedTaskId={focusedTaskId}
                 />
-
-                {/* Mobile-only floating Tutor orb — toggles the floating chat so the
-                    quiz stays fully in view (no full-screen takeover). Portaled to
-                    <body> so `position:fixed` escapes framer's transformed ancestors.
-                    z-[71] keeps it tappable above the panel (z-[70]); hidden while the
-                    interactive voice bar owns the bottom of the screen. */}
-                {createPortal(
-                  <AnimatePresence>
-                    {!interactive.active && (
-                      <motion.button
-                        key="tutor-orb"
-                        initial={{ opacity: 0, scale: 0.8, y: 8 }}
-                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.8, y: 8, transition: { duration: 0.16, ease: EASE_IN } }}
-                        transition={springSoft}
-                        whileTap={{ scale: 0.9 }}
-                        onClick={() => setShowTutorPanel(prev => !prev)}
-                        aria-pressed={showTutorPanel}
-                        aria-label={showTutorPanel
-                          ? (language === "german" ? "Tutor schließen" : "Close tutor")
-                          : (language === "german" ? "Tutor öffnen" : "Open tutor")}
-                        className="sm:hidden fixed right-4 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-[71] w-14 h-14 rounded-full flex items-center justify-center cursor-pointer bg-paper-1 border border-(--line) shadow-(--shadow-e3) text-ink-900 active:bg-paper-2"
-                      >
-                        <AnimatePresence mode="wait" initial={false}>
-                          {showTutorPanel ? (
-                            <motion.span key="x" initial={{ opacity: 0, rotate: -30 }} animate={{ opacity: 1, rotate: 0 }} exit={{ opacity: 0, rotate: 30 }} transition={{ duration: 0.14 }}>
-                              <XMarkIcon className="w-6 h-6" strokeWidth={1.7} />
-                            </motion.span>
-                          ) : (
-                            <motion.span key="cap" initial={{ opacity: 0, rotate: 30 }} animate={{ opacity: 1, rotate: 0 }} exit={{ opacity: 0, rotate: -30 }} transition={{ duration: 0.14 }}>
-                              <AcademicCapIcon className="w-6 h-6" strokeWidth={1.6} />
-                            </motion.span>
-                          )}
-                        </AnimatePresence>
-                      </motion.button>
-                    )}
-                  </AnimatePresence>,
-                  document.body
-                )}
 
                 {/* Floating interactive control bar — portaled to <body> so `position:fixed`
                     escapes framer-motion's transformed ancestors and truly sticks to the
@@ -4648,24 +4613,39 @@ export default function DashboardClient({
                               <div className="border-t border-(--hairline) pt-5">
                                 <div className="flex items-center justify-between gap-2 mb-2">
                                   <span className="caps-label">{language === "german" ? "Deine Antwort" : "Your answer"}</span>
-                                  {scribbleEnabled && (
+                                  <div className="flex items-center gap-1.5">
+                                    {/* Per-task tutor: opens the chat with THIS task pinned at the top. */}
                                     <button
                                       type="button"
-                                      onClick={() => setOpenScribbles(prev => ({ ...prev, [task.id]: !prev[task.id] }))}
+                                      onClick={() => { setFocusedTaskId(task.id); setShowTutorPanel(true); }}
                                       className={`inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full transition-colors cursor-pointer ${
-                                        openScribbles[task.id] || answerSketches[task.id]
+                                        showTutorPanel && focusedTaskId === task.id
                                           ? "bg-(--accent-wash) text-(--accent-text-strong)"
                                           : "bg-paper-2 text-ink-600 hover:text-ink-900"
                                       }`}
                                     >
-                                      <PencilIcon className="w-3.5 h-3.5" strokeWidth={1.8} />
-                                      {openScribbles[task.id]
-                                        ? (language === "german" ? "Scribble schließen" : "Close scribble")
-                                        : answerSketches[task.id]
-                                        ? (language === "german" ? "Scribble bearbeiten" : "Edit scribble")
-                                        : "Scribble"}
+                                      <AcademicCapIcon className="w-3.5 h-3.5" strokeWidth={1.8} />
+                                      Tutor
                                     </button>
-                                  )}
+                                    {scribbleEnabled && (
+                                      <button
+                                        type="button"
+                                        onClick={() => setOpenScribbles(prev => ({ ...prev, [task.id]: !prev[task.id] }))}
+                                        className={`inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full transition-colors cursor-pointer ${
+                                          openScribbles[task.id] || answerSketches[task.id]
+                                            ? "bg-(--accent-wash) text-(--accent-text-strong)"
+                                            : "bg-paper-2 text-ink-600 hover:text-ink-900"
+                                        }`}
+                                      >
+                                        <PencilIcon className="w-3.5 h-3.5" strokeWidth={1.8} />
+                                        {openScribbles[task.id]
+                                          ? (language === "german" ? "Scribble schließen" : "Close scribble")
+                                          : answerSketches[task.id]
+                                          ? (language === "german" ? "Scribble bearbeiten" : "Edit scribble")
+                                          : "Scribble"}
+                                      </button>
+                                    )}
+                                  </div>
                                 </div>
                                 <AutoGrowTextarea
                                   value={individualAnswers[task.id] || ""}

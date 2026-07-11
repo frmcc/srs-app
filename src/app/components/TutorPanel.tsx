@@ -7,6 +7,7 @@ import { EASE_OUT, EASE_IN_OUT, springTactile } from "@/lib/motion";
 import {
   ArrowPathIcon,
   ExclamationTriangleIcon,
+  MapPinIcon,
   PaperAirplaneIcon,
   SparklesIcon,
   SpeakerWaveIcon,
@@ -55,6 +56,9 @@ interface TutorPanelProps {
   language: string;
   tasks: TutorTask[];
   getDraft: (taskId: string) => string;
+  /** When set, the matching task is pinned at the top of the chat so the
+   *  original question stays in view through a long conversation. */
+  focusedTaskId?: string | null;
 }
 
 const HISTORY_CAP = 30;
@@ -82,8 +86,9 @@ function saveHistory(itemId: string, messages: TutorMessage[]) {
   }
 }
 
-export default function TutorPanel({ open, onClose, itemId, subject, topic, language, tasks, getDraft }: TutorPanelProps) {
+export default function TutorPanel({ open, onClose, itemId, subject, topic, language, tasks, getDraft, focusedTaskId }: TutorPanelProps) {
   const de = language !== "english";
+  const focusedTask = focusedTaskId ? tasks.find((t) => t.id === focusedTaskId) ?? null : null;
 
   const [messages, setMessages] = useState<TutorMessage[]>(() => loadHistory(itemId));
   const [input, setInput] = useState("");
@@ -164,22 +169,8 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
     const apply = () => {
       const el = panelRef.current;
       if (!el) return;
-      const docked = window.innerWidth >= 640; // Tailwind sm — the right-sidebar layout.
-      if (docked) {
-        // Full-height sidebar rides the visual viewport so its pinned composer
-        // stays above the keyboard.
-        el.style.top = `${vv.offsetTop}px`;
-        el.style.height = `${vv.height}px`;
-        el.style.bottom = "";
-      } else {
-        // Mobile floating card: keep it anchored by the bottom (CSS owns the
-        // resting offset above the orb). Only when the keyboard is up do we lift
-        // it above the keys; otherwise clear the inline style so CSS wins.
-        el.style.top = "";
-        el.style.height = "";
-        const keyboardInset = window.innerHeight - vv.height - vv.offsetTop;
-        el.style.bottom = keyboardInset > 24 ? `${keyboardInset + 12}px` : "";
-      }
+      el.style.top = `${vv.offsetTop}px`;
+      el.style.height = `${vv.height}px`;
     };
     apply();
     vv.addEventListener("resize", apply);
@@ -415,13 +406,7 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
           // instead of reusing the decelerating entrance curve.
           exit={{ x: 24, opacity: 0, transition: { duration: 0.2, ease: EASE_IN_OUT } }}
           transition={{ duration: 0.24, ease: EASE_OUT }}
-          className="fixed z-[70] flex flex-col print:hidden overflow-hidden
-            left-3 right-3 bottom-[calc(140px+env(safe-area-inset-bottom))] top-auto max-h-[54dvh]
-            rounded-[26px] border border-(--hairline-card) shadow-(--shadow-e3)
-            bg-[color-mix(in_srgb,var(--paper-tutor)_82%,transparent)] backdrop-blur-2xl
-            sm:left-auto sm:right-0 sm:top-0 sm:bottom-0 sm:w-[376px] sm:max-h-none
-            sm:rounded-none sm:border sm:border-l sm:border-y-0 sm:border-r-0 sm:border-(--hairline-card)
-            sm:bg-(--paper-tutor) sm:backdrop-blur-none sm:overflow-visible xl:shadow-none"
+          className="fixed inset-y-0 right-0 z-[70] w-full sm:w-[376px] bg-(--paper-tutor) border-l border-(--hairline-card) flex flex-col print:hidden shadow-(--shadow-e3) xl:shadow-none"
           aria-label={de ? "Live Tutor Chat" : "Live tutor chat"}
         >
           {/* Header */}
@@ -458,6 +443,23 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
           <div aria-live="polite" role="status" className="sr-only">
             {liveNote}
           </div>
+
+          {/* Pinned task — stays in view through a long conversation so the
+              student never loses the question they opened the tutor for. Sticky
+              inside the scroll area; sits above the messages. */}
+          {focusedTask && (
+            <div className="shrink-0 px-4 pt-3 pb-3 border-b border-(--hairline) bg-(--paper-tutor)">
+              <div className="rounded-2xl border border-(--accent-border-soft) bg-(--accent-wash-soft) px-4 py-3">
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <MapPinIcon className="w-3.5 h-3.5 text-(--accent-text-strong)" strokeWidth={1.8} />
+                  <span className="caps-label !text-(--accent-text-strong)">{focusedTask.label}</span>
+                </div>
+                <p className="text-[13px] leading-[1.5] text-ink-900 line-clamp-4 whitespace-pre-wrap">
+                  {focusedTask.questionText}
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Messages */}
           <div ref={scrollRef} className="flex-1 overflow-y-auto overscroll-contain custom-scrollbar px-5 py-5 space-y-5">
