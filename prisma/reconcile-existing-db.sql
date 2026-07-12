@@ -33,6 +33,7 @@ ALTER TABLE "SRSItem" ADD COLUMN "prePodcastUrl" TEXT;
 ALTER TABLE "SRSItem" ADD COLUMN "postPodcastUrl" TEXT;
 ALTER TABLE "SRSItem" ADD COLUMN "videoUrl" TEXT;
 ALTER TABLE "SRSItem" ADD COLUMN "tutorPromptContent" TEXT;
+ALTER TABLE "SRSItem" ADD COLUMN "tutorPromptAssessmentContent" TEXT;
 ALTER TABLE "SRSItem" ADD COLUMN "version" INTEGER NOT NULL DEFAULT 0;
 
 -- AppConfig may not exist at all on some create paths.
