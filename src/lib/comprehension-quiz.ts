@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { GoogleGenAI } from "@google/genai";
 import { GRADE_PROMPTS } from "@/app/api/grade/prompts";
 import { generateContentWithRetry, normalizeFileTransport } from "@/lib/gemini-retry";
+import { wrapperOnForModule } from "@/lib/wrapper-modules";
 import { buildSourceMaterialParts } from "@/lib/grading-pipeline";
 import { extractSectionOr, formatPrompt } from "@/lib/markers";
 import { countTasks, intervalLabelFor } from "@/lib/srs";
@@ -44,7 +45,7 @@ export async function runComprehensionQuizGeneration(opts: {
   if (!srsItem) throw new Error("SRS item not found");
 
   const appConfig = await prisma.appConfig.findUnique({ where: { id: 1 } });
-  const useAiWrapper = (appConfig?.wrapperMode || "all") === "all";
+  const useAiWrapper = wrapperOnForModule(appConfig?.wrapperModules, srsItem.subjectMain);
   const fileTransport = normalizeFileTransport(appConfig?.fileTransport);
   const language = opts.language || appConfig?.language || "german";
   const languageInstruction = `\n\nCRITICAL: You must generate ALL text, output, and responses strictly in ${language.toUpperCase()}. This applies to every section of the generated content.`;

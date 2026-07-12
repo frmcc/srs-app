@@ -5,6 +5,7 @@ import { PROMPTS } from "@/app/api/quiz/prompts";
 import { downloadFromDrive, createGoogleDoc } from "@/lib/google-drive";
 import { sendPushNotification } from "@/lib/push";
 import { generateContentWithRetry, normalizeFileTransport } from "@/lib/gemini-retry";
+import { wrapperOnForModule } from "@/lib/wrapper-modules";
 import { generateVideoPromptsWorker } from "@/lib/notebooklm";
 import { extractSection, extractSectionOr, formatPrompt, parseMismatchVerdict, parseAssessmentDecision, DecisionParseError } from "@/lib/markers";
 import { countTasks, currentQuizText, intervalLabelFor, nextReviewDateAfter, quizFieldForLevel, INTERVAL_LABELS } from "@/lib/srs";
@@ -185,7 +186,8 @@ export async function runGradingPipeline(opts: {
   if (!srsItem) throw new Error("SRS item not found");
 
   const appConfig = await prisma.appConfig.findUnique({ where: { id: 1 } });
-  const useAiWrapper = (appConfig?.wrapperMode || "all") === "all";
+  // Per-module wrapper: on only when this item's module box is ticked.
+  const useAiWrapper = wrapperOnForModule(appConfig?.wrapperModules, srsItem.subjectMain);
   const fileTransport = normalizeFileTransport(appConfig?.fileTransport);
 
   const language = opts.language || appConfig?.language || "german";

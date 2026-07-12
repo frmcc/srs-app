@@ -804,7 +804,7 @@ export default function DashboardClient({
   initialLanguage = "german",
   initialSemester = 1,
   initialModulePresets = [],
-  initialWrapperMode = "all",
+  initialWrapperModules = {},
   initialFileTransport = "inline",
   initialPassRate30 = null,
   vapidPublicKey,
@@ -823,6 +823,8 @@ export default function DashboardClient({
   initialModulePresets?: string[];
   /** Server-read AI-wrapper mode — seeds the Settings toggle at first paint. */
   initialWrapperMode?: string;
+  /** Server-read per-module wrapper toggles — seeds the Settings checkboxes. */
+  initialWrapperModules?: Record<string, boolean>;
   /** Server-read file transport — seeds the Settings toggle at first paint. */
   initialFileTransport?: string;
   /** Server-computed 30-day pass rate — the right-rail card must not pop in late. */
@@ -908,7 +910,9 @@ export default function DashboardClient({
   const [currentSemester, setCurrentSemester] = useState<number>(initialSemester);
   const [modulePresets, setModulePresets] = useState<string[]>(initialModulePresets);
   const [language, setLanguage] = useState<string>(initialLanguage);
-  const [wrapperMode, setWrapperMode] = useState<string>(initialWrapperMode);
+  // Per-module wrapper on/off: { "<module name>": true }. Replaces the old
+  // global 3-way wrapperMode radio.
+  const [wrapperModules, setWrapperModules] = useState<Record<string, boolean>>(initialWrapperModules ?? {});
   const [fileTransport, setFileTransport] = useState<string>(initialFileTransport);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   /** IA-13/LIVE-9 — the "Erweitert / Advanced" disclosure (dictation, AI connection,
@@ -949,7 +953,7 @@ export default function DashboardClient({
           setCurrentSemester(data.currentSemester);
           if (data.modulePresets) setModulePresets(data.modulePresets);
           if (data.language) setLanguage(data.language);
-          if (data.wrapperMode) setWrapperMode(data.wrapperMode);
+          if (data.wrapperModules && typeof data.wrapperModules === "object") setWrapperModules(data.wrapperModules);
           if (data.fileTransport) setFileTransport(data.fileTransport);
           if (data.modulePresets && data.modulePresets.length > 0) {
             // Fill only if still empty — never stomp the SSR seed or a user edit.
@@ -1041,26 +1045,32 @@ export default function DashboardClient({
     });
   }, [addToast, language, fileTransport]);
   // IS-7 — AI-connection segment: flip immediately, revert if the POST fails.
-  const updateWrapperMode = useCallback((mode: "all" | "generation_only" | "none") => {
-    const prev = wrapperMode;
-    setWrapperMode(mode);
+  // Toggle the wrapper for one module (optimistic; persists the full map).
+  const toggleWrapperModule = useCallback((moduleName: string) => {
+    // Flip the tick immediately, revert if the round-trip fails (matches
+    // updateFileTransport). Derive next from the render-current map so the
+    // side-effecting fetch stays outside any state updater and fires once.
+    const prev = wrapperModules;
+    const next = { ...prev };
+    if (next[moduleName]) delete next[moduleName]; else next[moduleName] = true;
+    setWrapperModules(next);
     fetch('/api/settings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'update_wrapper_toggle', wrapperMode: mode })
+      body: JSON.stringify({ action: 'update_wrapper_modules', wrapperModules: next })
     }).then(res => res.json()).then(data => {
       if (data.error) {
-        setWrapperMode(prev);
+        setWrapperModules(prev);
         addToast("error", `${language === "german" ? "Fehler" : "Error"}: ${data.error}`);
         return;
       }
-      if (data.wrapperMode) setWrapperMode(data.wrapperMode);
+      if (data.wrapperModules) setWrapperModules(data.wrapperModules);
     }).catch(err => {
       console.error(err);
-      setWrapperMode(prev);
+      setWrapperModules(prev);
       addToast("error", language === "german" ? "Einstellung konnte nicht gespeichert werden." : "Failed to save setting.");
     });
-  }, [addToast, language, wrapperMode]);
+  }, [addToast, language, wrapperModules]);
   const handleInteractiveAnswer = useCallback((taskId: string, text: string) => {
     setIndividualAnswers(prev => ({ ...prev, [taskId]: text }));
   }, []);
@@ -5903,11 +5913,11 @@ export default function DashboardClient({
                 </div>
 
                 <div className="pt-6 border-t border-(--hairline-card)">
-                  <h4 className="caps-label mb-3">{language === "german" ? "KI-Verbindung" : "AI connection"}</h4>
+                  <h4 className="caps-label mb-3">{language === "german" ? "KI-Verbindung pro Modul" : "AI connection per module"}</h4>
                   <p className="text-xs text-ink-600 mb-4 leading-relaxed">
                     {language === "german"
-                      ? "Wähle, welche Schritte über den experimentellen Gemini Proxy laufen. Die offizielle Google API dient immer als sicherer Fallback."
-                      : "Choose which steps run through the experimental Gemini proxy. The official Google API will always act as a reliable fallback."}
+                      ? "Aktiviere den Gemini-Proxy für einzelne Module. Aktiv = Generierung und Bewertung dieses Moduls laufen über den Proxy; aus = offizielle Google API. Die offizielle API bleibt immer der sichere Fallback (die native Datei wird bei jedem Fallback ohnehin hochgeladen)."
+                      : "Turn the Gemini proxy on for individual modules. On = this module's generation and grading run through the proxy; off = the official Google API. The official API is always the safe fallback (the native file is uploaded on any fallback regardless)."}
                   </p>
                   {(isGenerating || isGrading) && (
                     <div className="mb-4 text-xs font-semibold text-ink-600 flex items-center gap-2">
@@ -5915,35 +5925,34 @@ export default function DashboardClient({
                       {language === "german" ? "Einstellungen gesperrt, während eine KI-Aktion läuft." : "Settings locked while an AI task is running."}
                     </div>
                   )}
-                  <div className="segmented">
-                    <button
-                      disabled={isGenerating || isGrading}
-                      onClick={() => updateWrapperMode("all")}
-                      className={`segmented-item whitespace-nowrap ${(isGenerating || isGrading) ? 'opacity-50 !cursor-not-allowed' : ''}`}
-                      data-active={wrapperMode === "all"}
-                      aria-pressed={wrapperMode === "all"}
-                    >
-                      Proxy
-                    </button>
-                    <button
-                      disabled={isGenerating || isGrading}
-                      onClick={() => updateWrapperMode("generation_only")}
-                      className={`segmented-item whitespace-nowrap ${(isGenerating || isGrading) ? 'opacity-50 !cursor-not-allowed' : ''}`}
-                      data-active={wrapperMode === "generation_only"}
-                      aria-pressed={wrapperMode === "generation_only"}
-                    >
-                      {language === "german" ? "Generierung" : "Generation"}
-                    </button>
-                    <button
-                      disabled={isGenerating || isGrading}
-                      onClick={() => updateWrapperMode("none")}
-                      className={`segmented-item whitespace-nowrap ${(isGenerating || isGrading) ? 'opacity-50 !cursor-not-allowed' : ''}`}
-                      data-active={wrapperMode === "none"}
-                      aria-pressed={wrapperMode === "none"}
-                    >
-                      Fallback
-                    </button>
-                  </div>
+                  {(() => {
+                    const moduleList = [...new Set([...rawItems.map(i => i.subjectMain), ...modulePresets].filter(Boolean))].sort((a, b) => a.localeCompare(b));
+                    if (moduleList.length === 0) {
+                      return <p className="text-xs text-ink-400 italic">{language === "german" ? "Noch keine Module — lade zuerst Material hoch." : "No modules yet — upload material first."}</p>;
+                    }
+                    return (
+                      <div className="flex flex-col gap-1.5">
+                        {moduleList.map(name => {
+                          const on = !!wrapperModules[name];
+                          return (
+                            <button
+                              key={name}
+                              type="button"
+                              disabled={isGenerating || isGrading}
+                              onClick={() => toggleWrapperModule(name)}
+                              aria-pressed={on}
+                              className={`flex items-center justify-between gap-3 px-3.5 h-11 rounded-xl border transition-colors cursor-pointer text-left ${on ? "bg-(--accent-wash-soft) border-(--accent-border-soft)" : "bg-paper-1 border-(--hairline-card) hover:bg-paper-2"} ${(isGenerating || isGrading) ? "opacity-50 !cursor-not-allowed" : ""}`}
+                            >
+                              <span className={`text-[13px] font-medium truncate ${on ? "text-(--accent-text-strong)" : "text-ink-900"}`}>{name}</span>
+                              <span className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 transition-colors ${on ? "bg-(--a-g2) border-transparent" : "border-(--line)"}`}>
+                                {on && <CheckIcon className="w-3.5 h-3.5 text-(--accent-on)" strokeWidth={2.5} />}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
                   <a
                     href="https://aistudio-api-150434442017.europe-west1.run.app"
                     target="_blank"

@@ -111,7 +111,12 @@ model AppConfig {
   currentSemester Int      @default(1)
   modulePresets   String   @default("[]") // JSON string array
   language        String   @default("german") // german or english
-  wrapperMode     String   @default("all") // "all", "generation_only", "none"
+  wrapperMode     String   @default("all") // DEPRECATED (superseded by wrapperModules); kept for migration safety
+  // Per-module wrapper on/off: JSON map { "<module name>": true }. A module NOT
+  // listed (or false) uses the native Gemini API. Replaces the old global 3-way
+  // wrapperMode. The native File API upload still runs on any native/fallback
+  // call, so fallback works regardless of these toggles.
+  wrapperModules  String   @default("{}")
   fileTransport   String   @default("inline") // "inline" (base64 in request) or "file_api" (File API upload + fileData URI)
   updatedAt       DateTime @updatedAt
 }

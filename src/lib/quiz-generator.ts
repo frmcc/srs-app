@@ -3,6 +3,7 @@ import { GoogleGenAI } from "@google/genai";
 import { PROMPTS, podcast_prompts } from "../app/api/quiz/prompts";
 import { sendPushNotification } from "./push";
 import { generatePodcastWorker, createNotebook } from "./notebooklm";
+import { wrapperOnForModule } from "./wrapper-modules";
 import { generateContentWithRetry, normalizeFileTransport } from "./gemini-retry";
 import { getOrCreateDriveFolder, uploadToDrive, createGoogleDoc } from "./google-drive";
 import { extractSection } from "./markers";
@@ -55,8 +56,10 @@ export async function runQuizGeneration(params: {
 
   try {
     const appConfig = await prisma.appConfig.findUnique({ where: { id: 1 } });
-    const wrapperMode = appConfig?.wrapperMode || "all";
-    const useAiWrapper = wrapperMode === "all" || wrapperMode === "generation_only";
+    // Per-module wrapper: this module's generation goes through the proxy only
+    // when its box is ticked; otherwise the official Gemini API. The native File
+    // API upload still runs on any official/fallback call, so fallback works.
+    const useAiWrapper = wrapperOnForModule(appConfig?.wrapperModules, subjectMain);
     const fileTransport = normalizeFileTransport(appConfig?.fileTransport);
     const currentSemester = appConfig?.currentSemester || 1;
     const language = appConfig?.language || "german";

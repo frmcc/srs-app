@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import type { AppConfig } from "@prisma/client";
+import { parseWrapperModules } from "@/lib/wrapper-modules";
 
 // Atomic find-or-create — the old findUnique-then-create pattern threw a
 // unique-constraint error when two requests raced on first boot.
@@ -24,6 +25,7 @@ function serialize(config: AppConfig) {
     modulePresets: presets,
     language: config.language,
     wrapperMode: config.wrapperMode,
+    wrapperModules: parseWrapperModules(config.wrapperModules),
     fileTransport: config.fileTransport,
   };
 }
@@ -39,13 +41,13 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
-    let body: { action?: string; presets?: unknown; language?: string; wrapperMode?: string; fileTransport?: string };
+    let body: { action?: string; presets?: unknown; language?: string; wrapperMode?: string; wrapperModules?: unknown; fileTransport?: string };
     try {
       body = await req.json();
     } catch {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
-    const { action, presets, language, wrapperMode, fileTransport } = body;
+    const { action, presets, language, wrapperMode, wrapperModules, fileTransport } = body;
     await getOrCreateConfig();
 
     switch (action) {
@@ -79,6 +81,24 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: "wrapperMode must be 'all', 'generation_only' or 'none'" }, { status: 400 });
         }
         const updated = await prisma.appConfig.update({ where: { id: 1 }, data: { wrapperMode } });
+        return NextResponse.json(serialize(updated));
+      }
+
+      case "update_wrapper_modules": {
+        // Per-module wrapper on/off: a JSON map { "<module>": true }. Only the
+        // ticked (true) modules are kept, module names capped like presets.
+        if (typeof wrapperModules !== "object" || wrapperModules === null || Array.isArray(wrapperModules)) {
+          return NextResponse.json({ error: "wrapperModules must be an object map" }, { status: 400 });
+        }
+        const clean: Record<string, true> = {};
+        const entries = Object.entries(wrapperModules as Record<string, unknown>);
+        if (entries.length > 500) {
+          return NextResponse.json({ error: "too many modules" }, { status: 400 });
+        }
+        for (const [name, on] of entries) {
+          if (typeof name === "string" && name.length <= 200 && on === true) clean[name] = true;
+        }
+        const updated = await prisma.appConfig.update({ where: { id: 1 }, data: { wrapperModules: JSON.stringify(clean) } });
         return NextResponse.json(serialize(updated));
       }
 

@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
 import { scribbleEnabledForEmail } from "@/lib/feature-flags";
 import { prisma } from "@/lib/db";
+import { parseWrapperModules } from "@/lib/wrapper-modules";
 import DashboardClient from "./DashboardClient";
 
 export const dynamic = "force-dynamic";
@@ -22,7 +23,7 @@ export default async function Page() {
     fetchReviewList(),
     prisma.appConfig.findUnique({
       where: { id: 1 },
-      select: { language: true, currentSemester: true, modulePresets: true, wrapperMode: true, fileTransport: true },
+      select: { language: true, currentSemester: true, modulePresets: true, wrapperMode: true, wrapperModules: true, fileTransport: true },
     }),
     fetchPassRate30(),
   ]);
@@ -57,6 +58,7 @@ export default async function Page() {
       initialSemester={config?.currentSemester ?? 1}
       initialModulePresets={modulePresets}
       initialWrapperMode={config?.wrapperMode ?? "all"}
+      initialWrapperModules={parseWrapperModules(config?.wrapperModules)}
       initialFileTransport={config?.fileTransport ?? "inline"}
       initialPassRate30={passRate30}
       vapidPublicKey={process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? null}
