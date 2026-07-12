@@ -1,7 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+
+/** True when the primary pointer can't hover (touch phones/tablets). Tooltips are
+ *  a hover/keyboard affordance; on touch they only flash a box over the control
+ *  and can swallow the tap (needing a second one), so we suppress them there. */
+const noHover = () => typeof window !== "undefined" && window.matchMedia("(hover: none)").matches;
 
 /**
  * CRAFT.md §4 — the ink tooltip. Never native `title`.
@@ -42,22 +47,22 @@ export function Tip({ label, children, side }: {
     setPos({ x: r.left + r.width / 2, y: below ? r.bottom : r.top, below });
   }, [anchorEl, side]);
   const schedule = useCallback(() => {
+    if (noHover()) return; // touch: no hover, no tooltip
     clear();
     timerRef.current = window.setTimeout(show, 400);
   }, [clear, show]);
-
-  // MT-4 — coarse-pointer mode: touch/pen presses show the bubble immediately
-  // (there is no hover to wait for); a mouse press keeps the old dismiss
-  // behavior so clicking a control doesn't leave its tip hanging.
-  const handlePointerDown = useCallback((e: ReactPointerEvent) => {
-    if (e.pointerType === "mouse") {
-      hide();
-      return;
-    }
-    touchRef.current = true;
-    clear();
+  // Show on focus, but only for real keyboard focus (hover-capable devices) —
+  // on touch this would flash a bubble when a tap focuses the control.
+  const showOnFocus = useCallback(() => {
+    if (noHover()) return;
     show();
-  }, [clear, hide, show]);
+  }, [show]);
+
+  // Any press dismisses a shown tooltip; touch/pen never open one, so a single
+  // tap just activates the control (no black box, no double-tap).
+  const handlePointerDown = useCallback(() => {
+    hide();
+  }, [hide]);
 
   // While a touch-opened bubble is visible, the next tap outside the control
   // or any scroll dismisses it.
@@ -116,7 +121,7 @@ export function Tip({ label, children, side }: {
         onMouseEnter={schedule}
         onMouseLeave={hide}
         onPointerDown={handlePointerDown}
-        onFocus={show}
+        onFocus={showOnFocus}
         onBlur={hide}
       >
         {children}

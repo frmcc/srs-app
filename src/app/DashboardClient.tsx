@@ -1269,7 +1269,14 @@ export default function DashboardClient({
         return;
       }
 
-      const reg = await navigator.serviceWorker.ready;
+      // A wedged service worker or a push-subscribe call that never settles (an
+      // iOS/Safari quirk) would otherwise leave the toggle stuck on "One moment…"
+      // forever. Bound each async step so a hang surfaces as a normal error and
+      // the busy state clears — the user can just try again.
+      const withTimeout = <T,>(p: Promise<T>, ms: number, what: string): Promise<T> =>
+        Promise.race([p, new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`${what} timed out`)), ms))]);
+
+      const reg = await withTimeout(navigator.serviceWorker.ready, 12000, "service worker ready");
       // Read at runtime from the server prop (works on Cloud Run without needing
       // the var inlined at build time, which is the usual cause of this error).
       const vapidKey = vapidPublicKey;
@@ -1283,11 +1290,11 @@ export default function DashboardClient({
 
       let sub = await reg.pushManager.getSubscription();
       if (!sub) {
-        sub = await reg.pushManager.subscribe({
+        sub = await withTimeout(reg.pushManager.subscribe({
           userVisibleOnly: true,
           // iOS requires a Uint8Array here, not the raw base64 string.
           applicationServerKey: urlBase64ToUint8Array(vapidKey),
-        });
+        }), 25000, "push subscribe");
       }
 
       const subJson = sub.toJSON();
@@ -2735,7 +2742,7 @@ export default function DashboardClient({
                 initial={{ x: -24, opacity: 0 }}
                 animate={{ x: 0, opacity: 1 }}
                 transition={{ duration: 0.32, ease: EASE_OUT }}
-                className="app-shell-sidebar hidden md:flex md:w-[264px] sidebar-gradient border-r border-(--hairline) flex-col px-[18px] pt-[26px] pb-[max(1.25rem,env(safe-area-inset-bottom))] md:sticky md:top-0 md:h-[100dvh] z-40 overflow-y-auto custom-scrollbar"
+                className="app-shell-sidebar hidden md:flex md:w-[264px] sidebar-gradient border-r border-(--hairline) flex-col px-[18px] pt-[max(26px,calc(env(safe-area-inset-top)+18px))] pb-[max(1.25rem,env(safe-area-inset-bottom))] md:sticky md:top-0 md:h-[100dvh] z-40 overflow-y-auto custom-scrollbar"
               >
                 {sidebarBody}
               </motion.aside>
