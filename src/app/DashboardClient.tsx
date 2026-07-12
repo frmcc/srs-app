@@ -82,16 +82,6 @@ const libLevelFull = (l: number, language: string) => `${language === "german" ?
 const fallbackErrorMsg = (language: string) =>
   language === "german" ? "Etwas ist schiefgelaufen — bitte erneut versuchen." : "Something went wrong — please try again.";
 
-/**
- * IA-5: the model picker used to sit at full control height beside Generate and
- * Submit — model-ID jargon splitting the weight of the app's two most important
- * buttons. It's demoted to a quiet, compact secondary control above each action,
- * so the action row itself is exactly one full-width primary button. Same look at
- * all three sites (upload generate, quiz grade × 2).
- */
-const MODEL_PICKER_CLASS =
-  "text-xs text-ink-600 bg-transparent border border-(--line) rounded-lg h-8 pl-2.5 pr-8 cursor-pointer appearance-none focus-visible:border-(--accent-border-strong) focus-visible:shadow-[0_0_0_3px_var(--accent-ring)] bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M5%208l5%205%205-5%22%20stroke%3D%22%23A89D8B%22%20stroke-width%3D%222%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-no-repeat bg-[position:right_0.55rem_center]";
-
 // Scribble key for the free-form (unstructured) answer box — the per-task
 // sketches are keyed by task.id, this one has no task to hang off.
 const FREE_SKETCH_KEY = "__free__";
@@ -815,6 +805,13 @@ function SettingsGroup({ title, children, first = false }: { title: string; chil
   );
 }
 
+/** Selectable Gemini models. id is stored; label is shown. */
+const MODEL_OPTIONS: { id: string; label: string }[] = [
+  { id: "gemini-3.5-flash", label: "3.5 Flash" },
+  { id: "gemini-3.1-pro-preview", label: "3.1 Pro" },
+  { id: "gemini-3.1-flash-lite", label: "3.1 Flash-Lite" },
+];
+
 export default function DashboardClient({
   initialItems,
   userName,
@@ -890,8 +887,6 @@ export default function DashboardClient({
   /** IA-8 — generation finished: hold on the success screen (checklist + explicit
    *  next-step fork) instead of auto-yanking to the dashboard on a 3s timer. */
   const [generationDone, setGenerationDone] = useState(false);
-  const [generationModel, setGenerationModel] = useState("gemini-3.5-flash");
-  const [gradingModel, setGradingModel] = useState("gemini-3.5-flash");
   const [progressStep, setProgressStep] = useState(0);
   const [progressMsg, setProgressMsg] = useState("");
   /** EM-1 — persistent record of the last failed upload run (toasts vanish after 5s). */
@@ -932,6 +927,11 @@ export default function DashboardClient({
   // global 3-way wrapperMode radio.
   const [wrapperModules, setWrapperModules] = useState<Record<string, boolean>>(initialWrapperModules ?? {});
   const [fileTransport, setFileTransport] = useState<string>(initialFileTransport);
+  // Default Gemini model + per-step overrides ({ "<step>": "<model>" }); a step
+  // absent uses aiModel. Edited in the "Customise per step" popup.
+  const [aiModel, setAiModel] = useState<string>("gemini-3.5-flash");
+  const [stepModels, setStepModels] = useState<Record<string, string>>({});
+  const [showStepCustomize, setShowStepCustomize] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   /** IA-13/LIVE-9 — the "Erweitert / Advanced" disclosure (dictation, AI connection,
    *  PDF delivery). Default closed; reset to closed each time Settings closes. */
@@ -972,6 +972,8 @@ export default function DashboardClient({
           if (data.modulePresets) setModulePresets(data.modulePresets);
           if (data.language) setLanguage(data.language);
           if (data.wrapperModules && typeof data.wrapperModules === "object") setWrapperModules(data.wrapperModules);
+          if (data.aiModel) setAiModel(data.aiModel);
+          if (data.stepModels && typeof data.stepModels === "object") setStepModels(data.stepModels);
           if (data.fileTransport) setFileTransport(data.fileTransport);
           if (data.modulePresets && data.modulePresets.length > 0) {
             // Fill only if still empty — never stomp the SSR seed or a user edit.
@@ -1089,6 +1091,31 @@ export default function DashboardClient({
       addToast("error", language === "german" ? "Einstellung konnte nicht gespeichert werden." : "Failed to save setting.");
     });
   }, [addToast, language, wrapperModules]);
+  const updateAiModel = useCallback((model: string) => {
+    const prev = aiModel;
+    setAiModel(model);
+    fetch('/api/settings', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'update_aimodel', aiModel: model })
+    }).then(res => res.json()).then(data => {
+      if (data.error) { setAiModel(prev); addToast("error", `${language === "german" ? "Fehler" : "Error"}: ${data.error}`); return; }
+      if (data.aiModel) setAiModel(data.aiModel);
+    }).catch(err => { console.error(err); setAiModel(prev); addToast("error", language === "german" ? "Einstellung konnte nicht gespeichert werden." : "Failed to save setting."); });
+  }, [addToast, language, aiModel]);
+  // "" / "default" removes the per-step override (→ default model).
+  const updateStepModel = useCallback((step: string, model: string) => {
+    const prev = stepModels;
+    const next = { ...prev };
+    if (!model || model === "default") delete next[step]; else next[step] = model;
+    setStepModels(next);
+    fetch('/api/settings', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'update_step_models', stepModels: next })
+    }).then(res => res.json()).then(data => {
+      if (data.error) { setStepModels(prev); addToast("error", `${language === "german" ? "Fehler" : "Error"}: ${data.error}`); return; }
+      if (data.stepModels && typeof data.stepModels === "object") setStepModels(data.stepModels);
+    }).catch(err => { console.error(err); setStepModels(prev); addToast("error", language === "german" ? "Einstellung konnte nicht gespeichert werden." : "Failed to save setting."); });
+  }, [addToast, language, stepModels]);
   const handleInteractiveAnswer = useCallback((taskId: string, text: string) => {
     setIndividualAnswers(prev => ({ ...prev, [taskId]: text }));
   }, []);
@@ -2167,7 +2194,7 @@ export default function DashboardClient({
       // Topic is auto-derived from the material during generation (blueprint KERNTHEMA).
       formData.append("subjectSub", "");
       formData.append("language", language);
-      formData.append("modelName", generationModel);
+      formData.append("modelName", aiModel);
       if (textInput.trim()) formData.append("content", textInput);
       uploadedFiles.forEach(file => formData.append("files", file));
 
@@ -2293,7 +2320,7 @@ export default function DashboardClient({
           itemId: selectedReview.id,
           studentAnswers: payloadAnswers,
           language: language,
-          modelName: gradingModel,
+          modelName: aiModel,
           // Verständnis-Check: same pipeline, but the outcome is only the
           // score — schedule, levels and logs stay untouched server-side.
           ...(comprehensionMode ? { comprehension: true } : {}),
@@ -2378,7 +2405,7 @@ export default function DashboardClient({
       window.clearTimeout(timeoutId);
       setIsGrading(false); // never leave the grading spinner stuck
     }
-  }, [selectedReview, isGrading, studentAnswers, parsedTasks, individualAnswers, answerSketches, language, gradingModel, fetchReviews, addToast, comprehensionMode, stopInteractive]);
+  }, [selectedReview, isGrading, studentAnswers, parsedTasks, individualAnswers, answerSketches, language, aiModel, fetchReviews, addToast, comprehensionMode, stopInteractive]);
 
   /**
    * Verständnis-Check button (library): stream the quiz generation, then drop
@@ -2398,7 +2425,7 @@ export default function DashboardClient({
       const res = await fetch("/api/comprehension", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ itemId: item.id, language, modelName: gradingModel }),
+        body: JSON.stringify({ itemId: item.id, language, modelName: aiModel }),
         signal: abortController.signal,
       });
 
@@ -2440,7 +2467,7 @@ export default function DashboardClient({
       window.clearTimeout(timeoutId);
       setCompGen(null);
     }
-  }, [compGen, language, gradingModel, upcomingReviews, startQuiz, addToast]);
+  }, [compGen, language, aiModel, upcomingReviews, startQuiz, addToast]);
 
   // CRAFT.md §3 — global keyboard shortcuts (companion to the Escape effect
   // above). Lives below startQuiz/handleGrade because const declarations
@@ -3606,20 +3633,6 @@ export default function DashboardClient({
                       />
                     </div>
                     <div>
-                      {/* IA-5 — the model choice is a quiet control above; the action row is one full-width primary button */}
-                      <div className="flex items-center justify-end gap-2 mb-3">
-                        <label htmlFor="generation-model" className="caps-label">{language === "german" ? "Modell" : "Model"}</label>
-                        <select
-                          id="generation-model"
-                          value={generationModel}
-                          onChange={e => setGenerationModel(e.target.value)}
-                          className={MODEL_PICKER_CLASS}
-                        >
-                          <option value="gemini-3.5-flash">3.5 Flash (Standard)</option>
-                          <option value="gemini-3.1-pro-preview">3.1 Pro (Preview)</option>
-                          <option value="gemini-3.1-flash-lite">3.1 Flash-Lite</option>
-                        </select>
-                      </div>
                       <button
                         onClick={handleGenerate}
                         disabled={isGenerating || (!textInput.trim() && uploadedFiles.length === 0) || !subjectInput.trim()}
@@ -4965,20 +4978,6 @@ export default function DashboardClient({
                               </div>
                             );
                           })()}
-                          {/* IA-5 — quiet model picker above; the action row is one full-width primary button */}
-                          <div className="flex items-center justify-end gap-2 mb-2.5">
-                            <label htmlFor="grading-model-tasks" className="caps-label">{language === "german" ? "Modell" : "Model"}</label>
-                            <select
-                              id="grading-model-tasks"
-                              value={gradingModel}
-                              onChange={e => setGradingModel(e.target.value)}
-                              className={MODEL_PICKER_CLASS}
-                            >
-                              <option value="gemini-3.5-flash">3.5 Flash (Standard)</option>
-                              <option value="gemini-3.1-pro-preview">3.1 Pro (Preview)</option>
-                              <option value="gemini-3.1-flash-lite">3.1 Flash-Lite</option>
-                            </select>
-                          </div>
                           <motion.button
                             {...pressable}
                             onClick={handleGrade}
@@ -5063,20 +5062,6 @@ export default function DashboardClient({
                           </motion.div>
                         )}
                         </AnimatePresence>
-                        {/* IA-5 — quiet model picker above; the action row is one full-width primary button */}
-                        <div className="flex items-center justify-end gap-2 mb-2.5">
-                          <label htmlFor="grading-model-free" className="caps-label">{language === "german" ? "Modell" : "Model"}</label>
-                          <select
-                            id="grading-model-free"
-                            value={gradingModel}
-                            onChange={e => setGradingModel(e.target.value)}
-                            className={MODEL_PICKER_CLASS}
-                          >
-                            <option value="gemini-3.5-flash">3.5 Flash (Standard)</option>
-                            <option value="gemini-3.1-pro-preview">3.1 Pro (Preview)</option>
-                            <option value="gemini-3.1-flash-lite">3.1 Flash-Lite</option>
-                          </select>
-                        </div>
                         <motion.button
                           {...pressable}
                           onClick={handleGrade}
@@ -5941,48 +5926,45 @@ export default function DashboardClient({
                 </div>
 
                 <div className="pt-6 border-t border-(--hairline-card)">
-                  <h5 className="caps-label mb-3">{language === "german" ? "Wrapper pro KI-Schritt" : "Wrapper per AI step"}</h5>
+                  <h5 className="caps-label mb-3">{language === "german" ? "KI-Modell" : "AI model"}</h5>
                   <p className="text-xs text-ink-600 mb-4 leading-relaxed">
                     {language === "german"
-                      ? "Aktiviere den Gemini-Proxy für einzelne KI-Schritte (z. B. Blueprint, Tutor-Prompt-Generatoren, Co-Prüfer). Aktiv = dieser Schritt läuft über den Proxy; aus = offizielle Google API. Die offizielle API bleibt immer der sichere Fallback (die native Datei wird bei jedem Fallback ohnehin hochgeladen)."
-                      : "Turn the Gemini proxy on for individual AI steps (e.g. blueprint, the tutor-prompt generators, co-examiners). On = that step runs through the proxy; off = the official Google API. The official API is always the safe fallback (the native file is uploaded on any fallback regardless)."}
+                      ? "Standard-Modell für alle KI-Schritte. Modell und Wrapper einzelner Schritte kannst du im Popup pro Schritt überschreiben."
+                      : "Default model for every AI step. Override the model and the wrapper of individual steps in the popup."}
                   </p>
-                  {(isGenerating || isGrading) && (
-                    <div className="mb-4 text-xs font-semibold text-ink-600 flex items-center gap-2">
-                      <LockClosedIcon className="w-3.5 h-3.5" />
-                      {language === "german" ? "Einstellungen gesperrt, während eine KI-Aktion läuft." : "Settings locked while an AI task is running."}
-                    </div>
-                  )}
-                  <div className="flex flex-col gap-1.5">
-                    {WRAPPER_STEPS.map(step => {
-                      const on = !!wrapperModules[step.key];
-                      return (
-                        <button
-                          key={step.key}
-                          type="button"
-                          disabled={isGenerating || isGrading}
-                          onClick={() => toggleWrapperModule(step.key)}
-                          aria-pressed={on}
-                          className={`flex items-center justify-between gap-3 px-3.5 h-11 rounded-xl border transition-colors cursor-pointer text-left ${on ? "bg-(--accent-wash-soft) border-(--accent-border-soft)" : "bg-paper-1 border-(--hairline-card) hover:bg-paper-2"} ${(isGenerating || isGrading) ? "opacity-50 !cursor-not-allowed" : ""}`}
-                        >
-                          <span className={`text-[13px] font-medium truncate ${on ? "text-(--accent-text-strong)" : "text-ink-900"}`}>{language === "german" ? step.de : step.en}</span>
-                          <span className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 transition-colors ${on ? "bg-(--a-g2) border-transparent" : "border-(--line)"}`}>
-                            {on && <CheckIcon className="w-3.5 h-3.5 text-(--accent-on)" strokeWidth={2.5} />}
-                          </span>
-                        </button>
-                      );
-                    })}
+                  <div className="segmented">
+                    {MODEL_OPTIONS.map(m => (
+                      <button
+                        key={m.id}
+                        onClick={() => updateAiModel(m.id)}
+                        className="segmented-item whitespace-nowrap"
+                        data-active={aiModel === m.id}
+                        aria-pressed={aiModel === m.id}
+                      >
+                        {m.label}
+                      </button>
+                    ))}
                   </div>
-                  <a
-                    href="https://aistudio-api-150434442017.europe-west1.run.app"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 mt-4 text-xs text-(--accent-text) hover:text-(--accent-text-strong) transition-colors cursor-pointer"
-                    style={{ fontWeight: 550 }}
-                  >
-                    {language === "german" ? "Proxy-Admin öffnen (Login & Konto)" : "Open proxy admin (login & account)"}
-                    <ArrowTopRightOnSquareIcon className="w-3.5 h-3.5" />
-                  </a>
+                  <div className="flex flex-wrap items-center gap-4 mt-4">
+                    <button
+                      type="button"
+                      onClick={() => setShowStepCustomize(true)}
+                      className="inline-flex items-center gap-2 h-10 px-4 rounded-xl border border-(--line) bg-paper-1 hover:bg-paper-2 text-[13px] font-semibold text-ink-900 transition-colors cursor-pointer"
+                    >
+                      {language === "german" ? "Pro KI-Schritt anpassen" : "Customise per step"}
+                      <ChevronDownIcon className="w-3.5 h-3.5 -rotate-90 text-ink-400" strokeWidth={2} />
+                    </button>
+                    <a
+                      href="https://aistudio-api-150434442017.europe-west1.run.app"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-xs text-(--accent-text) hover:text-(--accent-text-strong) transition-colors cursor-pointer"
+                      style={{ fontWeight: 550 }}
+                    >
+                      {language === "german" ? "Proxy-Admin öffnen" : "Open proxy admin"}
+                      <ArrowTopRightOnSquareIcon className="w-3.5 h-3.5" />
+                    </a>
+                  </div>
                 </div>
 
                 <div className="pt-6 border-t border-(--hairline-card)">
@@ -6071,6 +6053,87 @@ export default function DashboardClient({
                       ? (language === "german" ? "Wirklich auf Semester 1 zurücksetzen? Erneut klicken" : "Really reset to Semester 1? Click again")
                       : (language === "german" ? "Auf Semester 1 zurücksetzen" : "Reset to Semester 1")}
                   </button>
+                </div>
+              </div>
+            </ModalDialog>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Per-step Customise popup: wrapper on/off + model per Gemini step */}
+      <AnimatePresence>
+        {showStepCustomize && (
+          <motion.div
+            key="step-customize-overlay"
+            {...overlayMotion}
+            className="fixed inset-0 z-[85] bg-(--overlay) backdrop-blur-[3px] flex items-stretch justify-center sm:items-center sm:p-4"
+            onClick={() => setShowStepCustomize(false)}
+          >
+            <ModalDialog
+              labelledBy="step-customize-title"
+              className="card-glass w-full flex flex-col overflow-hidden border border-(--line-soft) max-sm:!rounded-none max-sm:h-full sm:max-w-[600px] sm:max-h-[85dvh]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="shrink-0 flex justify-between items-start gap-3 px-5 sm:px-8 pt-[max(1.25rem,env(safe-area-inset-top))] sm:pt-8 pb-4 border-b border-(--hairline-card)">
+                <div>
+                  <h3 id="step-customize-title" className="font-display text-xl text-ink-900 tracking-[-0.015em]" style={{ fontWeight: 480 }}>
+                    {language === "german" ? "Pro KI-Schritt" : "Per AI step"}
+                  </h3>
+                  <p className="text-[13px] text-ink-600 mt-1.5">
+                    {language === "german" ? "Wrapper und Modell je Gemini-Schritt. „Standard“ = Standard-Modell." : "Wrapper and model per Gemini step. “Default” = the default model."}
+                  </p>
+                </div>
+                <Tip label={language === "german" ? "Schließen — Esc" : "Close — Esc"}>
+                  <button onClick={() => setShowStepCustomize(false)} className="w-8 h-8 flex items-center justify-center rounded-[10px] text-ink-400 hover:text-ink-900 hover:bg-(--hairline) transition-colors cursor-pointer shrink-0">
+                    <XMarkIcon className="w-4 h-4" />
+                  </button>
+                </Tip>
+              </div>
+              <div className="flex-1 overflow-y-auto overscroll-contain custom-scrollbar px-5 sm:px-8 py-6 pb-[max(1.75rem,env(safe-area-inset-bottom))]">
+                {(isGenerating || isGrading) && (
+                  <div className="mb-4 text-xs font-semibold text-ink-600 flex items-center gap-2">
+                    <LockClosedIcon className="w-3.5 h-3.5" />
+                    {language === "german" ? "Gesperrt, während eine KI-Aktion läuft." : "Locked while an AI task is running."}
+                  </div>
+                )}
+                <div className="flex items-center gap-3 px-3 pb-1.5">
+                  <span className="flex-1 caps-label !text-ink-400">{language === "german" ? "Schritt" : "Step"}</span>
+                  <span className="w-12 text-center caps-label !text-ink-400">Wrapper</span>
+                  <span className="w-[128px] caps-label !text-ink-400">{language === "german" ? "Modell" : "Model"}</span>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  {WRAPPER_STEPS.map(step => {
+                    const on = !!wrapperModules[step.key];
+                    const model = stepModels[step.key] || "default";
+                    const locked = isGenerating || isGrading;
+                    return (
+                      <div key={step.key} className="flex items-center gap-3 px-3 h-12 rounded-xl border border-(--hairline-card) bg-paper-1">
+                        <span className="flex-1 text-[13px] font-medium text-ink-900 truncate">{language === "german" ? step.de : step.en}</span>
+                        <button
+                          type="button"
+                          disabled={locked}
+                          onClick={() => toggleWrapperModule(step.key)}
+                          aria-pressed={on}
+                          aria-label={`Wrapper ${language === "german" ? step.de : step.en}`}
+                          className={`w-12 flex justify-center ${locked ? "opacity-50 !cursor-not-allowed" : "cursor-pointer"}`}
+                        >
+                          <span className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 transition-colors ${on ? "bg-(--a-g2) border-transparent" : "border-(--line)"}`}>
+                            {on && <CheckIcon className="w-3.5 h-3.5 text-(--accent-on)" strokeWidth={2.5} />}
+                          </span>
+                        </button>
+                        <select
+                          disabled={locked}
+                          value={model}
+                          onChange={(e) => updateStepModel(step.key, e.target.value)}
+                          aria-label={`${language === "german" ? "Modell" : "Model"} ${language === "german" ? step.de : step.en}`}
+                          className="input-dark w-[128px] h-9 px-2 text-[13px] shrink-0 disabled:opacity-50"
+                        >
+                          <option value="default">{language === "german" ? "Standard" : "Default"}</option>
+                          {MODEL_OPTIONS.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
+                        </select>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </ModalDialog>
