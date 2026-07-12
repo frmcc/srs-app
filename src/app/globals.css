@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+/* `short:` — viewports too short for a comfortable centered modal (landscape
+   phones, height ≤ 600px). Used to compact the Settings sheet header there.
+   iPad/desktop (height > 600) and portrait phones keep the full header. */
+@custom-variant short (@media (max-height: 600px));
+
 /* ============================================================
    SRS Master — "Paper & Ember" + Appearance system
    Warm paper neutrals, ink-dark text, ONE scarce accent.

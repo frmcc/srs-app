@@ -796,6 +796,24 @@ function ModalDialog({
   );
 }
 
+/**
+ * A titled cluster of related settings. The serif title sits one tier above the
+ * uppercase `.caps-label` section headers, so Settings reads as a few labelled
+ * groups instead of one flat run of equal-rank rows. Groups are divided by a
+ * single hairline (`first` omits it); sections inside a group are 24px apart.
+ * This replaces the old per-section hairline — fewer rules, clearer structure.
+ */
+function SettingsGroup({ title, children, first = false }: { title: string; children: ReactNode; first?: boolean }) {
+  return (
+    <section className={first ? "" : "pt-8 border-t border-(--hairline-card)"}>
+      <h4 className="font-display text-[15px] text-ink-900 tracking-[-0.01em] mb-4" style={{ fontWeight: 500 }}>
+        {title}
+      </h4>
+      <div className="space-y-6">{children}</div>
+    </section>
+  );
+}
+
 export default function DashboardClient({
   initialItems,
   userName,
@@ -5497,20 +5515,24 @@ export default function DashboardClient({
           <motion.div
             key="settings-overlay"
             {...overlayMotion}
-            className="fixed inset-0 flex items-center justify-center p-4 z-[80] bg-(--overlay) backdrop-blur-[3px]"
+            className="fixed inset-0 z-[80] bg-(--overlay) backdrop-blur-[3px] flex items-stretch justify-center sm:items-center sm:p-4"
             onClick={closeSettingsModal}
           >
             <ModalDialog
               labelledBy="settings-modal-title"
-              className="card-glass p-6 md:p-8 w-full max-w-[560px] border border-(--line-soft) max-h-[85dvh] overflow-y-auto overscroll-contain custom-scrollbar"
+              className="card-glass w-full flex flex-col overflow-hidden border border-(--line-soft) max-sm:!rounded-none max-sm:h-full sm:max-w-[560px] sm:max-h-[85dvh]"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex justify-between items-start mb-7">
+              {/* Pinned header — the body scrolls beneath it, so Close is always in
+                  reach on the full-height mobile sheet. Safe-area top inset on mobile. */}
+              <div className="shrink-0 flex justify-between items-start gap-3 px-5 sm:px-8 pt-[max(1.25rem,env(safe-area-inset-top))] sm:pt-8 short:!pt-4 pb-4 sm:pb-5 short:!pb-3 border-b border-(--hairline-card)">
                 <div>
                   <h3 id="settings-modal-title" className="font-display text-xl text-ink-900 tracking-[-0.015em]" style={{ fontWeight: 480 }}>
                     {language === "german" ? "Einstellungen" : "Settings"}
                   </h3>
-                  <p className="text-[13px] text-ink-600 mt-1.5">
+                  {/* Subtitle is nice-to-have; hidden on short (landscape-phone) screens
+                      so the header doesn't dominate the centered card. */}
+                  <p className="text-[13px] text-ink-600 mt-1.5 short:hidden">
                     {language === "german" ? "Semester, Module, Sprache und Stimme." : "Semester, modules, language, and voice."}
                   </p>
                 </div>
@@ -5524,10 +5546,13 @@ export default function DashboardClient({
                 </Tip>
               </div>
 
-              <div className="space-y-7">
+              {/* Scrollable body — each group carries its own top hairline (via
+                  SettingsGroup), so no space-y here; sections within a group are 24px. */}
+              <div className="flex-1 overflow-y-auto overscroll-contain custom-scrollbar px-5 sm:px-8 py-6 sm:py-7 pb-[max(1.75rem,env(safe-area-inset-bottom))]">
                 {/* ── Appearance — theme & accent (APPEARANCE.md · 7a) ── */}
+                <SettingsGroup first title={language === "german" ? "Darstellung" : "Appearance"}>
                 <div>
-                  <h4 className="caps-label mb-3">Theme</h4>
+                  <h5 className="caps-label mb-3">Theme</h5>
                   <p className="text-xs text-ink-600 mb-4">
                     {language === "german" ? "Wie dein Lernraum beleuchtet ist — speichert sich von selbst." : "How your study space is lit — it saves itself."}
                   </p>
@@ -5589,7 +5614,7 @@ export default function DashboardClient({
                     })}
                   </div>
 
-                  <h4 className="caps-label mt-6 mb-3">{language === "german" ? "Akzent" : "Accent"}</h4>
+                  <h5 className="caps-label mt-6 mb-3">{language === "german" ? "Akzent" : "Accent"}</h5>
                   <div className="flex items-center gap-4">
                     {APPEARANCE_ACCENTS.map((accent) => {
                       const sw = ACCENT_SWATCH[accent];
@@ -5639,8 +5664,11 @@ export default function DashboardClient({
                     {language === "german" ? "Bestanden bleibt Salbei, Wiederholen bleibt Ton — Noten behalten ihre Farben in jedem Theme." : "Passed stays sage, repeat stays clay — grades keep their colours in every theme."}
                   </p>
                 </div>
+                </SettingsGroup>
+
+                <SettingsGroup title={language === "german" ? "Studium" : "Study"}>
                 <div>
-                  <h4 className="caps-label mb-3">{language === "german" ? "Aktuelles Semester" : "Current semester"}</h4>
+                  <h5 className="caps-label mb-3">{language === "german" ? "Aktuelles Semester" : "Current semester"}</h5>
                   <div className="bg-paper-0 border border-(--hairline) rounded-[14px] px-4 py-4 flex items-center justify-between">
                     <div>
                       <div className="font-display text-2xl font-medium text-ink-900">Semester {currentSemester}</div>
@@ -5653,7 +5681,7 @@ export default function DashboardClient({
                 </div>
 
                 <div>
-                  <h4 className="caps-label mb-3">{language === "german" ? "Modul-Voreinstellungen" : "Module presets"}</h4>
+                  <h5 className="caps-label mb-3">{language === "german" ? "Modul-Voreinstellungen" : "Module presets"}</h5>
                   <div className="space-y-2 mb-3">
                     {modulePresets.length === 0 ? (
                       <div className="text-ink-400 text-sm italic py-2">{language === "german" ? "Noch keine Module definiert." : "No modules defined yet."}</div>
@@ -5713,8 +5741,8 @@ export default function DashboardClient({
                   </div>
                 </div>
 
-                <div className="pt-6 border-t border-(--hairline-card)">
-                  <h4 className="caps-label mb-3">{language === "german" ? "Sprache" : "Language"}</h4>
+                <div>
+                  <h5 className="caps-label mb-3">{language === "german" ? "Sprache" : "Language"}</h5>
                   <div className="segmented">
                     <button
                       onClick={() => {
@@ -5774,11 +5802,14 @@ export default function DashboardClient({
                   </div>
                 </div>
 
+                </SettingsGroup>
+
+                <SettingsGroup title={language === "german" ? "Mitteilungen & Sync" : "Notifications & sync"}>
                 {/* IA-12 — notifications live in Settings now (they were the only
                     non-navigating "nav item"). The iOS add-to-home-screen guidance,
                     previously only a transient error toast, is stated inline. */}
-                <div className="pt-6 border-t border-(--hairline-card)">
-                  <h4 className="caps-label mb-3">{language === "german" ? "Mitteilungen" : "Notifications"}</h4>
+                <div>
+                  <h5 className="caps-label mb-3">{language === "german" ? "Mitteilungen" : "Notifications"}</h5>
                   <div className="flex items-center justify-between gap-4">
                     <div className="flex items-center gap-3 min-w-0">
                       {pushPermission === "granted" && pushSubscribed ? (
@@ -5829,8 +5860,8 @@ export default function DashboardClient({
                     inside the dashboard's "Upcoming" section, so a brand-new or fully-caught-up
                     user (no scheduled items) otherwise has no path to it — and no way back to
                     unsubscribe or re-copy the URL. */}
-                <div className="pt-6 border-t border-(--hairline-card)">
-                  <h4 className="caps-label mb-3">{language === "german" ? "Kalender" : "Calendar"}</h4>
+                <div>
+                  <h5 className="caps-label mb-3">{language === "german" ? "Kalender" : "Calendar"}</h5>
                   <div className="flex items-center justify-between gap-4">
                     <div className="flex items-center gap-3 min-w-0">
                       <CalendarDaysIcon className="w-[18px] h-[18px] shrink-0 text-ink-400" strokeWidth={1.6} />
@@ -5857,7 +5888,9 @@ export default function DashboardClient({
                     "Erweitert / Advanced" disclosure (default closed) so changing the
                     language or a module preset no longer scrolls past Cloud-Run proxy
                     vocabulary. Semesterwechsel stays OUT (student-facing) and visible below. */}
-                <div className="pt-6 border-t border-(--hairline-card)">
+                </SettingsGroup>
+
+                <div className="pt-8 border-t border-(--hairline-card)">
                   <button
                     type="button"
                     onClick={() => setShowAdvancedSettings(v => !v)}
@@ -5865,7 +5898,7 @@ export default function DashboardClient({
                     className="w-full flex items-center justify-between gap-3 cursor-pointer group text-left"
                   >
                     <div>
-                      <h4 className="caps-label">{language === "german" ? "Erweitert" : "Advanced"}</h4>
+                      <h4 className="font-display text-[15px] text-ink-900 tracking-[-0.01em]" style={{ fontWeight: 500 }}>{language === "german" ? "Erweitert" : "Advanced"}</h4>
                       <p className="text-xs text-ink-400 mt-1">{language === "german" ? "Diktat, KI-Verbindung, PDF-Übertragung" : "Dictation, AI connection, PDF delivery"}</p>
                     </div>
                     <motion.span animate={{ rotate: showAdvancedSettings ? 180 : 0 }} transition={springTactile} className="shrink-0 text-ink-400 group-hover:text-ink-600 transition-colors">
@@ -5878,7 +5911,7 @@ export default function DashboardClient({
                         <div className="space-y-7">
 
                 <div className="pt-6 border-t border-(--hairline-card)">
-                  <h4 className="caps-label mb-3">{language === "german" ? "Interaktiver Modus · Diktat" : "Interactive mode · dictation"}</h4>
+                  <h5 className="caps-label mb-3">{language === "german" ? "Interaktiver Modus · Diktat" : "Interactive mode · dictation"}</h5>
                   <p className="text-xs text-ink-600 mb-4 leading-relaxed">
                     {language === "german"
                       ? "Hybrid (empfohlen): Die Browser-Diktierfunktion schreibt sofort mit — sagst du „nächste Aufgabe“, ersetzt die KI-Transkription deine Antwort automatisch in besserer Qualität. Gemini: nur KI (verzögert, aber zuverlässig auf dem iPhone). Standard: nur Browser (sofort, ohne KI-Korrektur)."
@@ -5913,7 +5946,7 @@ export default function DashboardClient({
                 </div>
 
                 <div className="pt-6 border-t border-(--hairline-card)">
-                  <h4 className="caps-label mb-3">{language === "german" ? "KI-Verbindung pro Modul" : "AI connection per module"}</h4>
+                  <h5 className="caps-label mb-3">{language === "german" ? "KI-Verbindung pro Modul" : "AI connection per module"}</h5>
                   <p className="text-xs text-ink-600 mb-4 leading-relaxed">
                     {language === "german"
                       ? "Aktiviere den Gemini-Proxy für einzelne Module. Aktiv = Generierung und Bewertung dieses Moduls laufen über den Proxy; aus = offizielle Google API. Die offizielle API bleibt immer der sichere Fallback (die native Datei wird bei jedem Fallback ohnehin hochgeladen)."
@@ -5966,7 +5999,7 @@ export default function DashboardClient({
                 </div>
 
                 <div className="pt-6 border-t border-(--hairline-card)">
-                  <h4 className="caps-label mb-3">{language === "german" ? "Proxy: PDF-Übertragung" : "Proxy: PDF delivery"}</h4>
+                  <h5 className="caps-label mb-3">{language === "german" ? "Proxy: PDF-Übertragung" : "Proxy: PDF delivery"}</h5>
                   <p className="text-xs text-ink-600 mb-4 leading-relaxed">
                     {language === "german"
                       ? "Gilt nur für den Gemini Proxy — die offizielle Gemini API nutzt immer ihren nativen File-Upload. Inline schickt PDFs als Base64 direkt in der Proxy-Anfrage mit (zuverlässig bis ~14 MB, unabhängig vom Proxy-Konto). File-Upload lädt die Datei einmal über den Upload-Proxy hoch und verweist nur noch darauf — spart Bandbreite bei mehreren Schritten, hängt aber am Proxy-Konto, das die Datei hochgeladen hat."
@@ -6007,7 +6040,7 @@ export default function DashboardClient({
                 </div>
                 {/* /IA-13 Advanced disclosure — Semesterwechsel stays outside it */}
 
-                <div className="pt-6 border-t border-(--grade-fail-border)">
+                <div className="pt-8 border-t border-(--grade-fail-border)">
                   <h4 className="caps-label !text-(--grade-fail-text) mb-2">{language === "german" ? "Semesterwechsel" : "Semester change"}</h4>
                   <p className="text-ink-600 text-xs mb-4 leading-relaxed">{language === "german" ? "Der Start eines neuen Semesters erhöht den Semesterzähler und löscht deine aktuellen Modul-Voreinstellungen." : "Starting a new semester will increment your semester counter and wipe your current module presets so you can start fresh."}</p>
                   <button
