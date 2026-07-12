@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db";
 import { GoogleGenAI } from "@google/genai";
 import { GRADE_PROMPTS } from "@/app/api/grade/prompts";
-import { PROMPTS } from "@/app/api/quiz/prompts";
+import { PROMPTS, STUDENT_CONTEXT } from "@/app/api/quiz/prompts";
 import { downloadFromDrive, createGoogleDoc } from "@/lib/google-drive";
 import { sendPushNotification } from "@/lib/push";
 import { generateContentWithRetry, normalizeFileTransport } from "@/lib/gemini-retry";
@@ -454,7 +454,7 @@ export async function runGradingPipeline(opts: {
       nextIntervalLabel = generationStage === 5 ? "Tag 180" : "Tag 365";
     }
 
-    nextQuizInstruction = formatPrompt(nextPrompt, { SUBJECT: subject, NEXT_INTERVAL: nextIntervalLabel, NEXT_INTERVAL_LABEL: nextIntervalLabel }) + languageInstruction;
+    nextQuizInstruction = formatPrompt(nextPrompt, { SUBJECT: subject, NEXT_INTERVAL: nextIntervalLabel, NEXT_INTERVAL_LABEL: nextIntervalLabel }) + STUDENT_CONTEXT + languageInstruction;
     const nextQuizCall = generateContentWithRetry(ai, modelName, {
       contents: [{ role: "user", parts: nextQuizParts as never }],
       config: { systemInstruction: nextQuizInstruction },
@@ -480,7 +480,7 @@ export async function runGradingPipeline(opts: {
     remedialQuizParts.push({ text: `Fehleranalyse des Graders:\n${chefFeedback}` });
     remedialQuizParts.push({ text: "Hier sind die Dateien. Bitte führe deine System-Instruktionen aus." });
 
-    nextQuizInstruction = formatPrompt(GRADE_PROMPTS.retry_quiz_fail, { SUBJECT: subject, INTERVAL: interval }) + languageInstruction;
+    nextQuizInstruction = formatPrompt(GRADE_PROMPTS.retry_quiz_fail, { SUBJECT: subject, INTERVAL: interval }) + STUDENT_CONTEXT + languageInstruction;
     const nextQuizCall = generateContentWithRetry(ai, modelName, {
       contents: [{ role: "user", parts: remedialQuizParts as never }],
       config: { systemInstruction: nextQuizInstruction },

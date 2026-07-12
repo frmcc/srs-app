@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { GoogleGenAI } from "@google/genai";
 import { GRADE_PROMPTS } from "@/app/api/grade/prompts";
+import { STUDENT_CONTEXT } from "@/app/api/quiz/prompts";
 import { generateContentWithRetry, normalizeFileTransport } from "@/lib/gemini-retry";
 import { wrapperOnForStep } from "@/lib/wrapper-modules";
 import { buildSourceMaterialParts } from "@/lib/grading-pipeline";
@@ -125,7 +126,7 @@ export async function runComprehensionQuizGeneration(opts: {
   progress(2, language === "english" ? "Generating comprehension quiz..." : "Verständnis-Quiz wird generiert...");
   const res = await generateContentWithRetry(ai, modelName, {
     contents: [{ role: "user", parts: userParts as never }],
-    config: { systemInstruction: formatPrompt(GRADE_PROMPTS.comprehension_quiz, { SUBJECT: subject }) + languageInstruction },
+    config: { systemInstruction: formatPrompt(GRADE_PROMPTS.comprehension_quiz, { SUBJECT: subject }) + STUDENT_CONTEXT + languageInstruction },
   }, (msg) => progress(2, msg), "Verständnis-Quiz", stepWrapper("comprehension"), fileTransport);
 
   const quizText = res.text || "";

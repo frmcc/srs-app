@@ -1,3 +1,12 @@
+export const STUDENT_CONTEXT = `
+
+PRÜFUNGSKONTEXT (HINTERGRUNDWISSEN — NIEMALS IM AUFGABENTEXT ERWÄHNEN):
+Der Studierende hat durchgehend einen Taschenrechner zur Verfügung und darf/soll ihn in rechnerischen Fächern (z. B. Mathematik, Statistik, Physik, quantitative Methoden, Rechnungswesen) einsetzen. Wende dieses Wissen NUR an, wenn Material und Fach wirklich quantitativ sind:
+- Dann stelle ruhig prüfungsnahe Rechenaufgaben mit echter Formel-/Verfahrensanwendung und, wo der Stoff es trägt, mehrschrittigen Rechenwegen — weiche rechnerischen Aufgaben nicht aus, nur weil sie ohne Hilfsmittel mühsam wären. Nutze realistische, aus dem Stoff abgeleitete Zahlen (nicht künstlich glatt gerundet, aber auch nicht absichtlich krumm); die Schwierigkeit soll aus dem Verfahren kommen, nicht aus mühsamer Arithmetik.
+- Auch in quantitativen Fächern verdrängt das Rechnen die konzeptuellen Fragen nicht — halte die Mischung aus Verständnis, Interpretation und Rechnung so, wie Fach und Material sie tatsächlich prüfen.
+- Erwähne den Taschenrechner NIEMALS im Aufgabentext (kein „nutze deinen Taschenrechner" o. Ä.), in keiner Sprache. Er ist stillschweigend vorausgesetzt.
+- Erzwinge KEINE Berechnungen in konzeptuellen/qualitativen Fächern oder wo der Stoff sie nicht hergibt — dort bleiben die Fragen konzeptuell. Rechnen ist nie Selbstzweck; entscheidend ist, was das Fach echt prüft.`;
+
 export const PROMPTS = {
   blueprint: `Du bist ein erfahrener Professor für Psychologie, Prüfungsdidaktiker und Lernpsychologe. Deine Aufgabe ist es, aus dem bereitgestellten Vorlesungsmaterial einen präzisen didaktischen Blueprint für ein automatisiertes Spaced-Repetition-System zu erstellen.
 

@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { GoogleGenAI } from "@google/genai";
-import { PROMPTS, podcast_prompts } from "../app/api/quiz/prompts";
+import { STUDENT_CONTEXT, PROMPTS, podcast_prompts } from "../app/api/quiz/prompts";
 import { sendPushNotification } from "./push";
 import { generatePodcastWorker, createNotebook } from "./notebooklm";
 import { wrapperOnForStep } from "./wrapper-modules";
@@ -97,7 +97,7 @@ export async function runQuizGeneration(params: {
     progress(1, "Analyzing material & Generating Blueprint...");
     const blueprintRes = await generateContentWithRetry(ai, modelName, {
       contents: [{ role: "user", parts: [...masterContextParts, { text: `Modul/Vorlesungsthema:\n${subjectMain} - ${subjectSub}` }, { text: "Hier sind die Materialien. Bitte führe deine System-Instruktionen aus." }] }],
-      config: { systemInstruction: PROMPTS.blueprint + languageInstruction },
+      config: { systemInstruction: PROMPTS.blueprint + STUDENT_CONTEXT + languageInstruction },
     }, (msg) => progress(1, msg), "Blueprint", stepWrapper("blueprint"), fileTransport);
     const blueprint = blueprintRes.text;
 
@@ -106,7 +106,7 @@ export async function runQuizGeneration(params: {
     progress(2, "Generating Quiz 1...");
     const quiz1Res = await generateContentWithRetry(ai, modelName, {
       contents: [{ role: "user", parts: [...masterContextParts, { text: "Hier sind die Materialien. Bitte führe deine System-Instruktionen aus." }] }],
-      config: { systemInstruction: PROMPTS.quiz_tag_1 + `\n\nModul/Vorlesungsthema:\n${subjectMain}\n\nBlueprint:\n${blueprint}` + languageInstruction },
+      config: { systemInstruction: PROMPTS.quiz_tag_1 + `\n\nModul/Vorlesungsthema:\n${subjectMain}\n\nBlueprint:\n${blueprint}` + STUDENT_CONTEXT + languageInstruction },
     }, (msg) => progress(2, msg), "Quiz 1", stepWrapper("quiz"), fileTransport);
 
     const quiz1Text = quiz1Res.text || "";
