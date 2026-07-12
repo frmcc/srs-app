@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { cache } from "react";
+import BrandLogo from "../../components/BrandLogo";
 import { ArrowLeftIcon } from "@heroicons/react/24/outline";
 import { CopyButton } from "./copy-button";
 
@@ -59,9 +60,7 @@ export default async function TutorPage({ params }: { params: Params }) {
       {/* Header bar */}
       <header className="sticky top-0 z-10 border-b border-(--hairline) bg-(--paper-0)/92 backdrop-blur-xl">
         <div className="mx-auto flex max-w-3xl items-center gap-4 px-6 py-4">
-          <div className="brand-tile flex h-10 w-10 shrink-0 items-center justify-center">
-            <span className="font-display italic font-semibold text-lg text-(--accent-on) -translate-y-px">S</span>
-          </div>
+          <BrandLogo className="h-10 w-10 rounded-[11px]" />
           <div className="min-w-0 flex-1">
             {/* IA-16: matches the "Tutor-Brief" chip. CC-12: brand italic uses
                 the accent-text token, not a hardcoded (low-contrast) amber-600. */}

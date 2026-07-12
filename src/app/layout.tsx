@@ -36,6 +36,8 @@ export const metadata: Metadata = {
   // iOS ignores manifest icons; supply an apple-touch-icon so "Add to Home
   // Screen" uses the app icon instead of a page screenshot. (public/icon-192.png)
   icons: {
+    icon: "/icon-192.png",
+    shortcut: "/icon-192.png",
     apple: "/icon-192.png",
   },
 };

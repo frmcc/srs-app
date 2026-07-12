@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
+import BrandLogo from "./components/BrandLogo";
 
 /**
  * Branded 404 (EM-7) — the tutor-brief page is linked from the library and
@@ -22,9 +23,7 @@ export default async function NotFound() {
   return (
     <main className="flex-1 flex items-center justify-center px-5 py-16">
       <div className="card-surface-elevated w-full max-w-[440px] px-8 py-12 flex flex-col items-center text-center">
-        <div className="brand-tile w-12 h-12 mb-7">
-          <span className="font-display italic font-semibold text-xl text-(--accent-on) -translate-y-px">S</span>
-        </div>
+        <BrandLogo className="w-12 h-12 rounded-[13px] mb-7" />
         <p className="caps-label mb-3">404</p>
         <h1 className="font-display text-[28px] tracking-[-0.015em] text-ink-900 leading-tight" style={{ fontWeight: 480 }}>
           {de ? "Diese Seite gibt es nicht mehr." : "This page no longer exists."}
