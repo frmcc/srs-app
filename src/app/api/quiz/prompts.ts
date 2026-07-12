@@ -46,6 +46,11 @@ INPUT:
 
 ERSTELLE DEN OUTPUT EXAKT IN FOLGENDER STRUKTUR.
 Gib keinen Text außerhalb der markierten Abschnitte aus.
+Beginne mit dem Abschnitt ===KERNTHEMA_START===: nenne dort prägnant das inhaltliche Säulen-Thema DIESES konkreten Materials in 2–8 Wörtern (z. B. „Klassische Konditionierung", „Hypothesentests und p-Werte", „Der Citratzyklus"). Wiederhole NICHT den Modul-/Kursnamen, schreibe keinen ganzen Satz und kein Satzzeichen am Ende. Gibt es mehrere gleichrangige Säulen, dann höchstens 2–3, getrennt durch „ · ".
+
+===KERNTHEMA_START===
+[nur das Kernthema, wie oben beschrieben]
+===KERNTHEMA_END===
 
 ===BLUEPRINT_START===
 

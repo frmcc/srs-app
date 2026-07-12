@@ -918,7 +918,6 @@ export default function DashboardClient({
   // Pre-selected module: seeded from the server-read presets so the upload
   // tab's select never flashes the "no modules" fallback (EM-5/PP-3).
   const [subjectInput, setSubjectInput] = useState(initialModulePresets[0] ?? "");
-  const [topicInput, setTopicInput] = useState("");
   const [textInput, setTextInput] = useState("");
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [isDragging, setIsDragging] = useState(false);
@@ -2165,7 +2164,8 @@ export default function DashboardClient({
     try {
       const formData = new FormData();
       formData.append("subjectMain", subjectInput.trim());
-      formData.append("subjectSub", topicInput.trim() || (language === "german" ? "Modul" : "Module"));
+      // Topic is auto-derived from the material during generation (blueprint KERNTHEMA).
+      formData.append("subjectSub", "");
       formData.append("language", language);
       formData.append("modelName", generationModel);
       if (textInput.trim()) formData.append("content", textInput);
@@ -3440,7 +3440,6 @@ export default function DashboardClient({
                             setIsGenerating(false);
                             setProgressStep(0);
                             setProgressMsg("");
-                            setTopicInput("");
                             setTextInput("");
                             setUploadedFiles([]);
                             // keep subjectInput (the module) for the next lecture
@@ -3456,7 +3455,6 @@ export default function DashboardClient({
                             setIsGenerating(false);
                             setProgressStep(0);
                             setProgressMsg("");
-                            setTopicInput("");
                             setSubjectInput(modulePresets[0] ?? "");
                             setTextInput("");
                             setUploadedFiles([]);
@@ -3513,17 +3511,6 @@ export default function DashboardClient({
                             <button onClick={() => { setShowSettingsModal(true); }} className="text-(--accent-text-strong) font-medium cursor-pointer shrink-0">{language === "german" ? "Hinzufügen" : "Add preset"}</button>
                           </div>
                         )}
-                      </div>
-                      <div className="flex-1 flex flex-col justify-end">
-                        <label htmlFor="upload-topic" className="caps-label block mb-2">{language === "german" ? "Thema" : "Topic"}</label>
-                        <input
-                          id="upload-topic"
-                          type="text"
-                          value={topicInput}
-                          onChange={e => setTopicInput(e.target.value)}
-                          placeholder={language === "german" ? "z.B. Gedächtnis & Motivation" : "e.g. Memory & Motivation"}
-                          className="input-dark w-full h-12 px-4"
-                        />
                       </div>
                     </div>
                     <div>

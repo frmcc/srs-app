@@ -96,10 +96,15 @@ export async function runQuizGeneration(params: {
     // ---- Step 1: Blueprint ----
     progress(1, "Analyzing material & Generating Blueprint...");
     const blueprintRes = await generateContentWithRetry(ai, modelName, {
-      contents: [{ role: "user", parts: [...masterContextParts, { text: `Modul/Vorlesungsthema:\n${subjectMain} - ${subjectSub}` }, { text: "Hier sind die Materialien. Bitte führe deine System-Instruktionen aus." }] }],
+      contents: [{ role: "user", parts: [...masterContextParts, { text: `Modul:\n${subjectMain}` }, { text: "Hier sind die Materialien. Bitte führe deine System-Instruktionen aus." }] }],
       config: { systemInstruction: PROMPTS.blueprint + STUDENT_CONTEXT + languageInstruction },
     }, (msg) => progress(1, msg), "Blueprint", stepWrapper("blueprint"), fileTransport);
-    const blueprint = blueprintRes.text;
+    // Auto-derive the lecture topic from the material: the blueprint's KERNTHEMA
+    // section names it, so the student only picks the module and never types a
+    // topic. Fall back to any passed subjectSub, then a generic label.
+    const blueprintRaw = blueprintRes.text || "";
+    const derivedSub = (extractSection(blueprintRaw, "===KERNTHEMA_START===", "===KERNTHEMA_END===").split("\n").map(l => l.trim()).filter(Boolean)[0] || subjectSub.trim() || "Vorlesung").slice(0, 120);
+    const blueprint = blueprintRaw.replace(/===KERNTHEMA_START===[\s\S]*?===KERNTHEMA_END===/, "").trim();
 
     // ---- Step 2: Quiz 1 (later quizzes are generated on-demand after grading) ----
     await heartbeat();
@@ -210,7 +215,7 @@ export async function runQuizGeneration(params: {
       const created = await tx.sRSItem.create({
         data: {
           subjectMain,
-          subjectSub,
+          subjectSub: derivedSub,
           semester: currentSemester,
           currentLevel: 0,
           nextReviewDate: new Date(Date.now() + 24 * 60 * 60 * 1000),
