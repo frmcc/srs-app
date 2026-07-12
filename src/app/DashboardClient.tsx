@@ -6098,7 +6098,7 @@ export default function DashboardClient({
                 )}
                 <div className="flex items-center gap-3 px-3 pb-1.5">
                   <span className="flex-1 caps-label !text-ink-400">{language === "german" ? "Schritt" : "Step"}</span>
-                  <span className="w-12 text-center caps-label !text-ink-400">Wrapper</span>
+                  <span className="w-16 text-center caps-label !text-ink-400">Wrapper</span>
                   <span className="w-[128px] caps-label !text-ink-400">{language === "german" ? "Modell" : "Model"}</span>
                 </div>
                 <div className="flex flex-col gap-1.5">
@@ -6115,7 +6115,7 @@ export default function DashboardClient({
                           onClick={() => toggleWrapperModule(step.key)}
                           aria-pressed={on}
                           aria-label={`Wrapper ${language === "german" ? step.de : step.en}`}
-                          className={`w-12 flex justify-center ${locked ? "opacity-50 !cursor-not-allowed" : "cursor-pointer"}`}
+                          className={`w-16 flex justify-center ${locked ? "opacity-50 !cursor-not-allowed" : "cursor-pointer"}`}
                         >
                           <span className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 transition-colors ${on ? "bg-(--a-g2) border-transparent" : "border-(--line)"}`}>
                             {on && <CheckIcon className="w-3.5 h-3.5 text-(--accent-on)" strokeWidth={2.5} />}
