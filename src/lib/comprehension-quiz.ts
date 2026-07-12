@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db";
 import { GoogleGenAI } from "@google/genai";
 import { GRADE_PROMPTS } from "@/app/api/grade/prompts";
 import { generateContentWithRetry, normalizeFileTransport } from "@/lib/gemini-retry";
-import { wrapperOnForModule } from "@/lib/wrapper-modules";
+import { wrapperOnForStep } from "@/lib/wrapper-modules";
 import { buildSourceMaterialParts } from "@/lib/grading-pipeline";
 import { extractSectionOr, formatPrompt } from "@/lib/markers";
 import { countTasks, intervalLabelFor } from "@/lib/srs";
@@ -45,7 +45,7 @@ export async function runComprehensionQuizGeneration(opts: {
   if (!srsItem) throw new Error("SRS item not found");
 
   const appConfig = await prisma.appConfig.findUnique({ where: { id: 1 } });
-  const useAiWrapper = wrapperOnForModule(appConfig?.wrapperModules, srsItem.subjectMain);
+  const stepWrapper = (step: string) => wrapperOnForStep(appConfig?.wrapperModules, step);
   const fileTransport = normalizeFileTransport(appConfig?.fileTransport);
   const language = opts.language || appConfig?.language || "german";
   const languageInstruction = `\n\nCRITICAL: You must generate ALL text, output, and responses strictly in ${language.toUpperCase()}. This applies to every section of the generated content.`;
@@ -126,7 +126,7 @@ export async function runComprehensionQuizGeneration(opts: {
   const res = await generateContentWithRetry(ai, modelName, {
     contents: [{ role: "user", parts: userParts as never }],
     config: { systemInstruction: formatPrompt(GRADE_PROMPTS.comprehension_quiz, { SUBJECT: subject }) + languageInstruction },
-  }, (msg) => progress(2, msg), "Verständnis-Quiz", useAiWrapper, fileTransport);
+  }, (msg) => progress(2, msg), "Verständnis-Quiz", stepWrapper("comprehension"), fileTransport);
 
   const quizText = res.text || "";
   // A quiz the grader can't count tasks in is unusable — fail BEFORE saving so

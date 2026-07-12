@@ -5,7 +5,7 @@ import { PROMPTS } from "@/app/api/quiz/prompts";
 import { downloadFromDrive, createGoogleDoc } from "@/lib/google-drive";
 import { sendPushNotification } from "@/lib/push";
 import { generateContentWithRetry, normalizeFileTransport } from "@/lib/gemini-retry";
-import { wrapperOnForModule } from "@/lib/wrapper-modules";
+import { wrapperOnForStep } from "@/lib/wrapper-modules";
 import { generateVideoPromptsWorker } from "@/lib/notebooklm";
 import { extractSection, extractSectionOr, formatPrompt, parseMismatchVerdict, parseAssessmentDecision, DecisionParseError } from "@/lib/markers";
 import { countTasks, currentQuizText, intervalLabelFor, nextReviewDateAfter, quizFieldForLevel, INTERVAL_LABELS } from "@/lib/srs";
@@ -187,7 +187,7 @@ export async function runGradingPipeline(opts: {
 
   const appConfig = await prisma.appConfig.findUnique({ where: { id: 1 } });
   // Per-module wrapper: on only when this item's module box is ticked.
-  const useAiWrapper = wrapperOnForModule(appConfig?.wrapperModules, srsItem.subjectMain);
+  const stepWrapper = (step: string) => wrapperOnForStep(appConfig?.wrapperModules, step);
   const fileTransport = normalizeFileTransport(appConfig?.fileTransport);
 
   const language = opts.language || appConfig?.language || "german";
@@ -270,7 +270,7 @@ export async function runGradingPipeline(opts: {
     // token MATCH/MISMATCH verbatim. Forcing German makes a compliant model
     // answer "ÜBEREINSTIMMUNG", which the parser can't read → the gate fails open.
     config: { systemInstruction: formatPrompt(GRADE_PROMPTS.mismatch_check, { QUIZ_QUESTIONS: studentQuizText }) },
-  }, (msg) => progress(0, msg), "Submission Check", useAiWrapper, fileTransport);
+  }, (msg) => progress(0, msg), "Submission Check", stepWrapper("mismatch"), fileTransport);
 
   const verdict = parseMismatchVerdict(mismatchCheckRes.text);
   if (verdict === true) throw new GradingMismatchError();
@@ -288,11 +288,11 @@ export async function runGradingPipeline(opts: {
     generateContentWithRetry(ai, modelName, {
       contents: [{ role: "user", parts: coUserParts as never }],
       config: { systemInstruction: formatPrompt(GRADE_PROMPTS.co_pruefer_1, { TOTAL_TASKS: totalTasks, SPLIT_POINT: splitPoint, SUBJECT: subject, INTERVAL: interval }) + languageInstruction },
-    }, (msg) => progress(1, msg), "Co-Prüfer 1", useAiWrapper, fileTransport),
+    }, (msg) => progress(1, msg), "Co-Prüfer 1", stepWrapper("copruefer"), fileTransport),
     generateContentWithRetry(ai, modelName, {
       contents: [{ role: "user", parts: coUserParts as never }],
       config: { systemInstruction: formatPrompt(GRADE_PROMPTS.co_pruefer_2, { TOTAL_TASKS: totalTasks, START_INDEX: startIdx2, SUBJECT: subject, INTERVAL: interval }) + languageInstruction },
-    }, (msg) => progress(1, msg), "Co-Prüfer 2", useAiWrapper, fileTransport),
+    }, (msg) => progress(1, msg), "Co-Prüfer 2", stepWrapper("copruefer"), fileTransport),
   ]);
 
   // Guard: if BOTH graders returned nothing (safety-blocked / empty candidates),
@@ -312,7 +312,7 @@ export async function runGradingPipeline(opts: {
   const chefRes = await generateContentWithRetry(ai, modelName, {
     contents: [{ role: "user", parts: chefUserParts as never }],
     config: { systemInstruction: formatPrompt(GRADE_PROMPTS.chef_pruefer, { SUBJECT: subject, INTERVAL: interval }) + languageInstruction },
-  }, (msg) => progress(2, msg), "Chief Assessor", useAiWrapper, fileTransport);
+  }, (msg) => progress(2, msg), "Chief Assessor", stepWrapper("chief_assessor"), fileTransport);
 
   let chefFeedback = chefRes.text || "";
   let isPass: boolean;
@@ -332,7 +332,7 @@ export async function runGradingPipeline(opts: {
         // Do NOT print both words together as an example — a model that echoes
         // the template would produce an ambiguous block. Ask for exactly one.
         + "\n\nWICHTIG: Beende deine Antwort mit einem Entscheidungsblock, der AUSSCHLIESSLICH dein Urteil enthält — entweder das Wort PASS oder das Wort REPEAT, niemals beide:\n===ASSESSMENT_DECISION_START===\n<hier NUR dein Urteil>\n===ASSESSMENT_DECISION_END===" },
-    }, (msg) => progress(2, msg), "Chief Assessor (Retry)", useAiWrapper, fileTransport);
+    }, (msg) => progress(2, msg), "Chief Assessor (Retry)", stepWrapper("chief_assessor"), fileTransport);
     chefFeedback = chefRetry.text || chefFeedback;
     isPass = parseAssessmentDecision(chefFeedback); // still unparseable ⇒ throws DecisionParseError
   }
@@ -403,7 +403,7 @@ export async function runGradingPipeline(opts: {
   const lmPromptCall = generateContentWithRetry(ai, modelName, {
     contents: [{ role: "user", parts: lmUserParts as never }],
     config: { systemInstruction: formatPrompt(isPass ? GRADE_PROMPTS.video_pass : GRADE_PROMPTS.video_repeat, { SUBJECT: subject, INTERVAL: interval }) + languageInstruction },
-  }, (msg) => progress(3, msg), "Video Prompts", useAiWrapper, fileTransport);
+  }, (msg) => progress(3, msg), "Video Prompts", stepWrapper("video_prompts"), fileTransport);
 
   let nextQuizText = "";
   let newLedgerText = "";
@@ -458,7 +458,7 @@ export async function runGradingPipeline(opts: {
     const nextQuizCall = generateContentWithRetry(ai, modelName, {
       contents: [{ role: "user", parts: nextQuizParts as never }],
       config: { systemInstruction: nextQuizInstruction },
-    }, (msg) => progress(3, msg), `Next Quiz (${nextIntervalLabel})`, useAiWrapper, fileTransport);
+    }, (msg) => progress(3, msg), `Next Quiz (${nextIntervalLabel})`, stepWrapper("next_quiz"), fileTransport);
 
     const [lmResult, nextQuizRes] = await Promise.all([lmPromptCall, nextQuizCall]);
     lmRes = lmResult;
@@ -484,7 +484,7 @@ export async function runGradingPipeline(opts: {
     const nextQuizCall = generateContentWithRetry(ai, modelName, {
       contents: [{ role: "user", parts: remedialQuizParts as never }],
       config: { systemInstruction: nextQuizInstruction },
-    }, (msg) => progress(3, msg), "Next Quiz (REPEAT)", useAiWrapper, fileTransport);
+    }, (msg) => progress(3, msg), "Next Quiz (REPEAT)", stepWrapper("next_quiz"), fileTransport);
 
     const [lmResult, nextQuizRes] = await Promise.all([lmPromptCall, nextQuizCall]);
     lmRes = lmResult;

@@ -65,6 +65,7 @@ import { createPortal } from "react-dom";
 import { useToasts, ToastStack } from "./components/Toast";
 import { Tip } from "./components/Tooltip";
 import { getAppearance, setAppearance, APPEARANCE_ACCENTS, type AppearancePref, type AppearanceAccent } from "@/lib/appearance";
+import { WRAPPER_STEPS } from "@/lib/wrapper-modules";
 import { useInteractiveQuiz, type DictationMode } from "./useInteractiveQuiz";
 import { AutoGrowTextarea } from "./components/AutoGrowTextarea";
 import { ScribbleCanvas } from "./components/ScribbleCanvas";
@@ -5953,11 +5954,11 @@ export default function DashboardClient({
                 </div>
 
                 <div className="pt-6 border-t border-(--hairline-card)">
-                  <h5 className="caps-label mb-3">{language === "german" ? "KI-Verbindung pro Modul" : "AI connection per module"}</h5>
+                  <h5 className="caps-label mb-3">{language === "german" ? "Wrapper pro KI-Schritt" : "Wrapper per AI step"}</h5>
                   <p className="text-xs text-ink-600 mb-4 leading-relaxed">
                     {language === "german"
-                      ? "Aktiviere den Gemini-Proxy für einzelne Module. Aktiv = Generierung und Bewertung dieses Moduls laufen über den Proxy; aus = offizielle Google API. Die offizielle API bleibt immer der sichere Fallback (die native Datei wird bei jedem Fallback ohnehin hochgeladen)."
-                      : "Turn the Gemini proxy on for individual modules. On = this module's generation and grading run through the proxy; off = the official Google API. The official API is always the safe fallback (the native file is uploaded on any fallback regardless)."}
+                      ? "Aktiviere den Gemini-Proxy für einzelne KI-Schritte (z. B. Blueprint, Tutor-Prompt-Generatoren, Co-Prüfer). Aktiv = dieser Schritt läuft über den Proxy; aus = offizielle Google API. Die offizielle API bleibt immer der sichere Fallback (die native Datei wird bei jedem Fallback ohnehin hochgeladen)."
+                      : "Turn the Gemini proxy on for individual AI steps (e.g. blueprint, the tutor-prompt generators, co-examiners). On = that step runs through the proxy; off = the official Google API. The official API is always the safe fallback (the native file is uploaded on any fallback regardless)."}
                   </p>
                   {(isGenerating || isGrading) && (
                     <div className="mb-4 text-xs font-semibold text-ink-600 flex items-center gap-2">
@@ -5965,34 +5966,26 @@ export default function DashboardClient({
                       {language === "german" ? "Einstellungen gesperrt, während eine KI-Aktion läuft." : "Settings locked while an AI task is running."}
                     </div>
                   )}
-                  {(() => {
-                    const moduleList = [...new Set([...rawItems.map(i => i.subjectMain), ...modulePresets].filter(Boolean))].sort((a, b) => a.localeCompare(b));
-                    if (moduleList.length === 0) {
-                      return <p className="text-xs text-ink-400 italic">{language === "german" ? "Noch keine Module — lade zuerst Material hoch." : "No modules yet — upload material first."}</p>;
-                    }
-                    return (
-                      <div className="flex flex-col gap-1.5">
-                        {moduleList.map(name => {
-                          const on = !!wrapperModules[name];
-                          return (
-                            <button
-                              key={name}
-                              type="button"
-                              disabled={isGenerating || isGrading}
-                              onClick={() => toggleWrapperModule(name)}
-                              aria-pressed={on}
-                              className={`flex items-center justify-between gap-3 px-3.5 h-11 rounded-xl border transition-colors cursor-pointer text-left ${on ? "bg-(--accent-wash-soft) border-(--accent-border-soft)" : "bg-paper-1 border-(--hairline-card) hover:bg-paper-2"} ${(isGenerating || isGrading) ? "opacity-50 !cursor-not-allowed" : ""}`}
-                            >
-                              <span className={`text-[13px] font-medium truncate ${on ? "text-(--accent-text-strong)" : "text-ink-900"}`}>{name}</span>
-                              <span className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 transition-colors ${on ? "bg-(--a-g2) border-transparent" : "border-(--line)"}`}>
-                                {on && <CheckIcon className="w-3.5 h-3.5 text-(--accent-on)" strokeWidth={2.5} />}
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    );
-                  })()}
+                  <div className="flex flex-col gap-1.5">
+                    {WRAPPER_STEPS.map(step => {
+                      const on = !!wrapperModules[step.key];
+                      return (
+                        <button
+                          key={step.key}
+                          type="button"
+                          disabled={isGenerating || isGrading}
+                          onClick={() => toggleWrapperModule(step.key)}
+                          aria-pressed={on}
+                          className={`flex items-center justify-between gap-3 px-3.5 h-11 rounded-xl border transition-colors cursor-pointer text-left ${on ? "bg-(--accent-wash-soft) border-(--accent-border-soft)" : "bg-paper-1 border-(--hairline-card) hover:bg-paper-2"} ${(isGenerating || isGrading) ? "opacity-50 !cursor-not-allowed" : ""}`}
+                        >
+                          <span className={`text-[13px] font-medium truncate ${on ? "text-(--accent-text-strong)" : "text-ink-900"}`}>{language === "german" ? step.de : step.en}</span>
+                          <span className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 transition-colors ${on ? "bg-(--a-g2) border-transparent" : "border-(--line)"}`}>
+                            {on && <CheckIcon className="w-3.5 h-3.5 text-(--accent-on)" strokeWidth={2.5} />}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
                   <a
                     href="https://aistudio-api-150434442017.europe-west1.run.app"
                     target="_blank"

@@ -1,14 +1,15 @@
 /**
- * Per-module AI-Studio-wrapper toggles.
+ * Per-STEP AI-Studio-wrapper toggles.
  *
- * AppConfig.wrapperModules is a JSON map `{ "<module name>": true }`. A module
- * toggled on routes its Gemini calls through the wrapper (proxy-first, with the
- * official API as fallback); a module that is absent or false uses the official
- * Gemini API. Replaces the old global 3-way wrapperMode.
+ * AppConfig.wrapperModules is a JSON map `{ "<step key>": true }`. A step toggled
+ * on routes THAT Gemini pipeline call (blueprint, quiz, the tutor-prompt
+ * generators, the co-examiners, the chief assessor, …) through the wrapper
+ * (proxy-first, official fallback); a step that is absent or false uses the
+ * official Gemini API. The keys are the pipeline STEPS below — not university
+ * modules. (The column keeps its historical name for migration safety.)
  *
- * The native File API upload still runs on any official/fallback call (the
- * transport layer in gemini-retry always adapts inline bytes → native upload for
- * the "official" backend), so fallback works regardless of these toggles.
+ * The native File API upload still runs on any official/fallback call, so
+ * fallback works regardless of these toggles.
  */
 export function parseWrapperModules(json: string | null | undefined): Record<string, boolean> {
   if (!json) return {};
@@ -25,8 +26,27 @@ export function parseWrapperModules(json: string | null | undefined): Record<str
   return {};
 }
 
-/** True when the wrapper is toggled ON for this module (by exact name). */
-export function wrapperOnForModule(json: string | null | undefined, moduleName: string | null | undefined): boolean {
-  if (!moduleName) return false;
-  return parseWrapperModules(json)[moduleName.trim()] === true;
+/** True when the wrapper is toggled ON for this Gemini pipeline step. */
+export function wrapperOnForStep(json: string | null | undefined, step: string | null | undefined): boolean {
+  if (!step) return false;
+  return parseWrapperModules(json)[step.trim()] === true;
 }
+
+/**
+ * The Gemini pipeline steps that can individually route through the wrapper,
+ * in run order. `key` is the stable identifier stored in wrapperModules; de/en
+ * are the toggle labels shown in Settings.
+ */
+export const WRAPPER_STEPS: { key: string; de: string; en: string }[] = [
+  { key: "blueprint",        de: "Blueprint",                en: "Blueprint" },
+  { key: "quiz",             de: "Quiz-Generierung",         en: "Quiz generation" },
+  { key: "tutor_quiz",       de: "Tutor-Prompt (Quiz)",      en: "Tutor prompt (quiz)" },
+  { key: "tutor_assessment", de: "Tutor-Prompt (Bewertung)", en: "Tutor prompt (assessment)" },
+  { key: "podcast",          de: "Podcast-Prompts",          en: "Podcast prompts" },
+  { key: "mismatch",         de: "Abgabe-Check",             en: "Submission check" },
+  { key: "copruefer",        de: "Co-Prüfer 1 & 2",          en: "Co-examiners 1 & 2" },
+  { key: "chief_assessor",   de: "Chef-Prüfer (Benotung)",   en: "Chief assessor (grading)" },
+  { key: "video_prompts",    de: "Video-Prompts",            en: "Video prompts" },
+  { key: "next_quiz",        de: "Nächstes Quiz",            en: "Next quiz" },
+  { key: "comprehension",    de: "Verständnis-Quiz",         en: "Comprehension quiz" },
+];
