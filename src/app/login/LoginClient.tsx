@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { signIn } from "next-auth/react";
 import { motion, MotionConfig } from "framer-motion";
 import { riseChild, staggerContainer, EASE_OUT, DUR } from "@/lib/motion";
-import BrandLogo from "../components/BrandLogo";
 import {
   ArrowPathIcon,
   ExclamationTriangleIcon,
@@ -97,7 +96,9 @@ export default function LoginClient({ error, callbackUrl = "/" }: { error?: stri
           >
 
             <motion.div variants={riseChild} className="flex items-center gap-3">
-              <BrandLogo className="w-10 h-10 rounded-[11px]" />
+              <div className="brand-tile w-10 h-10">
+                <span className="font-display italic font-semibold text-lg text-(--accent-on) -translate-y-px">S</span>
+              </div>
               <h1 className="text-base font-bold tracking-[-0.01em] leading-none text-ink-900 font-sans">SRS <span className="font-display italic text-(--accent-text)" style={{ fontWeight: 560 }}>Master</span></h1>
             </motion.div>
 

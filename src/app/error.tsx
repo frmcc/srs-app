@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import BrandLogo from "./components/BrandLogo";
 
 /**
  * Branded error boundary (EM-7) — a server crash no longer dead-ends on
@@ -34,7 +33,9 @@ export default function Error({
   return (
     <main className="flex-1 flex items-center justify-center px-5 py-16">
       <div className="card-surface-elevated w-full max-w-[440px] px-8 py-12 flex flex-col items-center text-center">
-        <BrandLogo className="w-12 h-12 rounded-[13px] mb-7" />
+        <div className="brand-tile w-12 h-12 mb-7">
+          <span className="font-display italic font-semibold text-xl text-(--accent-on) -translate-y-px">S</span>
+        </div>
         <p className="caps-label mb-3">{de ? "Fehler" : "Error"}</p>
         <h1 className="font-display text-[28px] tracking-[-0.015em] text-ink-900 leading-tight" style={{ fontWeight: 480 }}>
           {de ? "Da ist etwas schiefgelaufen." : "Something went wrong."}

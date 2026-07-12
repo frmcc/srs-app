@@ -70,7 +70,6 @@ import { AutoGrowTextarea } from "./components/AutoGrowTextarea";
 import { ScribbleCanvas } from "./components/ScribbleCanvas";
 import StatsPanel from "./components/StatsPanel";
 import TutorPanel from "./components/TutorPanel";
-import BrandLogo from "./components/BrandLogo";
 import { fmtPercent } from "@/lib/format";
 import { signOut } from "next-auth/react";
 
@@ -2575,7 +2574,9 @@ export default function DashboardClient({
         {/* Mobile Top Bar */}
         <div className="md:hidden flex items-center justify-between px-5 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] border-b border-(--hairline) bg-(--paper-0)/92 backdrop-blur-md fixed top-0 left-0 right-0 z-50">
           <button onClick={() => { setActiveTab("dashboard"); setShowMobileMenu(false); }} className="flex items-center gap-2.5 cursor-pointer text-left transition-opacity hover:opacity-80">
-            <BrandLogo className="w-7 h-7 rounded-[8px]" />
+            <div className="brand-tile w-7 h-7 rounded-[8px]">
+              <span className="font-display italic font-semibold text-[13px] text-(--accent-on) -translate-y-px">S</span>
+            </div>
             {/* AX-16 — the brand wordmark is a logo, not a page heading; a <p> keeps it out of the screen-reader heading outline (the tab's real h1 lives in <main>). */}
             <p className="text-[15px] font-bold tracking-[-0.01em] text-ink-900">SRS <span className="font-display italic text-(--accent-text)" style={{ fontWeight: 560 }}>Master</span></p>
           </button>
@@ -2640,7 +2641,9 @@ export default function DashboardClient({
           const sidebarBody = (
             <>
           <button onClick={() => { setActiveTab("dashboard"); setShowMobileMenu(false); }} className="hidden md:flex items-center gap-[11px] px-2 cursor-pointer text-left transition-opacity hover:opacity-80">
-            <BrandLogo className="w-[34px] h-[34px] rounded-[10px]" />
+            <div className="brand-tile w-[34px] h-[34px]">
+              <span className="font-display italic font-semibold text-lg text-(--accent-on) -translate-y-px">S</span>
+            </div>
             <div className="flex flex-col gap-[3px]">
               {/* AX-16 — brand wordmark demoted from h1 to p (logo, not a heading). */}
               <p className="text-[15px] font-bold tracking-[-0.01em] leading-none text-ink-900 font-sans">SRS <span className="font-display italic text-(--accent-text)" style={{ fontWeight: 560 }}>Master</span></p>
