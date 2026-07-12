@@ -50,3 +50,27 @@ export const WRAPPER_STEPS: { key: string; de: string; en: string }[] = [
   { key: "next_quiz",        de: "Nächstes Quiz",            en: "Next quiz" },
   { key: "comprehension",    de: "Verständnis-Quiz",         en: "Comprehension quiz" },
 ];
+
+/**
+ * Per-step model overrides. AppConfig.stepModels is a JSON map
+ * { "<step key>": "<model id>" }; a step not listed uses the default model.
+ */
+export function parseStepModels(json: string | null | undefined): Record<string, string> {
+  if (!json) return {};
+  try {
+    const parsed = JSON.parse(json);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      const out: Record<string, string> = {};
+      for (const [k, v] of Object.entries(parsed)) if (typeof v === "string" && v) out[k] = v;
+      return out;
+    }
+  } catch {
+    /* corrupt column → no overrides */
+  }
+  return {};
+}
+
+/** The model for a Gemini step: per-step override, else the default model. */
+export function modelForStep(json: string | null | undefined, step: string, defaultModel: string): string {
+  return parseStepModels(json)[step] || defaultModel;
+}

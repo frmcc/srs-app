@@ -51,6 +51,9 @@ ALTER TABLE "AppConfig" ADD COLUMN "language" TEXT NOT NULL DEFAULT 'german';
 ALTER TABLE "AppConfig" ADD COLUMN "wrapperMode" TEXT NOT NULL DEFAULT 'all';
 ALTER TABLE "AppConfig" ADD COLUMN "wrapperModules" TEXT NOT NULL DEFAULT '{}';
 ALTER TABLE "AppConfig" ADD COLUMN "fileTransport" TEXT NOT NULL DEFAULT 'inline';
+-- Default model + per-Gemini-step model overrides. Additive. 2026-07-12.
+ALTER TABLE "AppConfig" ADD COLUMN "aiModel" TEXT NOT NULL DEFAULT 'gemini-3.5-flash';
+ALTER TABLE "AppConfig" ADD COLUMN "stepModels" TEXT NOT NULL DEFAULT '{}';
 
 -- ReviewLog history columns (added post-hoc on several DBs).
 ALTER TABLE "ReviewLog" ADD COLUMN "feedback" TEXT;

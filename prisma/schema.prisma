@@ -118,6 +118,11 @@ model AppConfig {
   // call, so fallback works regardless of these toggles.
   wrapperModules  String   @default("{}")
   fileTransport   String   @default("inline") // "inline" (base64 in request) or "file_api" (File API upload + fileData URI)
+  // Default Gemini model for generation/grading, and per-step overrides:
+  // stepModels is a JSON map { "<step key>": "<model id>" }; a step not listed
+  // uses aiModel. (Single-user app — no VIP gate here.)
+  aiModel         String   @default("gemini-3.5-flash")
+  stepModels      String   @default("{}")
   updatedAt       DateTime @updatedAt
 }
 

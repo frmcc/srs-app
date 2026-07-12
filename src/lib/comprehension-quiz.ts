@@ -3,7 +3,7 @@ import { GoogleGenAI } from "@google/genai";
 import { GRADE_PROMPTS } from "@/app/api/grade/prompts";
 import { STUDENT_CONTEXT } from "@/app/api/quiz/prompts";
 import { generateContentWithRetry, normalizeFileTransport } from "@/lib/gemini-retry";
-import { wrapperOnForStep } from "@/lib/wrapper-modules";
+import { wrapperOnForStep, modelForStep } from "@/lib/wrapper-modules";
 import { buildSourceMaterialParts } from "@/lib/grading-pipeline";
 import { extractSectionOr, formatPrompt } from "@/lib/markers";
 import { countTasks, intervalLabelFor } from "@/lib/srs";
@@ -47,6 +47,7 @@ export async function runComprehensionQuizGeneration(opts: {
 
   const appConfig = await prisma.appConfig.findUnique({ where: { id: 1 } });
   const stepWrapper = (step: string) => wrapperOnForStep(appConfig?.wrapperModules, step);
+  const stepModel = (step: string) => modelForStep(appConfig?.stepModels, step, appConfig?.aiModel || modelName);
   const fileTransport = normalizeFileTransport(appConfig?.fileTransport);
   const language = opts.language || appConfig?.language || "german";
   const languageInstruction = `\n\nCRITICAL: You must generate ALL text, output, and responses strictly in ${language.toUpperCase()}. This applies to every section of the generated content.`;
@@ -124,7 +125,7 @@ export async function runComprehensionQuizGeneration(opts: {
 
   // ---- Step 2: generate ------------------------------------------------------
   progress(2, language === "english" ? "Generating comprehension quiz..." : "Verständnis-Quiz wird generiert...");
-  const res = await generateContentWithRetry(ai, modelName, {
+  const res = await generateContentWithRetry(ai, stepModel("comprehension"), {
     contents: [{ role: "user", parts: userParts as never }],
     config: { systemInstruction: formatPrompt(GRADE_PROMPTS.comprehension_quiz, { SUBJECT: subject }) + STUDENT_CONTEXT + languageInstruction },
   }, (msg) => progress(2, msg), "Verständnis-Quiz", stepWrapper("comprehension"), fileTransport);

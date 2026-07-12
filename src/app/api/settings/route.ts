@@ -1,7 +1,9 @@
 import { prisma } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import type { AppConfig } from "@prisma/client";
-import { parseWrapperModules } from "@/lib/wrapper-modules";
+import { parseWrapperModules, parseStepModels } from "@/lib/wrapper-modules";
+
+const ALLOWED_MODELS = ["gemini-3.5-flash", "gemini-3.1-pro-preview", "gemini-3.1-flash-lite"];
 
 // Atomic find-or-create — the old findUnique-then-create pattern threw a
 // unique-constraint error when two requests raced on first boot.
@@ -27,6 +29,8 @@ function serialize(config: AppConfig) {
     wrapperMode: config.wrapperMode,
     wrapperModules: parseWrapperModules(config.wrapperModules),
     fileTransport: config.fileTransport,
+    aiModel: config.aiModel,
+    stepModels: parseStepModels(config.stepModels),
   };
 }
 
@@ -41,13 +45,13 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
-    let body: { action?: string; presets?: unknown; language?: string; wrapperMode?: string; wrapperModules?: unknown; fileTransport?: string };
+    let body: { action?: string; presets?: unknown; language?: string; aiModel?: string; stepModels?: unknown; wrapperMode?: string; wrapperModules?: unknown; fileTransport?: string };
     try {
       body = await req.json();
     } catch {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
-    const { action, presets, language, wrapperMode, wrapperModules, fileTransport } = body;
+    const { action, presets, language, aiModel, stepModels, wrapperMode, wrapperModules, fileTransport } = body;
     await getOrCreateConfig();
 
     switch (action) {
@@ -99,6 +103,32 @@ export async function POST(req: NextRequest) {
           if (typeof name === "string" && name.length <= 200 && on === true) clean[name] = true;
         }
         const updated = await prisma.appConfig.update({ where: { id: 1 }, data: { wrapperModules: JSON.stringify(clean) } });
+        return NextResponse.json(serialize(updated));
+      }
+
+      case "update_aimodel": {
+        if (typeof aiModel !== "string" || !ALLOWED_MODELS.includes(aiModel)) {
+          return NextResponse.json({ error: "Invalid AI model" }, { status: 400 });
+        }
+        const updated = await prisma.appConfig.update({ where: { id: 1 }, data: { aiModel } });
+        return NextResponse.json(serialize(updated));
+      }
+
+      case "update_step_models": {
+        // Per-step model overrides: JSON map { "<step>": "<model>" }. Only steps
+        // with a valid model are kept; a step absent from the map uses aiModel.
+        if (typeof stepModels !== "object" || stepModels === null || Array.isArray(stepModels)) {
+          return NextResponse.json({ error: "stepModels must be an object map" }, { status: 400 });
+        }
+        const entries = Object.entries(stepModels as Record<string, unknown>);
+        if (entries.length > 100) {
+          return NextResponse.json({ error: "too many steps" }, { status: 400 });
+        }
+        const clean: Record<string, string> = {};
+        for (const [step, model] of entries) {
+          if (typeof step === "string" && step.length <= 60 && typeof model === "string" && ALLOWED_MODELS.includes(model)) clean[step] = model;
+        }
+        const updated = await prisma.appConfig.update({ where: { id: 1 }, data: { stepModels: JSON.stringify(clean) } });
         return NextResponse.json(serialize(updated));
       }
 

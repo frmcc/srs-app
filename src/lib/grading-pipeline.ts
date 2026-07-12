@@ -5,7 +5,7 @@ import { PROMPTS, STUDENT_CONTEXT } from "@/app/api/quiz/prompts";
 import { downloadFromDrive, createGoogleDoc } from "@/lib/google-drive";
 import { sendPushNotification } from "@/lib/push";
 import { generateContentWithRetry, normalizeFileTransport } from "@/lib/gemini-retry";
-import { wrapperOnForStep } from "@/lib/wrapper-modules";
+import { wrapperOnForStep, modelForStep } from "@/lib/wrapper-modules";
 import { generateVideoPromptsWorker } from "@/lib/notebooklm";
 import { extractSection, extractSectionOr, formatPrompt, parseMismatchVerdict, parseAssessmentDecision, DecisionParseError } from "@/lib/markers";
 import { countTasks, currentQuizText, intervalLabelFor, nextReviewDateAfter, quizFieldForLevel, INTERVAL_LABELS } from "@/lib/srs";
@@ -188,6 +188,7 @@ export async function runGradingPipeline(opts: {
   const appConfig = await prisma.appConfig.findUnique({ where: { id: 1 } });
   // Per-module wrapper: on only when this item's module box is ticked.
   const stepWrapper = (step: string) => wrapperOnForStep(appConfig?.wrapperModules, step);
+  const stepModel = (step: string) => modelForStep(appConfig?.stepModels, step, appConfig?.aiModel || modelName);
   const fileTransport = normalizeFileTransport(appConfig?.fileTransport);
 
   const language = opts.language || appConfig?.language || "german";
@@ -264,7 +265,7 @@ export async function runGradingPipeline(opts: {
 
   // ---- Step 0: MATCH/MISMATCH gate ----------------------------------------
   progress(0, "Verifying submission (MATCH/MISMATCH check)...");
-  const mismatchCheckRes = await generateContentWithRetry(ai, modelName, {
+  const mismatchCheckRes = await generateContentWithRetry(ai, stepModel("mismatch"), {
     contents: [{ role: "user", parts: answerParts as never }],
     // Deliberately NO languageInstruction here: this step must emit the control
     // token MATCH/MISMATCH verbatim. Forcing German makes a compliant model
@@ -285,11 +286,11 @@ export async function runGradingPipeline(opts: {
   coUserParts.push({ text: "Hier sind die Dateien. Bitte führe deine System-Instruktionen aus." });
 
   const [res1, res2] = await Promise.all([
-    generateContentWithRetry(ai, modelName, {
+    generateContentWithRetry(ai, stepModel("copruefer"), {
       contents: [{ role: "user", parts: coUserParts as never }],
       config: { systemInstruction: formatPrompt(GRADE_PROMPTS.co_pruefer_1, { TOTAL_TASKS: totalTasks, SPLIT_POINT: splitPoint, SUBJECT: subject, INTERVAL: interval }) + languageInstruction },
     }, (msg) => progress(1, msg), "Co-Prüfer 1", stepWrapper("copruefer"), fileTransport),
-    generateContentWithRetry(ai, modelName, {
+    generateContentWithRetry(ai, stepModel("copruefer"), {
       contents: [{ role: "user", parts: coUserParts as never }],
       config: { systemInstruction: formatPrompt(GRADE_PROMPTS.co_pruefer_2, { TOTAL_TASKS: totalTasks, START_INDEX: startIdx2, SUBJECT: subject, INTERVAL: interval }) + languageInstruction },
     }, (msg) => progress(1, msg), "Co-Prüfer 2", stepWrapper("copruefer"), fileTransport),
@@ -309,7 +310,7 @@ export async function runGradingPipeline(opts: {
   chefUserParts.push({ text: `Bewertung der zweiten Quiz-Hälfte (von Co-Prüfer 2):\n${res2.text || ""}` });
   chefUserParts.push({ text: "Hier sind die Dateien. Bitte führe deine System-Instruktionen aus." });
 
-  const chefRes = await generateContentWithRetry(ai, modelName, {
+  const chefRes = await generateContentWithRetry(ai, stepModel("chief_assessor"), {
     contents: [{ role: "user", parts: chefUserParts as never }],
     config: { systemInstruction: formatPrompt(GRADE_PROMPTS.chef_pruefer, { SUBJECT: subject, INTERVAL: interval }) + languageInstruction },
   }, (msg) => progress(2, msg), "Chief Assessor", stepWrapper("chief_assessor"), fileTransport);
@@ -325,7 +326,7 @@ export async function runGradingPipeline(opts: {
     // Chief Assessor once with a stricter decision-format instruction before
     // giving up. Same context, same wrapper flag; nothing is persisted yet.
     progress(2, "Chief Assessor: Entscheidung wird erneut angefordert...");
-    const chefRetry = await generateContentWithRetry(ai, modelName, {
+    const chefRetry = await generateContentWithRetry(ai, stepModel("chief_assessor"), {
       contents: [{ role: "user", parts: chefUserParts as never }],
       config: { systemInstruction: formatPrompt(GRADE_PROMPTS.chef_pruefer, { SUBJECT: subject, INTERVAL: interval })
         + languageInstruction
@@ -400,7 +401,7 @@ export async function runGradingPipeline(opts: {
   lmUserParts.push({ text: `Output des Assessment-Grader-AIs:\n${chefFeedback}` });
   lmUserParts.push({ text: "Hier sind die Dateien. Bitte führe deine System-Instruktionen aus." });
 
-  const lmPromptCall = generateContentWithRetry(ai, modelName, {
+  const lmPromptCall = generateContentWithRetry(ai, stepModel("video_prompts"), {
     contents: [{ role: "user", parts: lmUserParts as never }],
     config: { systemInstruction: formatPrompt(isPass ? GRADE_PROMPTS.video_pass : GRADE_PROMPTS.video_repeat, { SUBJECT: subject, INTERVAL: interval }) + languageInstruction },
   }, (msg) => progress(3, msg), "Video Prompts", stepWrapper("video_prompts"), fileTransport);
@@ -455,7 +456,7 @@ export async function runGradingPipeline(opts: {
     }
 
     nextQuizInstruction = formatPrompt(nextPrompt, { SUBJECT: subject, NEXT_INTERVAL: nextIntervalLabel, NEXT_INTERVAL_LABEL: nextIntervalLabel }) + STUDENT_CONTEXT + languageInstruction;
-    const nextQuizCall = generateContentWithRetry(ai, modelName, {
+    const nextQuizCall = generateContentWithRetry(ai, stepModel("next_quiz"), {
       contents: [{ role: "user", parts: nextQuizParts as never }],
       config: { systemInstruction: nextQuizInstruction },
     }, (msg) => progress(3, msg), `Next Quiz (${nextIntervalLabel})`, stepWrapper("next_quiz"), fileTransport);
@@ -481,7 +482,7 @@ export async function runGradingPipeline(opts: {
     remedialQuizParts.push({ text: "Hier sind die Dateien. Bitte führe deine System-Instruktionen aus." });
 
     nextQuizInstruction = formatPrompt(GRADE_PROMPTS.retry_quiz_fail, { SUBJECT: subject, INTERVAL: interval }) + STUDENT_CONTEXT + languageInstruction;
-    const nextQuizCall = generateContentWithRetry(ai, modelName, {
+    const nextQuizCall = generateContentWithRetry(ai, stepModel("next_quiz"), {
       contents: [{ role: "user", parts: remedialQuizParts as never }],
       config: { systemInstruction: nextQuizInstruction },
     }, (msg) => progress(3, msg), "Next Quiz (REPEAT)", stepWrapper("next_quiz"), fileTransport);

@@ -3,7 +3,7 @@ import { GoogleGenAI } from "@google/genai";
 import { STUDENT_CONTEXT, PROMPTS, podcast_prompts } from "../app/api/quiz/prompts";
 import { sendPushNotification } from "./push";
 import { generatePodcastWorker, createNotebook } from "./notebooklm";
-import { wrapperOnForStep } from "./wrapper-modules";
+import { wrapperOnForStep, modelForStep } from "./wrapper-modules";
 import { generateContentWithRetry, normalizeFileTransport } from "./gemini-retry";
 import { getOrCreateDriveFolder, uploadToDrive, createGoogleDoc } from "./google-drive";
 import { extractSection } from "./markers";
@@ -60,6 +60,7 @@ export async function runQuizGeneration(params: {
     // when its box is ticked; otherwise the official Gemini API. The native File
     // API upload still runs on any official/fallback call, so fallback works.
     const stepWrapper = (step: string) => wrapperOnForStep(appConfig?.wrapperModules, step);
+    const stepModel = (step: string) => modelForStep(appConfig?.stepModels, step, appConfig?.aiModel || modelName);
     const fileTransport = normalizeFileTransport(appConfig?.fileTransport);
     const currentSemester = appConfig?.currentSemester || 1;
     const language = appConfig?.language || "german";
@@ -95,7 +96,7 @@ export async function runQuizGeneration(params: {
 
     // ---- Step 1: Blueprint ----
     progress(1, "Analyzing material & Generating Blueprint...");
-    const blueprintRes = await generateContentWithRetry(ai, modelName, {
+    const blueprintRes = await generateContentWithRetry(ai, stepModel("blueprint"), {
       contents: [{ role: "user", parts: [...masterContextParts, { text: `Modul:\n${subjectMain}` }, { text: "Hier sind die Materialien. Bitte führe deine System-Instruktionen aus." }] }],
       config: { systemInstruction: PROMPTS.blueprint + STUDENT_CONTEXT + languageInstruction },
     }, (msg) => progress(1, msg), "Blueprint", stepWrapper("blueprint"), fileTransport);
@@ -109,7 +110,7 @@ export async function runQuizGeneration(params: {
     // ---- Step 2: Quiz 1 (later quizzes are generated on-demand after grading) ----
     await heartbeat();
     progress(2, "Generating Quiz 1...");
-    const quiz1Res = await generateContentWithRetry(ai, modelName, {
+    const quiz1Res = await generateContentWithRetry(ai, stepModel("quiz"), {
       contents: [{ role: "user", parts: [...masterContextParts, { text: "Hier sind die Materialien. Bitte führe deine System-Instruktionen aus." }] }],
       config: { systemInstruction: PROMPTS.quiz_tag_1 + `\n\nModul/Vorlesungsthema:\n${subjectMain}\n\nBlueprint:\n${blueprint}` + STUDENT_CONTEXT + languageInstruction },
     }, (msg) => progress(2, msg), "Quiz 1", stepWrapper("quiz"), fileTransport);
@@ -131,15 +132,15 @@ export async function runQuizGeneration(params: {
     await heartbeat();
     progress(3, "Generating Tutor Prompts & Podcast Prompts...");
     const [tutorQuizRes, tutorAssessRes, podcastRes] = await Promise.all([
-      generateContentWithRetry(ai, modelName, {
+      generateContentWithRetry(ai, stepModel("tutor_quiz"), {
         contents: [{ role: "user", parts: [...masterContextParts, { text: `Modul/Vorlesungsthema:\n${subjectMain}` }, { text: `Didaktischer Blueprint:\n${blueprint}` }, { text: "Bitte generiere den Tutor-Prompt basierend auf dem bereitgestellten Blueprint." }] }],
         config: { systemInstruction: PROMPTS.tutor_prompt_quiz + languageInstruction },
       }, (msg) => progress(3, msg), "Tutor Prompt (Quiz)", stepWrapper("tutor_quiz"), fileTransport),
-      generateContentWithRetry(ai, modelName, {
+      generateContentWithRetry(ai, stepModel("tutor_assessment"), {
         contents: [{ role: "user", parts: [...masterContextParts, { text: `Modul/Vorlesungsthema:\n${subjectMain}` }, { text: `Didaktischer Blueprint:\n${blueprint}` }, { text: "Bitte generiere den Tutor-Prompt basierend auf dem bereitgestellten Blueprint." }] }],
         config: { systemInstruction: PROMPTS.tutor_prompt_assessment + languageInstruction },
       }, (msg) => progress(3, msg), "Tutor Prompt (Assessment)", stepWrapper("tutor_assessment"), fileTransport),
-      generateContentWithRetry(ai, modelName, {
+      generateContentWithRetry(ai, stepModel("podcast"), {
         contents: [{ role: "user", parts: [...masterContextParts, { text: `Modul/Vorlesungsthema:\n${subjectMain}` }, { text: `Didaktischer Blueprint:\n${blueprint}` }, { text: "Bitte generiere die zwei Regieanweisungen basierend auf dem bereitgestellten Blueprint." }] }],
         config: { systemInstruction: podcast_prompts + languageInstruction },
       }, (msg) => progress(3, msg), "Podcast Prompts", stepWrapper("podcast"), fileTransport),
