@@ -51,6 +51,24 @@ export class FileDroppedError extends Error {
   }
 }
 
+/**
+ * The app's internal model ids don't all match the Gemini API's model names.
+ * "gemini-3.1-pro" is a short id used in the picker/pricing, but BOTH backends —
+ * the official /v1beta API AND the AI-Studio wrapper (which is /v1beta-
+ * compatible) — only know "gemini-3.1-pro-preview" and return 404 NOT_FOUND on
+ * the short form (verified against each with a live generateContent probe:
+ * gemini-3.1-pro -> 404, gemini-3.1-pro-preview -> 200 on both). So map to the
+ * real API name at EVERY generateContent call. The internal id is kept for
+ * credit metering/pricing and the UI. gemini-3.5-flash and gemini-3.1-flash-lite
+ * are already valid API names on both backends.
+ */
+const API_MODEL_ALIASES: Record<string, string> = {
+  "gemini-3.1-pro": "gemini-3.1-pro-preview",
+};
+function apiModelName(modelName: string): string {
+  return API_MODEL_ALIASES[modelName] ?? modelName;
+}
+
 const MAX_RETRIES = 3;
 /**
  * Backoff schedule between attempts. Kept SHORT and bounded so the total time
@@ -475,7 +493,7 @@ export async function generateContentWithRetry(
         // Native Gemini: no base64 toggle — sizable files always go through the
         // official File API; only small parts (scribbles) stay inline.
         const adapted = await adaptRequestForBackend(ai, "official", request, "file_api", progressCallback, stepLabel);
-        const res = await withTimeout(ai.models.generateContent({ model: modelName, ...adapted.request }), stepLabel);
+        const res = await withTimeout(ai.models.generateContent({ model: apiModelName(modelName), ...adapted.request }), stepLabel);
         assertFilesWereSeen(res, adapted, "official", stepLabel);
         return res;
       };
@@ -510,7 +528,7 @@ export async function generateContentWithRetry(
       }
 
       try {
-        const res = await withTimeout(aiWrapper.models.generateContent({ model: modelName, ...adaptedWrapper.request }), stepLabel);
+        const res = await withTimeout(aiWrapper.models.generateContent({ model: apiModelName(modelName), ...adaptedWrapper.request }), stepLabel);
         assertFilesWereSeen(res, adaptedWrapper, "wrapper", stepLabel);
         return res;
       } catch (wrapperErr) {
