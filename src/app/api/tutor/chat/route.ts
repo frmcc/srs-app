@@ -5,6 +5,7 @@ import { GoogleGenAI } from "@google/genai";
 import { prisma } from "@/lib/db";
 import { currentQuizText } from "@/lib/srs";
 import { extractSectionOr } from "@/lib/markers";
+import { MATH_NOTATION_TUTOR } from "@/lib/math-prompts";
 
 /**
  * Live-Tutor chat next to the quiz. The web twin of the Cloud Run audio tutor:
@@ -133,6 +134,7 @@ export async function POST(req: NextRequest) {
     "- Es gibt KEINE Sprachausgabe-Pipeline: Ignoriere alle Regeln deiner Rolle zu Chunk-0/„nahtloser Sprachanschluss“, TTS, Diktierfehlern und Screenshots. Begrüße nicht, steige direkt inhaltlich ein.",
     "- Unten stehen die AKTUELLEN QUIZAUFGABEN des Studenten. In der Nachricht können zusätzlich seine aktuellen Antwort-Entwürfe mitkommen.",
     ...phaseRules,
+    MATH_NOTATION_TUTOR,
     "- Antworte kompakt (Richtwert: unter 8 Sätze, außer der Student bittet um mehr). Kurze Absätze; einfache Listen sind erlaubt, kein übertriebenes Markdown, keine Überschriften.",
     "",
     "AKTUELLE QUIZAUFGABEN DES STUDENTEN:",

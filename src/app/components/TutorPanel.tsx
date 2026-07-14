@@ -17,6 +17,8 @@ import {
 } from "@heroicons/react/24/outline";
 import { AutoGrowTextarea } from "./AutoGrowTextarea";
 import { Tip } from "./Tooltip";
+import ChemText from "./ChemText";
+import { stripChemForSpeech } from "@/lib/chem-markup";
 
 /**
  * Live Tutor — the web twin of the iPad audio tutor, as a slide-over chat next
@@ -238,7 +240,8 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
         const res = await fetch("/api/tts", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: msg.text.slice(0, 4000) }),
+          // Strip math markup into speakable form first (no-op on plain text).
+          body: JSON.stringify({ text: stripChemForSpeech(msg.text, language).slice(0, 4000) }),
         });
         if (!res.ok) throw new Error(`TTS HTTP ${res.status}`);
         url = URL.createObjectURL(await res.blob());
@@ -265,7 +268,7 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
     } finally {
       setTtsLoadingId(null);
     }
-  }, [speakingId, stopSpeaking]);
+  }, [speakingId, stopSpeaking, language]);
 
   const buildDrafts = useCallback((): string => {
     const parts: string[] = [];
@@ -504,7 +507,7 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
                   <span className="caps-label !text-(--accent-text-strong)">{focusedTask.label}</span>
                 </div>
                 <p className="text-[13px] leading-[1.5] text-ink-900 line-clamp-4 whitespace-pre-wrap">
-                  {focusedTask.questionText}
+                  <ChemText inline text={focusedTask.questionText} />
                 </p>
               </div>
             </div>
@@ -613,7 +616,9 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
                     )}
                   </div>
                   <div className="text-sm leading-[1.62] text-ink-900/85 whitespace-pre-wrap break-words">
-                    {msg.text || (
+                    {msg.text ? (
+                      <ChemText text={msg.text} />
+                    ) : (
                       <span className="inline-flex items-center gap-1.5 text-ink-400">
                         <span className="ember-dot w-1.5 h-1.5 rounded-full bg-amber-500" />
                         {de ? "denkt nach…" : "thinking…"}

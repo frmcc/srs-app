@@ -199,7 +199,7 @@ KOGNITIVE GEWICHTUNG:
 UMFANG:
 - Erstelle 10–14 Aufgaben.
 - Gesamtumfang: ca. 18–25 Minuten Bearbeitungszeit.
-- Keine Multiple-Choice-Fragen.
+- ABSOLUT VERBOTEN — Multiple-Choice in jeder Form: keine Antwortoptionen (A/B/C/D, 1/2/3 oder Aufzählungen zum Auswählen), keine Richtig/Falsch-Aufgaben, keine Zuordnungs- oder Ankreuzlisten. Die Antworten werden frei formuliert (getippt oder handschriftlich) und von einem Prüfer bewertet — vorgegebene Optionen machen diese Bewertung wertlos. Formuliere stattdessen offene Aufgaben (erklären, herleiten, berechnen, anwenden). Prüfe deinen Entwurf VOR der Ausgabe: Enthält eine Aufgabe Antwortoptionen, ersetze sie durch eine offene Frageform.
 - Keine reinen Lückentexte.
 - Die Aufgaben sollen handschriftlich gut beantwortbar sein.
 
@@ -246,6 +246,10 @@ Du schreibst Text für zwei verschiedene Empfänger. Halte dich zwingend an dies
 2. FÜR ALLE ANDEREN BLÖCKE (METADATA, COVERAGE_LEDGER, SELF_AUDIT):
 - Hier SOLLST du Markdown (Rauten für Überschriften, Sterne für Fettdruck, Listen) verwenden!
 - Diese Blöcke liest nur die nächste KI. Markdown hilft ihr, deine Struktur besser zu verstehen.
+
+3. FACHNOTATION (Formeln und Rechenwege — z. B. Statistik, Methodenlehre, Testtheorie):
+- Die App rendert Mathematik nativ (KaTeX). Schreibe mathematische Ausdrücke als Inline-LaTeX zwischen $...$ — z. B. $z = \\frac{x - \\mu}{\\sigma}$, $\\frac{a+b}{c}$, $\\sqrt{x}$, $\\sum_{i=1}^{n} x_i$, $r_{xy}$ —, abgesetzte mehrzeilige Herleitungen oder Rechenwege in $$...$$ auf eigenen Zeilen. Kein Leerzeichen direkt hinter dem öffnenden bzw. vor dem schließenden $. Außerhalb der Delimiter: keine \\begin{...}-Umgebungen, keine HTML-Tags, keine Formel-Bilder.
+- Einfache Symbole im Fließtext dürfen Unicode bleiben (x², σ², α, χ², π, ≤, ≠) — kein LaTeX-Zwang für Einfaches. Verschachtelte oder mehrstufige Ausdrücke (Brüche, Wurzeln aus Ausdrücken, Summen, Erwartungswerte, Grenzwerte) gehören dagegen IMMER in $...$. Die Aufgaben-Überschriften ("Aufgabe N:") und sämtliche ===MARKER===-Zeilen bleiben reiner Text ohne $.
 
 SELF-AUDIT-HARD-GATE:
 Führe vor der finalen Ausgabe eine interne Qualitätsprüfung durch.
@@ -394,7 +398,7 @@ KOGNITIVE GEWICHTUNG:
 UMFANG:
 - Erstelle 8–12 Aufgaben.
 - Gesamtumfang: ca. 20–25 Minuten Bearbeitungszeit.
-- Keine Multiple-Choice-Fragen.
+- ABSOLUT VERBOTEN — Multiple-Choice in jeder Form: keine Antwortoptionen (A/B/C/D, 1/2/3 oder Aufzählungen zum Auswählen), keine Richtig/Falsch-Aufgaben, keine Zuordnungs- oder Ankreuzlisten. Die Antworten werden frei formuliert (getippt oder handschriftlich) und von einem Prüfer bewertet — vorgegebene Optionen machen diese Bewertung wertlos. Formuliere stattdessen offene Aufgaben (erklären, herleiten, berechnen, anwenden). Prüfe deinen Entwurf VOR der Ausgabe: Enthält eine Aufgabe Antwortoptionen, ersetze sie durch eine offene Frageform.
 - Keine reinen Lückentexte.
 - Die Aufgaben sollen handschriftlich gut beantwortbar sein.
 
@@ -453,6 +457,10 @@ Du schreibst Text für zwei verschiedene Empfänger. Halte dich zwingend an dies
 2. FÜR ALLE ANDEREN BLÖCKE (METADATA, COVERAGE_LEDGER, SELF_AUDIT):
 - Hier SOLLST du Markdown (Rauten für Überschriften, Sterne für Fettdruck, Listen) verwenden!
 - Diese Blöcke liest nur die nächste KI. Markdown hilft ihr, deine Struktur besser zu verstehen.
+
+3. FACHNOTATION (Formeln und Rechenwege — z. B. Statistik, Methodenlehre, Testtheorie):
+- Die App rendert Mathematik nativ (KaTeX). Schreibe mathematische Ausdrücke als Inline-LaTeX zwischen $...$ — z. B. $z = \\frac{x - \\mu}{\\sigma}$, $\\frac{a+b}{c}$, $\\sqrt{x}$, $\\sum_{i=1}^{n} x_i$, $r_{xy}$ —, abgesetzte mehrzeilige Herleitungen oder Rechenwege in $$...$$ auf eigenen Zeilen. Kein Leerzeichen direkt hinter dem öffnenden bzw. vor dem schließenden $. Außerhalb der Delimiter: keine \\begin{...}-Umgebungen, keine HTML-Tags, keine Formel-Bilder.
+- Einfache Symbole im Fließtext dürfen Unicode bleiben (x², σ², α, χ², π, ≤, ≠) — kein LaTeX-Zwang für Einfaches. Verschachtelte oder mehrstufige Ausdrücke (Brüche, Wurzeln aus Ausdrücken, Summen, Erwartungswerte, Grenzwerte) gehören dagegen IMMER in $...$. Die Aufgaben-Überschriften ("Aufgabe N:") und sämtliche ===MARKER===-Zeilen bleiben reiner Text ohne $.
 
 SELF-AUDIT-HARD-GATE:
 Führe vor der finalen Ausgabe eine interne Qualitätsprüfung durch.
@@ -601,7 +609,7 @@ KOGNITIVE GEWICHTUNG:
 UMFANG:
 - Erstelle 7–10 Aufgaben.
 - Gesamtumfang: ca. 25–30 Minuten Bearbeitungszeit.
-- Keine Multiple-Choice-Fragen.
+- ABSOLUT VERBOTEN — Multiple-Choice in jeder Form: keine Antwortoptionen (A/B/C/D, 1/2/3 oder Aufzählungen zum Auswählen), keine Richtig/Falsch-Aufgaben, keine Zuordnungs- oder Ankreuzlisten. Die Antworten werden frei formuliert (getippt oder handschriftlich) und von einem Prüfer bewertet — vorgegebene Optionen machen diese Bewertung wertlos. Formuliere stattdessen offene Aufgaben (erklären, herleiten, berechnen, anwenden). Prüfe deinen Entwurf VOR der Ausgabe: Enthält eine Aufgabe Antwortoptionen, ersetze sie durch eine offene Frageform.
 - Keine reinen Lückentexte.
 - Die Aufgaben sollen handschriftlich gut beantwortbar sein.
 - Vignetten sollen kurz bleiben, aber genügend Informationen für eine begründete Antwort enthalten.
@@ -661,6 +669,10 @@ Du schreibst Text für zwei verschiedene Empfänger. Halte dich zwingend an dies
 2. FÜR ALLE ANDEREN BLÖCKE (METADATA, COVERAGE_LEDGER, SELF_AUDIT):
 - Hier SOLLST du Markdown (Rauten für Überschriften, Sterne für Fettdruck, Listen) verwenden!
 - Diese Blöcke liest nur die nächste KI. Markdown hilft ihr, deine Struktur besser zu verstehen.
+
+3. FACHNOTATION (Formeln und Rechenwege — z. B. Statistik, Methodenlehre, Testtheorie):
+- Die App rendert Mathematik nativ (KaTeX). Schreibe mathematische Ausdrücke als Inline-LaTeX zwischen $...$ — z. B. $z = \\frac{x - \\mu}{\\sigma}$, $\\frac{a+b}{c}$, $\\sqrt{x}$, $\\sum_{i=1}^{n} x_i$, $r_{xy}$ —, abgesetzte mehrzeilige Herleitungen oder Rechenwege in $$...$$ auf eigenen Zeilen. Kein Leerzeichen direkt hinter dem öffnenden bzw. vor dem schließenden $. Außerhalb der Delimiter: keine \\begin{...}-Umgebungen, keine HTML-Tags, keine Formel-Bilder.
+- Einfache Symbole im Fließtext dürfen Unicode bleiben (x², σ², α, χ², π, ≤, ≠) — kein LaTeX-Zwang für Einfaches. Verschachtelte oder mehrstufige Ausdrücke (Brüche, Wurzeln aus Ausdrücken, Summen, Erwartungswerte, Grenzwerte) gehören dagegen IMMER in $...$. Die Aufgaben-Überschriften ("Aufgabe N:") und sämtliche ===MARKER===-Zeilen bleiben reiner Text ohne $.
 
 SELF-AUDIT-HARD-GATE:
 Führe vor der finalen Ausgabe eine interne Qualitätsprüfung durch.
@@ -809,7 +821,7 @@ KOGNITIVE GEWICHTUNG:
 UMFANG:
 - Erstelle 6–8 Aufgaben.
 - Gesamtumfang: ca. 30–35 Minuten Bearbeitungszeit.
-- Keine Multiple-Choice-Fragen.
+- ABSOLUT VERBOTEN — Multiple-Choice in jeder Form: keine Antwortoptionen (A/B/C/D, 1/2/3 oder Aufzählungen zum Auswählen), keine Richtig/Falsch-Aufgaben, keine Zuordnungs- oder Ankreuzlisten. Die Antworten werden frei formuliert (getippt oder handschriftlich) und von einem Prüfer bewertet — vorgegebene Optionen machen diese Bewertung wertlos. Formuliere stattdessen offene Aufgaben (erklären, herleiten, berechnen, anwenden). Prüfe deinen Entwurf VOR der Ausgabe: Enthält eine Aufgabe Antwortoptionen, ersetze sie durch eine offene Frageform.
 - Keine reinen Lückentexte.
 - Aufgaben dürfen etwas komplexer sein als in Tag 7.
 - Jede Fallaufgabe soll klar genug sein, um eindeutig bewertet werden zu können.
@@ -870,6 +882,10 @@ Du schreibst Text für zwei verschiedene Empfänger. Halte dich zwingend an dies
 2. FÜR ALLE ANDEREN BLÖCKE (METADATA, COVERAGE_LEDGER, SELF_AUDIT):
 - Hier SOLLST du Markdown (Rauten für Überschriften, Sterne für Fettdruck, Listen) verwenden!
 - Diese Blöcke liest nur die nächste KI. Markdown hilft ihr, deine Struktur besser zu verstehen.
+
+3. FACHNOTATION (Formeln und Rechenwege — z. B. Statistik, Methodenlehre, Testtheorie):
+- Die App rendert Mathematik nativ (KaTeX). Schreibe mathematische Ausdrücke als Inline-LaTeX zwischen $...$ — z. B. $z = \\frac{x - \\mu}{\\sigma}$, $\\frac{a+b}{c}$, $\\sqrt{x}$, $\\sum_{i=1}^{n} x_i$, $r_{xy}$ —, abgesetzte mehrzeilige Herleitungen oder Rechenwege in $$...$$ auf eigenen Zeilen. Kein Leerzeichen direkt hinter dem öffnenden bzw. vor dem schließenden $. Außerhalb der Delimiter: keine \\begin{...}-Umgebungen, keine HTML-Tags, keine Formel-Bilder.
+- Einfache Symbole im Fließtext dürfen Unicode bleiben (x², σ², α, χ², π, ≤, ≠) — kein LaTeX-Zwang für Einfaches. Verschachtelte oder mehrstufige Ausdrücke (Brüche, Wurzeln aus Ausdrücken, Summen, Erwartungswerte, Grenzwerte) gehören dagegen IMMER in $...$. Die Aufgaben-Überschriften ("Aufgabe N:") und sämtliche ===MARKER===-Zeilen bleiben reiner Text ohne $.
 
 SELF-AUDIT-HARD-GATE:
 Führe vor der finalen Ausgabe eine interne Qualitätsprüfung durch.
@@ -1019,7 +1035,7 @@ KOGNITIVE GEWICHTUNG:
 UMFANG:
 - Erstelle 5–7 größere Aufgaben.
 - Gesamtumfang: ca. 35–45 Minuten Bearbeitungszeit.
-- Keine Multiple-Choice-Fragen.
+- ABSOLUT VERBOTEN — Multiple-Choice in jeder Form: keine Antwortoptionen (A/B/C/D, 1/2/3 oder Aufzählungen zum Auswählen), keine Richtig/Falsch-Aufgaben, keine Zuordnungs- oder Ankreuzlisten. Die Antworten werden frei formuliert (getippt oder handschriftlich) und von einem Prüfer bewertet — vorgegebene Optionen machen diese Bewertung wertlos. Formuliere stattdessen offene Aufgaben (erklären, herleiten, berechnen, anwenden). Prüfe deinen Entwurf VOR der Ausgabe: Enthält eine Aufgabe Antwortoptionen, ersetze sie durch eine offene Frageform.
 - Keine reinen Lückentexte.
 - Aufgaben dürfen anspruchsvoll sein, müssen aber eindeutig bewertbar bleiben.
 - Jede Aufgabe darf Unterfragen enthalten, wenn das die Bewertung klarer macht.
@@ -1081,6 +1097,10 @@ Du schreibst Text für zwei verschiedene Empfänger. Halte dich zwingend an dies
 2. FÜR ALLE ANDEREN BLÖCKE (METADATA, COVERAGE_LEDGER, SELF_AUDIT):
 - Hier SOLLST du Markdown (Rauten für Überschriften, Sterne für Fettdruck, Listen) verwenden!
 - Diese Blöcke liest nur die nächste KI. Markdown hilft ihr, deine Struktur besser zu verstehen.
+
+3. FACHNOTATION (Formeln und Rechenwege — z. B. Statistik, Methodenlehre, Testtheorie):
+- Die App rendert Mathematik nativ (KaTeX). Schreibe mathematische Ausdrücke als Inline-LaTeX zwischen $...$ — z. B. $z = \\frac{x - \\mu}{\\sigma}$, $\\frac{a+b}{c}$, $\\sqrt{x}$, $\\sum_{i=1}^{n} x_i$, $r_{xy}$ —, abgesetzte mehrzeilige Herleitungen oder Rechenwege in $$...$$ auf eigenen Zeilen. Kein Leerzeichen direkt hinter dem öffnenden bzw. vor dem schließenden $. Außerhalb der Delimiter: keine \\begin{...}-Umgebungen, keine HTML-Tags, keine Formel-Bilder.
+- Einfache Symbole im Fließtext dürfen Unicode bleiben (x², σ², α, χ², π, ≤, ≠) — kein LaTeX-Zwang für Einfaches. Verschachtelte oder mehrstufige Ausdrücke (Brüche, Wurzeln aus Ausdrücken, Summen, Erwartungswerte, Grenzwerte) gehören dagegen IMMER in $...$. Die Aufgaben-Überschriften ("Aufgabe N:") und sämtliche ===MARKER===-Zeilen bleiben reiner Text ohne $.
 
 SELF-AUDIT-HARD-GATE:
 Führe vor der finalen Ausgabe eine interne Qualitätsprüfung durch.

@@ -158,7 +158,7 @@ export default function LoginClient({ error, callbackUrl = "/" }: { error?: stri
               <button
                 onClick={handleSignIn}
                 disabled={isSigningIn}
-                className="group relative w-full h-[50px] mt-[26px] bg-paper-1 hover:bg-(--paper-hover) text-ink-900 font-semibold rounded-[14px] px-5 flex items-center justify-center gap-[11px] text-sm cursor-pointer border border-(--line) shadow-(--shadow-e1) hover:-translate-y-px active:translate-y-0 active:scale-[0.99] disabled:opacity-60 disabled:cursor-wait disabled:hover:translate-y-0"
+                className="group relative w-full h-[50px] mt-6.5 bg-paper-1 hover:bg-(--paper-hover) text-ink-900 font-semibold rounded-[14px] px-5 flex items-center justify-center gap-3 text-sm cursor-pointer border border-(--line) shadow-(--shadow-e1) hover:-translate-y-px active:translate-y-0 active:scale-[0.99] disabled:opacity-60 disabled:cursor-wait disabled:hover:translate-y-0"
               >
                 {/* Pre-rendered hover shadow, cross-faded via opacity — box-shadow itself
                     never animates (motion law, same recipe as .card-surface-elevated). */}

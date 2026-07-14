@@ -444,8 +444,10 @@ REGELN FÜR DIE QUIZ-ERSTELLUNG:
 - Triage: Lies die Fehleranalyse. Wo genau lag der Student falsch? Was hat er verwechselt?
 - Gezielte Attacke: Erstelle neue Fragen, die exakt diese Fehlkonzepte angreifen. Nutze neue Beispiele, andere Formulierungen oder ändere die Perspektive, damit er nicht einfach die alte Musterantwort auswendig lernen kann.
 - Keine Wiederholung: Stelle die alten Fragen nicht 1:1 identisch noch einmal.
+- ABSOLUT VERBOTEN — Multiple-Choice in jeder Form: keine Antwortoptionen (A/B/C/D, 1/2/3 oder Aufzählungen zum Auswählen), keine Richtig/Falsch-Aufgaben, keine Zuordnungs- oder Ankreuzlisten. Gerade im Wiederholungs-Quiz zählt freier Abruf: Die Antworten werden frei formuliert (getippt oder handschriftlich) und von einem Prüfer bewertet — vorgegebene Optionen machen diese Bewertung wertlos. Formuliere offene Aufgaben (erklären, herleiten, berechnen, anwenden); enthält dein Entwurf Antwortoptionen, ersetze die Aufgabe VOR der Ausgabe durch eine offene Frageform.
 - Punktzahl pro Aufgabe: 1 Punkt = reiner Abruf, 2 = Erklärung/Vergleich, 3 = Anwendung/Vignette mit Begründung, 4 = komplexe Synthese oder Kritik.
 - Format-Zwang: Halte dich EXAKT an das unten vorgegebene Format. Kein Markdown bei den Aufgabennamen! Schreibe "Aufgabe 1 —" (nicht "### Aufgabe 1").
+- Fachnotation: Wenn das Material Formeln, statistische Kennwerte, Herleitungen oder Rechenwege enthält (z. B. Statistik, Testtheorie), prüfe auch diese. Die App rendert Mathematik nativ (KaTeX): Schreibe mathematische Ausdrücke als Inline-LaTeX zwischen $...$ (z. B. $z = \\frac{x - \\mu}{\\sigma}$, $\\sqrt{x}$, $\\sum_{i=1}^{n} x_i$), mehrzeilige Herleitungen in $$...$$ auf eigenen Zeilen; kein Leerzeichen direkt hinter dem öffnenden bzw. vor dem schließenden $. Einfache Symbole dürfen Unicode bleiben (x², σ², α, χ², π); verschachtelte Ausdrücke (Brüche, Wurzeln aus Ausdrücken, Summen, Grenzwerte) gehören IMMER in $...$. Außerhalb der Delimiter keine \\begin{...}-Umgebungen, keine Formel-Bilder; Aufgaben-Überschriften und ===MARKER===-Zeilen bleiben reiner Text.
 
 AUSGABE:
 Gib ausschließlich das Quiz im folgenden Format aus. Kein Text davor oder danach.
@@ -484,7 +486,7 @@ Nächstes Quiz-Intervall: {NEXT_INTERVAL}
 Originales Vorlesungsmaterial (fachliche Quelle), didaktischer Blueprint, bisheriges Coverage Ledger, die alten Quizfragen, die Antworten des Studenten und der Output des Assessment-Grader-AIs werden dir als Inhalt in der User-Nachricht bereitgestellt.
 
 REGELN FÜR DIE QUIZ-ERSTELLUNG (STRIKT EINZUHALTEN):
-1. Freier Abruf statt Wiedererkennen: KEINE Multiple-Choice-Fragen, keine Lückentexte. Nach 6–12 Monaten zählt aktive Abrufstärke — der Student soll formulieren, nicht ankreuzen.
+1. Freier Abruf statt Wiedererkennen: KEINE Multiple-Choice-Fragen in jeder Form (keine Antwortoptionen A/B/C/D, keine Richtig/Falsch-Listen, keine Ankreuz- oder Zuordnungslisten), keine Lückentexte. Nach 6–12 Monaten zählt aktive Abrufstärke — der Student soll formulieren, nicht ankreuzen. Enthält dein Entwurf Antwortoptionen, ersetze die Aufgabe VOR der Ausgabe durch eine offene Frageform.
 2. Cold-Recall-Anker: Mindestens 1–2 Aufgaben müssen zentrale Priorität-A-Konzepte OHNE starke Hinweise rein aus dem Gedächtnis abrufen lassen — AUCH wenn der Student sie früher perfekt beantwortet hat. Der Langzeit-Abruf von Kernwissen ist der eigentliche Zweck dieses Intervalls; filtere gut Verstandenes hier NICHT heraus.
 3. Synthese & Transfer: Die übrigen Aufgaben kombinieren mehrere alte Konzepte in Kausalketten, Theorievergleichen oder neuen Fallvignetten.
 4. Lücken aus dem Grader: Falls der Grader-Output Restschwächen oder Verwechslungsrisiken erwähnt, greife sie in mindestens einer Aufgabe gezielt an.
@@ -492,6 +494,7 @@ REGELN FÜR DIE QUIZ-ERSTELLUNG (STRIKT EINZUHALTEN):
 6. Ground Truth: Alle Aufgaben müssen vollständig aus dem Vorlesungsmaterial ableitbar sein. Erfinde keine Theorien, Studien, Befunde oder Fachdetails. Erfundene Fallvignetten sind erlaubt, wenn sie ausschließlich Konzepte aus dem Material anwenden.
 7. Punktzahl pro Aufgabe: 1 Punkt = reiner Abruf, 2 = Erklärung/Vergleich, 3 = Anwendung/Vignette mit Begründung, 4 = komplexe Synthese oder Kritik.
 8. Format-Zwang: Halte dich EXAKT an das unten vorgegebene Format. Kein Markdown bei den Aufgabennamen! Schreibe "Aufgabe 1 —" (nicht "### Aufgabe 1").
+9. Fachnotation: Die App rendert Mathematik nativ (KaTeX). Mathematische Ausdrücke als Inline-LaTeX in $...$ (z. B. $z = \\frac{x - \\mu}{\\sigma}$, $\\sqrt{x}$, $\\sum_{i=1}^{n} x_i$), mehrzeilige Herleitungen in $$...$$; kein Leerzeichen direkt innerhalb der Delimiter. Einfache Symbole dürfen Unicode bleiben (x², σ², α, χ², π); verschachtelte Ausdrücke (Brüche, Wurzeln aus Ausdrücken, Summen, Grenzwerte) IMMER in $...$. Aufgaben-Überschriften und ===MARKER===-Zeilen bleiben reiner Text.
 
 AUSGABE:
 Gib ausschließlich das Quiz im folgenden Format aus. Kein Text davor oder danach.
@@ -532,12 +535,13 @@ REGELN FÜR DIE QUIZ-ERSTELLUNG (STRIKT EINZUHALTEN):
 1. Säulen-Abdeckung: Identifiziere aus Blueprint und Material die 3–5 tragenden Säulen (Priorität-A-Kernkonzepte) der Vorlesung. JEDE Säule muss durch mindestens eine Aufgabe geprüft werden — auch die, die der Student bisher gut beherrscht. Ohne breite Abdeckung ist die Prozentzahl wertlos.
 2. Schwachstellen-Attacke: Lies die Assessment-Historie genau. Konzepte mit dokumentierten Fehlern, Fehlkonzepten oder REPEAT-Entscheidungen erhalten zusätzliche, gezielte Aufgaben mit neuen Beispielen, anderen Formulierungen oder gewechselter Perspektive — Musterantworten aus alten Quizzes dürfen nicht wiederverwendbar sein.
 3. Falls KEINE Assessment-Historie bereitgestellt wird: Erstelle einen ausgewogenen Erst-Diagnostik-Check rein auf Basis von Blueprint und Material (Regel 1 gilt unverändert).
-4. Freier Abruf statt Wiedererkennen: KEINE Multiple-Choice-Fragen, keine Lückentexte. Der Student soll formulieren, erklären, anwenden.
+4. Freier Abruf statt Wiedererkennen: KEINE Multiple-Choice-Fragen in jeder Form (keine Antwortoptionen A/B/C/D, keine Richtig/Falsch-Listen, keine Ankreuz- oder Zuordnungslisten), keine Lückentexte. Der Student soll formulieren, erklären, anwenden. Enthält dein Entwurf Antwortoptionen, ersetze die Aufgabe VOR der Ausgabe durch eine offene Frageform.
 5. Kompetenz statt Auswendiglernen: Mindestens 2 Aufgaben verlangen Anwendung oder Transfer (Fallvignette, Kausalkette, Theorievergleich), damit echtes Verständnis von reinem Wiedererkennen getrennt wird.
 6. Keine Wiederholung: Verwende keine Frage aus alten Quizzes (inkl. letztem Verständnis-Check) in gleicher oder nur leicht umformulierter Form. Beachte das Vermeidungslog im Coverage Ledger.
 7. Ground Truth: Alle Aufgaben müssen vollständig aus dem Vorlesungsmaterial ableitbar sein. Erfinde keine Theorien, Studien, Befunde oder Fachdetails. Erfundene Fallvignetten sind erlaubt, wenn sie ausschließlich Konzepte aus dem Material anwenden.
 8. Punktzahl pro Aufgabe: 1 Punkt = reiner Abruf, 2 = Erklärung/Vergleich, 3 = Anwendung/Vignette mit Begründung, 4 = komplexe Synthese oder Kritik.
 9. Format-Zwang: Halte dich EXAKT an das unten vorgegebene Format. Kein Markdown bei den Aufgabennamen! Schreibe "Aufgabe 1 —" (nicht "### Aufgabe 1").
+10. Fachnotation: Die App rendert Mathematik nativ (KaTeX). Mathematische Ausdrücke als Inline-LaTeX in $...$ (z. B. $z = \\frac{x - \\mu}{\\sigma}$, $\\sqrt{x}$, $\\sum_{i=1}^{n} x_i$), mehrzeilige Herleitungen in $$...$$; kein Leerzeichen direkt innerhalb der Delimiter. Einfache Symbole dürfen Unicode bleiben (x², σ², α, χ², π); verschachtelte Ausdrücke (Brüche, Wurzeln aus Ausdrücken, Summen, Grenzwerte) IMMER in $...$. Aufgaben-Überschriften und ===MARKER===-Zeilen bleiben reiner Text.
 
 AUSGABE:
 Gib ausschließlich das Quiz im folgenden Format aus. Kein Text davor oder danach.

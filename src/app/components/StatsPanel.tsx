@@ -441,12 +441,12 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
             </div>
           ))}
         </div>
-        <div className="card-surface p-5 md:px-6 md:py-[22px]">
+        <div className="card-surface p-5 md:px-6 md:py-5.5">
           <div className="w-56 h-3 rounded-full bg-paper-2 mb-6" />
           <div className="h-28 rounded-xl bg-paper-0" />
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5">
-          <div className="card-surface p-5 md:px-6 md:py-[22px]">
+          <div className="card-surface p-5 md:px-6 md:py-5.5">
             <div className="w-48 h-3 rounded-full bg-paper-2 mb-6" />
             <div className="flex flex-col gap-4">
               {[0, 1, 2, 3, 4].map((i) => (
@@ -457,7 +457,7 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
               ))}
             </div>
           </div>
-          <div className="card-surface p-5 md:px-6 md:py-[22px]">
+          <div className="card-surface p-5 md:px-6 md:py-5.5">
             <div className="w-48 h-3 rounded-full bg-paper-2 mb-6" />
             <div className="flex items-end gap-1.5 h-[150px]">
               {[35, 60, 20, 80, 45, 25, 70, 40, 55, 30, 65, 22, 50, 38].map((h, i) => (
@@ -466,7 +466,7 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
             </div>
           </div>
         </div>
-        <div className="card-surface p-5 md:px-6 md:py-[22px]">
+        <div className="card-surface p-5 md:px-6 md:py-5.5">
           <div className="w-48 h-3 rounded-full bg-paper-2 mb-6" />
           <div className="flex items-end gap-3 sm:gap-3.5 h-[130px]">
             {[40, 65, 85, 55, 30, 20, 12].map((h, i) => (
@@ -659,7 +659,7 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
       </motion.div>
 
       {/* ── Activity heatmap (≈ 6 months) ── */}
-      <motion.div variants={riseChild} className="card-surface p-5 md:px-6 md:py-[22px]">
+      <motion.div variants={riseChild} className="card-surface p-5 md:px-6 md:py-5.5">
         <div className="flex items-baseline justify-between mb-4">
           <h4 className="text-sm text-ink-900" style={{ fontWeight: 650 }}>
             {de ? "Aktivität" : "Activity"}
@@ -723,8 +723,8 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
 
       <motion.div variants={riseChild} className="grid grid-cols-1 lg:grid-cols-2 gap-3.5">
         {/* ── Per-module stats ── */}
-        <div className="card-surface p-5 md:px-6 md:py-[22px]">
-          <h4 className="text-sm text-ink-900 mb-[18px]" style={{ fontWeight: 650 }}>
+        <div className="card-surface p-5 md:px-6 md:py-5.5">
+          <h4 className="text-sm text-ink-900 mb-4.5" style={{ fontWeight: 650 }}>
             {de ? "Bestehensquote nach Modul" : "Pass rate by module"}
           </h4>
           {computed.modules.length === 0 ? (
@@ -734,7 +734,7 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
               {(showAllModules ? computed.modules : computed.modules.slice(0, 8)).map((mod, i) => (
                 <div key={mod.name}>
                   <Tip label={`${mod.reviews} ${de ? (mod.reviews === 1 ? "Wiederholung" : "Wiederholungen") : (mod.reviews === 1 ? "review" : "reviews")}${mod.items > 0 ? ` · ${mod.items} ${de ? "Vorl." : "lect."} · Ø L${(mod.avgLevel + 1).toLocaleString(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}` : ""}`}>
-                  <div className="flex justify-between gap-3 text-[13px] mb-[7px]">
+                  <div className="flex justify-between gap-3 text-[13px] mb-2">
                     <span className="text-ink-900 truncate" style={{ fontWeight: 550 }}>{mod.name}</span>
                     <span className="text-ink-600 tabular-nums whitespace-nowrap">
                       {mod.passRate === null ? "—" : fmtPercent(mod.passRate, language)}
@@ -776,7 +776,7 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
               )}
             </div>
           )}
-          <p className="text-[11px] text-ink-400 mt-[18px]">
+          <p className="text-[11px] text-ink-400 mt-4.5">
             {de
               ? "Balken zeigen die Bestehensquote der letzten 12 Monate — niedrigste zuerst."
               : "Bars show pass rate over the last 12 months — lowest first."}
@@ -784,7 +784,7 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
         </div>
 
         {/* ── Review load · next 14 days ── */}
-        <div className="card-surface p-5 md:px-6 md:py-[22px]">
+        <div className="card-surface p-5 md:px-6 md:py-5.5">
           <h4 className="text-sm text-ink-900" style={{ fontWeight: 650 }}>
             {de ? "Pensum · nächste 14 Tage" : "Review load · next 14 days"}
           </h4>
@@ -830,7 +830,7 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
       </motion.div>
 
       {/* ── Level distribution (full width) ── */}
-      <motion.div variants={riseChild} className="card-surface p-5 md:px-6 md:py-[22px]">
+      <motion.div variants={riseChild} className="card-surface p-5 md:px-6 md:py-5.5">
           <h4 className="text-sm text-ink-900 mb-5" style={{ fontWeight: 650 }}>
             {de ? "Wo deine Vorlesungen stehen" : "Where your lectures sit"}
           </h4>
@@ -866,7 +866,7 @@ export default function StatsPanel({ items, language }: { items: StatsItemSlim[]
               </Tip>
             ))}
           </div>
-          <p className="text-[11px] text-ink-400 mt-[18px]">
+          <p className="text-[11px] text-ink-400 mt-4.5">
             {de
               ? "Jede Vorlesung klettert mit jedem Bestehen vom 1-Tages-Intervall Richtung Jahresintervall."
               : "Each lecture climbs from a 1-day interval toward a yearly one as you keep passing."}

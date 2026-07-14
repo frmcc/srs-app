@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { GoogleGenAI } from "@google/genai";
 import { GRADE_PROMPTS } from "@/app/api/grade/prompts";
 import { PROMPTS, STUDENT_CONTEXT } from "@/app/api/quiz/prompts";
+import { MATH_NOTATION_GRADING } from "@/lib/math-prompts";
 import { downloadFromDrive, createGoogleDoc } from "@/lib/google-drive";
 import { sendPushNotification } from "@/lib/push";
 import { generateContentWithRetry, normalizeFileTransport } from "@/lib/gemini-retry";
@@ -285,14 +286,16 @@ export async function runGradingPipeline(opts: {
   coUserParts.push(...answerParts);
   coUserParts.push({ text: "Hier sind die Dateien. Bitte führe deine System-Instruktionen aus." });
 
+  // Every examiner gets the math-notation addendum: the app renders KaTeX in
+  // the feedback, so $...$-LaTeX in the graders' output displays natively.
   const [res1, res2] = await Promise.all([
     generateContentWithRetry(ai, stepModel("copruefer"), {
       contents: [{ role: "user", parts: coUserParts as never }],
-      config: { systemInstruction: formatPrompt(GRADE_PROMPTS.co_pruefer_1, { TOTAL_TASKS: totalTasks, SPLIT_POINT: splitPoint, SUBJECT: subject, INTERVAL: interval }) + languageInstruction },
+      config: { systemInstruction: formatPrompt(GRADE_PROMPTS.co_pruefer_1, { TOTAL_TASKS: totalTasks, SPLIT_POINT: splitPoint, SUBJECT: subject, INTERVAL: interval }) + MATH_NOTATION_GRADING + languageInstruction },
     }, (msg) => progress(1, msg), "Co-Prüfer 1", stepWrapper("copruefer"), fileTransport),
     generateContentWithRetry(ai, stepModel("copruefer"), {
       contents: [{ role: "user", parts: coUserParts as never }],
-      config: { systemInstruction: formatPrompt(GRADE_PROMPTS.co_pruefer_2, { TOTAL_TASKS: totalTasks, START_INDEX: startIdx2, SUBJECT: subject, INTERVAL: interval }) + languageInstruction },
+      config: { systemInstruction: formatPrompt(GRADE_PROMPTS.co_pruefer_2, { TOTAL_TASKS: totalTasks, START_INDEX: startIdx2, SUBJECT: subject, INTERVAL: interval }) + MATH_NOTATION_GRADING + languageInstruction },
     }, (msg) => progress(1, msg), "Co-Prüfer 2", stepWrapper("copruefer"), fileTransport),
   ]);
 
@@ -312,7 +315,7 @@ export async function runGradingPipeline(opts: {
 
   const chefRes = await generateContentWithRetry(ai, stepModel("chief_assessor"), {
     contents: [{ role: "user", parts: chefUserParts as never }],
-    config: { systemInstruction: formatPrompt(GRADE_PROMPTS.chef_pruefer, { SUBJECT: subject, INTERVAL: interval }) + languageInstruction },
+    config: { systemInstruction: formatPrompt(GRADE_PROMPTS.chef_pruefer, { SUBJECT: subject, INTERVAL: interval }) + MATH_NOTATION_GRADING + languageInstruction },
   }, (msg) => progress(2, msg), "Chief Assessor", stepWrapper("chief_assessor"), fileTransport);
 
   let chefFeedback = chefRes.text || "";
@@ -329,6 +332,7 @@ export async function runGradingPipeline(opts: {
     const chefRetry = await generateContentWithRetry(ai, stepModel("chief_assessor"), {
       contents: [{ role: "user", parts: chefUserParts as never }],
       config: { systemInstruction: formatPrompt(GRADE_PROMPTS.chef_pruefer, { SUBJECT: subject, INTERVAL: interval })
+        + MATH_NOTATION_GRADING
         + languageInstruction
         // Do NOT print both words together as an example — a model that echoes
         // the template would produce an ambiguous block. Ask for exactly one.
