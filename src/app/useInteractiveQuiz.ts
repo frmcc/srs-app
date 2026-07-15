@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { stripChemForSpeech } from "@/lib/chem-markup";
 
 export type InteractivePhase = "idle" | "loading" | "speaking" | "listening";
 export type DictationMode = "hybrid" | "gemini" | "browser";
@@ -292,7 +293,7 @@ export function useInteractiveQuiz({ tasks, language = "German", dictationMode =
         const res = await fetch("/api/tts", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: tasksRef.current[i]?.questionText ?? "" }),
+          body: JSON.stringify({ text: stripChemForSpeech(tasksRef.current[i]?.questionText ?? "", langRef.current === "English" ? "english" : "german") }),
           signal: ctrl.signal,
         });
         if (!res.ok) {
@@ -708,7 +709,7 @@ export function useInteractiveQuiz({ tasks, language = "German", dictationMode =
         return;
       }
       cancelSynthesis();
-      const u = new SpeechSynthesisUtterance(task.questionText);
+      const u = new SpeechSynthesisUtterance(stripChemForSpeech(task.questionText, langRef.current === "English" ? "english" : "german"));
       u.lang = langRef.current === "English" ? "en-US" : "de-DE";
       utteranceRef.current = u;
 

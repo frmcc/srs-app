@@ -72,7 +72,7 @@ import { ScribbleCanvas } from "./components/ScribbleCanvas";
 import StatsPanel from "./components/StatsPanel";
 import TutorPanel from "./components/TutorPanel";
 import ChemText from "./components/ChemText";
-import { splitChemBlocks, splitChemInline, unescapeChemText } from "@/lib/chem-markup";
+import { splitChemBlocks, splitChemInline, unescapeChemText, stripChemForSpeech } from "@/lib/chem-markup";
 import { fmtPercent } from "@/lib/format";
 import { signOut } from "next-auth/react";
 
@@ -4407,7 +4407,9 @@ export default function DashboardClient({
 
                                                           {/* Last feedback — parsed summary; opens the full brief (auto-translated) */}
                                                           {item.lastFeedback && (() => {
-                                                            const summary = parseFeedbackSummary(item.lastFeedback);
+                                                            // Chem/math briefs: flatten $…$/```smiles markup BEFORE snipping —
+                                                            // a 160-char slice through raw markup reads as line noise.
+                                                            const summary = parseFeedbackSummary(stripChemForSpeech(item.lastFeedback, language));
                                                             return (
                                                               <div>
                                                                 <p className="caps-label mb-2">
