@@ -68,6 +68,7 @@ import { getAppearance, setAppearance, APPEARANCE_ACCENTS, type AppearancePref, 
 import { WRAPPER_STEPS } from "@/lib/wrapper-modules";
 import { useInteractiveQuiz, type DictationMode } from "./useInteractiveQuiz";
 import { AutoGrowTextarea } from "./components/AutoGrowTextarea";
+import SymbolBar, { type SymbolCategory } from "./components/SymbolBar";
 import { ScribbleCanvas } from "./components/ScribbleCanvas";
 import StatsPanel from "./components/StatsPanel";
 import TutorPanel from "./components/TutorPanel";
@@ -1010,6 +1011,47 @@ export default function DashboardClient({
   const [studentAnswers, setStudentAnswers] = useState("");
   const [parsedTasks, setParsedTasks] = useState<ReturnType<typeof parseQuizTasks>>([]);
   const [individualAnswers, setIndividualAnswers] = useState<Record<string, string>>({});
+  // Symbol bar (Math/Physics palettes for every student) — retracted by default;
+  // the chosen category + open state persist so it reopens as the student left it.
+  const [symbolCategory, setSymbolCategory] = useState<SymbolCategory>("math");
+  const [symbolBarOpen, setSymbolBarOpen] = useState(false);
+  useEffect(() => {
+    try {
+      const cat = localStorage.getItem("srsSymbolCategory");
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- localStorage only exists after mount
+      if (cat === "math" || cat === "physics") setSymbolCategory(cat);
+      if (localStorage.getItem("srsSymbolBarOpen") === "1") setSymbolBarOpen(true);
+    } catch { /* private mode */ }
+  }, []);
+  const symbolCategories = useMemo<SymbolCategory[]>(() => ["math", "physics"], []);
+  const chooseSymbolCategory = useCallback((c: SymbolCategory) => {
+    setSymbolCategory(c);
+    try { localStorage.setItem("srsSymbolCategory", c); } catch { /* quota */ }
+  }, []);
+  const setSymbolOpen = useCallback((open: boolean) => {
+    setSymbolBarOpen(open);
+    try { localStorage.setItem("srsSymbolBarOpen", open ? "1" : "0"); } catch { /* quota */ }
+  }, []);
+  // Track the last-focused answer box so a symbol chip inserts at its caret.
+  const answerElsRef = useRef<Record<string, HTMLTextAreaElement | null>>({});
+  const lastAnswerTaskRef = useRef<string | null>(null);
+  const insertSymbol = useCallback((token: string, taskId?: string | null) => {
+    const id = taskId ?? lastAnswerTaskRef.current;
+    if (!id) return;
+    const el = answerElsRef.current[id];
+    setIndividualAnswers(prev => {
+      const cur = prev[id] ?? "";
+      const s0 = el ? (el.selectionStart ?? cur.length) : cur.length;
+      const s1 = el ? (el.selectionEnd ?? s0) : s0;
+      const next = cur.slice(0, s0) + token + cur.slice(s1);
+      if (el) {
+        const caret = s0 + token.length;
+        const refocus = document.activeElement === el;
+        requestAnimationFrame(() => { if (refocus) el.focus(); el.setSelectionRange(caret, caret); });
+      }
+      return { ...prev, [id]: next };
+    });
+  }, []);
   // Scribbled answers (allowlist feature): taskId (or FREE_SKETCH_KEY) → PNG data
   // URL, plus which pads are open. Deliberately NOT part of the localStorage draft
   // — a handful of canvases would blow the ~5 MB quota and kill the text draft.
@@ -5005,10 +5047,30 @@ export default function DashboardClient({
                                     )}
                                   </div>
                                 </div>
+                                {!isMC && (
+                                  <div className="mb-1.5">
+                                    <SymbolBar
+                                      categories={symbolCategories}
+                                      category={symbolCategory}
+                                      onCategory={chooseSymbolCategory}
+                                      expanded={symbolBarOpen}
+                                      onExpandedChange={setSymbolOpen}
+                                      recents={[]}
+                                      onInsert={(t) => insertSymbol(t, task.id)}
+                                      language={language}
+                                    />
+                                  </div>
+                                )}
                                 <AutoGrowTextarea
                                   value={individualAnswers[task.id] || ""}
                                   aria-label={`${task.label} — ${language === "german" ? "Deine Antwort" : "Your answer"}`}
+                                  onFocus={e => {
+                                    answerElsRef.current[task.id] = e.currentTarget;
+                                    lastAnswerTaskRef.current = task.id;
+                                  }}
                                   onChange={e => {
+                                    answerElsRef.current[task.id] = e.currentTarget;
+                                    lastAnswerTaskRef.current = task.id;
                                     setIndividualAnswers(prev => ({
                                       ...prev,
                                       [task.id]: e.target.value
