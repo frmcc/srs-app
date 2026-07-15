@@ -182,8 +182,15 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
 
   // MT-11: iOS (especially standalone) does not shrink the layout viewport when
   // the keyboard opens, so a `fixed inset-y-0` panel leaves the pinned composer
-  // behind the keys. Size and offset the panel off the visualViewport instead —
-  // instantaneous layout response to keyboard/pinch, no animated properties.
+  // behind the keys. When the keyboard is open we size/offset the panel off the
+  // visualViewport instead — instantaneous, no animated properties.
+  //
+  // MT-11b: but ONLY when the keyboard is actually open. iOS also fires vv
+  // "scroll" during ordinary scrolling, with an offsetTop that oscillates
+  // (URL-bar collapse, momentum, rubber-banding). Binding top to it on every
+  // scroll made the "fixed" panel drift OPPOSITE to the page on iPhone/iPad —
+  // the reported bug. So during normal scroll (keyboard closed) we clear the
+  // overrides and let the panel be a plain, truly-fixed inset-y-0.
   useEffect(() => {
     if (!open || typeof window === "undefined") return;
     const vv = window.visualViewport;
@@ -191,8 +198,15 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
     const apply = () => {
       const el = panelRef.current;
       if (!el) return;
-      el.style.top = `${vv.offsetTop}px`;
-      el.style.height = `${vv.height}px`;
+      // Keyboard open ⇒ the visual viewport is well shorter than the layout one.
+      const keyboardOpen = window.innerHeight - vv.height > 150;
+      if (keyboardOpen) {
+        el.style.top = `${vv.offsetTop}px`;
+        el.style.height = `${vv.height}px`;
+      } else if (el.style.top || el.style.height) {
+        el.style.top = "";
+        el.style.height = "";
+      }
     };
     apply();
     vv.addEventListener("resize", apply);
