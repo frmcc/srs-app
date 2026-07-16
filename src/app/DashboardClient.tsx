@@ -180,6 +180,24 @@ interface GradingOutcome {
   /** True when this run was a Verständnis-Check — the result screen shows the % instead of levels/dates. */
   comprehension?: boolean;
   comprehensionScore?: number | null;
+  /** Set when the screen is a RECONSTRUCTION of a stored attempt (ISO date the
+   *  quiz was answered) — the header drops the celebration/reschedule copy. */
+  revisitedAt?: string | null;
+}
+
+/** Answered-quiz snapshot from GET /api/reviews/[id]/answers (see AnswerSnapshot
+ *  in lib/grading-pipeline — not imported here: that module is server-only). */
+interface RevisitSnapshot {
+  answeredAt?: string;
+  level?: number | null;
+  passed?: boolean;
+  score?: number;
+  quizText?: string;
+  tasks?: Record<string, string>;
+  free?: string;
+  sketches?: Record<string, string>;
+  sketchesDropped?: string[];
+  pdfScan?: boolean;
 }
 
 /** One graded review from GET /api/reviews/[id]/history (ReviewLog row). */
@@ -1008,6 +1026,12 @@ export default function DashboardClient({
   // When the tutor is opened from a specific task's button, that task is pinned
   // at the top of the chat. null = opened generally (header button), no pin.
   const [focusedTaskId, setFocusedTaskId] = useState<string | null>(null);
+  // The student-facing text of the quiz being taken, resolved ONCE in
+  // startQuiz. The free-form fallback must render THIS — re-deriving from
+  // selectedReview.raw.currentQuizText showed the regular quiz while a
+  // comprehension check (whose text never lives on the review row) was
+  // actually being graded.
+  const [activeQuizText, setActiveQuizText] = useState("");
   const [studentAnswers, setStudentAnswers] = useState("");
   const [parsedTasks, setParsedTasks] = useState<ReturnType<typeof parseQuizTasks>>([]);
   const [individualAnswers, setIndividualAnswers] = useState<Record<string, string>>({});
@@ -1722,6 +1746,84 @@ export default function DashboardClient({
     setActiveFeedbackItem(item);
   }, []);
 
+  // While a stored attempt is being fetched for the revisit view (item id) —
+  // drives the button spinners in the feedback/comprehension modals.
+  const [revisitLoading, setRevisitLoading] = useState<string | null>(null);
+
+  /**
+   * Revisit the LAST answered quiz: fetch the stored snapshot (quiz text as
+   * answered + the user's answers + sketches) and rehydrate the regular result
+   * screen from it — same task-by-task cards, same per-task tutor, but with a
+   * "last attempt" header instead of the celebration. Latest attempt only;
+   * that is all the server keeps.
+   */
+  const openRevisit = useCallback(async (item: RawReviewItem, comprehension: boolean) => {
+    if (isGrading) {
+      addToast("error", language === "german"
+        ? "Eine Bewertung läuft noch — das Ergebnis ist gleich da."
+        : "A grading run is still in progress — your result is almost ready.");
+      return;
+    }
+    if (revisitLoading) return;
+    setRevisitLoading(item.id);
+    try {
+      const res = await fetch(`/api/reviews/${item.id}/answers${comprehension ? "?mode=comprehension" : ""}`);
+      if (!res.ok) throw new Error(`status ${res.status}`);
+      const data: { snapshot: RevisitSnapshot | null; feedback: string | null } = await res.json();
+      if (!data.snapshot) {
+        // Graded before answer snapshots existed — nothing stored to replay.
+        addToast("error", language === "german"
+          ? "Für diesen Versuch wurden keine Antworten gespeichert — erst ab der nächsten Bewertung."
+          : "No answers were stored for this attempt — available from the next graded run on.");
+        return;
+      }
+      const snapshot = data.snapshot;
+
+      // Rehydrate the quiz/result state exactly like startQuiz + a finished
+      // grade would have left it, from the snapshot instead of live typing.
+      const card = upcomingReviews.find((r) => r.id === item.id) ?? formatItems([item])[0];
+      setSelectedReview(card);
+      setComprehensionMode(comprehension);
+      const studentQuizOnly = extractStudentQuiz(snapshot.quizText || "");
+      setActiveQuizText(studentQuizOnly);
+      const tasks = parseQuizTasks(studentQuizOnly);
+      setParsedTasks(tasks);
+      const answers: Record<string, string> = {};
+      tasks.forEach(t => { answers[t.id] = snapshot.tasks?.[t.id] ?? ""; });
+      setIndividualAnswers(answers);
+      setStudentAnswers(snapshot.free || "");
+      setAnswerSketches(snapshot.sketches ?? {});
+      setOpenScribbles({});
+      setGradingResult({
+        isPass: !!snapshot.passed,
+        feedback: data.feedback ?? "",
+        nextReviewDate: null,
+        currentLevel: null,
+        comprehension,
+        comprehensionScore: typeof snapshot.score === "number" ? snapshot.score : null,
+        revisitedAt: snapshot.answeredAt ?? "",
+      });
+      setShowTaskReview(true); // seeing the answered tasks is the point of revisiting
+      setShowTutorPanel(false);
+      setFocusedTaskId(null);
+      setGradingError("");
+      setActiveFeedbackItem(null);
+      setCompFeedback(null);
+      setActiveTab("quiz");
+      if (typeof window !== "undefined") {
+        window.scrollTo({ top: 0, behavior: "instant" });
+        mainRef.current?.scrollTo({ top: 0, behavior: "instant" });
+      }
+    } catch (e) {
+      console.error("Failed to load answer snapshot:", e);
+      addToast("error", language === "german"
+        ? "Letzter Versuch konnte nicht geladen werden — bitte erneut versuchen."
+        : "Couldn't load the last attempt — please try again.");
+    } finally {
+      setRevisitLoading(null);
+    }
+  }, [isGrading, revisitLoading, upcomingReviews, language, addToast]);
+
   // Fetch (or reuse a cached) translation whenever the open brief isn't in the
   // UI language. Cached per item + language + text length in localStorage, so
   // each brief costs at most one flash-lite call per language.
@@ -2157,6 +2259,7 @@ export default function DashboardClient({
 
     // Only display/process student questions
     const studentQuizOnly = extractStudentQuiz(quizText);
+    setActiveQuizText(studentQuizOnly);
 
     // Fallback template (used only if the structured per-task sheet can't parse).
     // Match task headers in BOTH languages at line starts — mirroring
@@ -2404,7 +2507,8 @@ export default function DashboardClient({
 
     // Scribbled answers ride along as labeled images; the text under the task
     // header points the graders at the right image so nothing gets orphaned.
-    const sketchesPayload: { label: string; image: string }[] = [];
+    // taskId lets the server key the revisit snapshot back to the task box.
+    const sketchesPayload: { label: string; image: string; taskId: string }[] = [];
     let payloadAnswers = studentAnswers;
     if (parsedTasks.length > 0) {
       payloadAnswers = parsedTasks.map(task => {
@@ -2412,7 +2516,7 @@ export default function DashboardClient({
         const sketch = answerSketches[task.id];
         if (!sketch) return `${task.header}\n${answer}`;
         const sketchLabel = task.header.replace(/:\s*$/, ""); // "Aufgabe 3"
-        sketchesPayload.push({ label: sketchLabel, image: sketch });
+        sketchesPayload.push({ label: sketchLabel, image: sketch, taskId: task.id });
         const note = language === "german"
           ? `[Antwort handschriftlich gescribbelt — siehe Bild „${sketchLabel}“ unten]`
           : `[Answer scribbled by hand — see image "${sketchLabel}" below]`;
@@ -2420,7 +2524,7 @@ export default function DashboardClient({
       }).join("\n\n");
     } else if (answerSketches[FREE_SKETCH_KEY]) {
       const freeLabel = language === "german" ? "Antwortblatt" : "Answer sheet";
-      sketchesPayload.push({ label: freeLabel, image: answerSketches[FREE_SKETCH_KEY] });
+      sketchesPayload.push({ label: freeLabel, image: answerSketches[FREE_SKETCH_KEY], taskId: FREE_SKETCH_KEY });
       const note = language === "german"
         ? `\n\n[Zusätzlich handschriftlich gescribbelte Antworten — siehe Bild „${freeLabel}“ unten]`
         : `\n\n[Additional hand-scribbled answers — see image "${freeLabel}" below]`;
@@ -2456,6 +2560,18 @@ export default function DashboardClient({
           // Verständnis-Check: same pipeline, but the outcome is only the
           // score — schedule, levels and logs stay untouched server-side.
           ...(comprehensionMode ? { comprehension: true } : {}),
+          // Structured copy of the same answers, keyed by task id — the server
+          // persists these as the revisit snapshot (latest attempt only).
+          structuredAnswers: parsedTasks.length > 0
+            ? {
+                tasks: Object.fromEntries(
+                  parsedTasks
+                    .map(task => [task.id, (individualAnswers[task.id] || "").trim()])
+                    .filter(([, answer]) => answer)
+                ),
+                free: "",
+              }
+            : { tasks: {}, free: studentAnswers.trim() },
           // Scribbled answer boxes (allowlist feature; server re-checks).
           ...(sketchesPayload.length > 0 ? { sketches: sketchesPayload } : {}),
         }),
@@ -4663,6 +4779,9 @@ export default function DashboardClient({
                   topic={selectedReview.topic}
                   language={language}
                   phase={gradingResult ? "assessment" : "quiz"}
+                  quizContext={comprehensionMode
+                    ? (gradingResult ? "comprehensionAnswered" : "comprehensionCurrent")
+                    : (gradingResult ? "lastAnswered" : "current")}
                   tasks={parsedTasks}
                   getDraft={getInteractiveAnswer}
                   getSketch={(taskId) => answerSketches[taskId]}
@@ -4831,6 +4950,10 @@ export default function DashboardClient({
                                   </span>{" "}
                                   <em className="italic">{language === "german" ? "Verständnis." : "comprehension."}</em>
                                 </>
+                              : gradingResult.revisitedAt !== undefined
+                              ? (language === "german"
+                                  ? <>Dein <em className="italic">letzter Versuch.</em></>
+                                  : <>Your <em className="italic">last attempt.</em></>)
                               : gradingResult.isPass
                               ? (language === "german"
                                   ? <>Level {gradingResult.currentLevel !== null ? gradingResult.currentLevel + 1 : "—"}, <em className="italic">freigeschaltet.</em></>
@@ -4839,13 +4962,25 @@ export default function DashboardClient({
                                   ? <>Schauen wir es uns <em className="italic">noch einmal</em> an.</>
                                   : <>Let&apos;s see this one <em className="italic">again.</em></>)}
                           </h2>
-                          {gradingResult.comprehension && (
+                          {gradingResult.revisitedAt !== undefined ? (
+                            <p className="text-ink-600 mt-3 text-sm">
+                              {(language === "german" ? "Beantwortet am " : "Answered on ")}
+                              <strong className="text-ink-900 font-semibold tnum">
+                                {gradingResult.revisitedAt
+                                  ? new Date(gradingResult.revisitedAt).toLocaleDateString(language === "german" ? "de-DE" : "en-GB", { weekday: "long", day: "numeric", month: "long" })
+                                  : "—"}
+                              </strong>
+                              {language === "german"
+                                ? " — Fragen, deine Antworten und die Bewertung, wie sie bewertet wurden."
+                                : " — questions, your answers and the assessment, exactly as graded."}
+                            </p>
+                          ) : gradingResult.comprehension ? (
                             <p className="text-ink-600 mt-3 text-sm">
                               {language === "german"
                                 ? "In der Bibliothek aktualisiert — Zeitplan und Level bleiben unberührt."
                                 : "Updated in your library — schedule and levels stay untouched."}
                             </p>
-                          )}
+                          ) : null}
                           {gradingResult.nextReviewDate && (
                             <p className="text-ink-600 mt-3 text-sm">
                               {gradingResult.isPass
@@ -4857,8 +4992,9 @@ export default function DashboardClient({
                           )}
                         </div>
                       </div>
-                      {/* The earned moment: amber thread draws once under the pass header */}
-                      {gradingResult.isPass ? (
+                      {/* The earned moment: amber thread draws once under the pass header.
+                          A revisit is a replay, not the moment — quiet hairline instead. */}
+                      {gradingResult.isPass && gradingResult.revisitedAt === undefined ? (
                         <motion.div
                           initial={{ scaleX: 0 }}
                           animate={{ scaleX: 1 }}
@@ -4885,6 +5021,22 @@ export default function DashboardClient({
                       </div>
                       </div>
                     </motion.div>
+
+                    {/* Free-form quizzes have no task cards — on a revisit, still show
+                        the submitted sheet (typed and/or scribbled) next to the brief. */}
+                    {gradingResult.revisitedAt !== undefined && parsedTasks.length === 0 &&
+                      (studentAnswers.trim() || answerSketches[FREE_SKETCH_KEY]) && (
+                      <motion.div variants={riseChild}>
+                        <TaskReviewCard
+                          number={1}
+                          label={language === "german" ? "Dein Antwortblatt" : "Your answer sheet"}
+                          assessment={null}
+                          typedAnswer={studentAnswers}
+                          sketch={answerSketches[FREE_SKETCH_KEY]}
+                          language={language}
+                        />
+                      </motion.div>
+                    )}
 
                     {/* Task-by-task assessment: a read-only replay of the quiz with
                         your submitted answers, per-task mastery, and the per-task
@@ -5178,7 +5330,7 @@ export default function DashboardClient({
                       <div className="card-surface-elevated p-6 md:p-8 flex flex-col">
                         <div className="bg-paper-0 border border-(--hairline) rounded-[14px] p-6 font-sans whitespace-pre-wrap text-ink-900/80 text-sm leading-relaxed mb-6">
                           {/* Server-computed, level-correct quiz text (slim payload) */}
-                          <ChemText text={extractStudentQuiz(selectedReview.raw.currentQuizText || "")} />
+                          <ChemText text={activeQuizText} />
                         </div>
 
                         <div className="flex items-center justify-between gap-2 mb-2.5">
@@ -5370,6 +5522,21 @@ export default function DashboardClient({
 
                 {/* Body */}
                 <div className="flex-1 overflow-y-auto overscroll-contain p-6 md:p-8 custom-scrollbar">
+                  {/* Revisit the last attempt WITH the stored answers: the quiz page,
+                      your answers and the assessment side by side, per-task tutor
+                      included. Attempts graded before snapshots existed toast instead. */}
+                  {activeFeedbackItem.lastFeedback && (
+                    <button
+                      onClick={() => openRevisit(activeFeedbackItem, false)}
+                      disabled={revisitLoading === activeFeedbackItem.id}
+                      className="w-full mb-6 btn-secondary h-11 px-5 text-sm flex items-center justify-center gap-2 cursor-pointer disabled:cursor-wait disabled:opacity-60"
+                    >
+                      {revisitLoading === activeFeedbackItem.id
+                        ? <ArrowPathIcon className="w-4 h-4 animate-spin" strokeWidth={1.6} />
+                        : <AcademicCapIcon className="w-4 h-4" strokeWidth={1.6} />}
+                      {language === "german" ? "Letzten Versuch mit deinen Antworten ansehen" : "Revisit last attempt with your answers"}
+                    </button>
+                  )}
                   {(() => {
                     const histText = feedbackTranslation && !showFeedbackOriginal ? feedbackTranslation : (activeFeedbackItem.lastFeedback ?? "");
                     const { brief: histBrief, perTasks: histPerTasks } = splitFeedback(histText);
@@ -6453,6 +6620,18 @@ export default function DashboardClient({
                 </Tip>
               </div>
               <div className="p-6 md:p-8 overflow-y-auto overscroll-contain custom-scrollbar">
+                {/* Revisit the answered check: questions, your answers and the
+                    assessment side by side, per-task tutor included. */}
+                <button
+                  onClick={() => openRevisit(compFeedback, true)}
+                  disabled={revisitLoading === compFeedback.id}
+                  className="w-full mb-6 btn-secondary h-10 px-4 text-xs flex items-center justify-center gap-2 cursor-pointer disabled:cursor-wait disabled:opacity-60"
+                >
+                  {revisitLoading === compFeedback.id
+                    ? <ArrowPathIcon className="w-3.5 h-3.5 animate-spin" strokeWidth={1.6} />
+                    : <AcademicCapIcon className="w-3.5 h-3.5" strokeWidth={1.6} />}
+                  {language === "german" ? "Check mit deinen Antworten ansehen" : "Revisit check with your answers"}
+                </button>
                 {compFeedback.comprehensionFeedback ? (
                   <FeedbackBody text={compFeedback.comprehensionFeedback} size="sm" />
                 ) : (
