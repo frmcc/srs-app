@@ -45,6 +45,8 @@ export interface GradingSketch {
   data: string;
   /** image/png, image/jpeg or image/webp (validated by the route). */
   mimeType: string;
+  /** Client task id (parseQuizTasks) — keys the sketch in the revisit snapshot. */
+  taskId?: string;
 }
 
 export interface GradingSubmission {
@@ -77,6 +79,78 @@ export interface GradingResult {
 }
 
 type Part = Record<string, unknown>;
+
+/**
+ * Answered-quiz snapshot for the revisit feature: the quiz text exactly as it
+ * was answered plus the student's answers, serialized into one JSON column
+ * (latest attempt only — every grade overwrites it, in the same write as the
+ * assessment so the pair always describes the same attempt). Sketch images are
+ * kept under a hard base64 budget so the SRSItem row stays cheap to load;
+ * dropped ones are listed so the UI can say "sketch too large to keep" instead
+ * of silently showing nothing.
+ */
+const SNAPSHOT_SKETCH_BUDGET_B64 = 2_500_000; // ≈1.9 MB of images per snapshot
+
+export interface AnswerSnapshot {
+  v: 1;
+  answeredAt: string;
+  /** Level the quiz belonged to (null for comprehension checks). */
+  level: number | null;
+  passed: boolean;
+  /** Comprehension checks only: the assessor's mastery percentage. */
+  score?: number;
+  /** The student-facing quiz text exactly as answered. */
+  quizText: string;
+  /** Typed answers keyed by parseQuizTasks-style task id. */
+  tasks: Record<string, string>;
+  /** Free-form answer (quizzes without parsable task headers). */
+  free: string;
+  /** Sketches as data URLs, keyed by task id (label for legacy clients). */
+  sketches: Record<string, string>;
+  /** Keys whose sketches were dropped to stay under the size budget. */
+  sketchesDropped: string[];
+  /** True when the answers arrived as a scanned PDF (Shortcut) — not stored. */
+  pdfScan?: boolean;
+}
+
+function buildAnswerSnapshot(args: {
+  quizText: string;
+  structuredAnswers?: { tasks: Record<string, string>; free: string };
+  submission: GradingSubmission;
+  level: number | null;
+  passed: boolean;
+  score?: number;
+}): string {
+  const { quizText, structuredAnswers, submission, level, passed, score } = args;
+  const sketches: Record<string, string> = {};
+  const sketchesDropped: string[] = [];
+  let budget = SNAPSHOT_SKETCH_BUDGET_B64;
+  for (const sketch of submission.sketches ?? []) {
+    const key = sketch.taskId || sketch.label;
+    if (sketch.data.length <= budget) {
+      budget -= sketch.data.length;
+      sketches[key] = `data:${sketch.mimeType};base64,${sketch.data}`;
+    } else {
+      sketchesDropped.push(key);
+    }
+  }
+  const snapshot: AnswerSnapshot = {
+    v: 1,
+    answeredAt: new Date().toISOString(),
+    level,
+    passed,
+    ...(score !== undefined ? { score } : {}),
+    quizText,
+    tasks: structuredAnswers?.tasks ?? {},
+    // Legacy clients / the Shortcut send no structured copy — keep the raw
+    // submission text so the revisit view still has SOMETHING to show.
+    free: structuredAnswers ? structuredAnswers.free : submission.text?.trim() ?? "",
+    sketches,
+    sketchesDropped,
+    ...(submission.pdf ? { pdfScan: true } : {}),
+  };
+  return JSON.stringify(snapshot);
+}
 
 /**
  * Pull the assessor's overall mastery percentage out of the summary. Pass ONLY
@@ -176,6 +250,12 @@ export async function runGradingPipeline(opts: {
    * Each run overwrites the previous score.
    */
   comprehension?: boolean;
+  /**
+   * Per-task copy of the typed answers (web UI), keyed by parseQuizTasks task
+   * id. Only used for the revisit snapshot — grading itself reads
+   * submission.text, which carries the same answers under their task headers.
+   */
+  structuredAnswers?: { tasks: Record<string, string>; free: string };
   onProgress?: (step: number, message: string) => void;
 }): Promise<GradingResult> {
   const { itemId, submission } = opts;
@@ -381,6 +461,14 @@ export async function runGradingPipeline(opts: {
         comprehensionPassed: isPass,
         comprehensionAt: new Date(),
         comprehensionFeedback: compFeedback,
+        comprehensionAnswersJson: buildAnswerSnapshot({
+          quizText: studentQuizText,
+          structuredAnswers: opts.structuredAnswers,
+          submission,
+          level: null,
+          passed: isPass,
+          score: comprehensionScore,
+        }),
       },
     });
 
@@ -545,6 +633,15 @@ export async function runGradingPipeline(opts: {
     lastFeedback: cleanFeedback,
     lastVideoPrompt1,
     lastVideoPrompt2,
+    // Revisit snapshot — written with the assessment so both describe THIS
+    // attempt even after the quiz slot below is overwritten by the follow-up.
+    lastAnswersJson: buildAnswerSnapshot({
+      quizText: studentQuizText,
+      structuredAnswers: opts.structuredAnswers,
+      submission,
+      level: srsItem.currentLevel,
+      passed: isPass,
+    }),
   };
 
   // On PASS the new quiz goes into the NEXT slot; on REPEAT it replaces the current one.

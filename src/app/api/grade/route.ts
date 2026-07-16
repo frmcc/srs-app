@@ -29,16 +29,43 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  let body: { itemId?: string; studentAnswers?: string; language?: string; modelName?: string; comprehension?: boolean; sketches?: unknown };
+  let body: { itemId?: string; studentAnswers?: string; language?: string; modelName?: string; comprehension?: boolean; sketches?: unknown; structuredAnswers?: unknown };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const { itemId, studentAnswers, language, modelName, comprehension, sketches } = body;
+  const { itemId, studentAnswers, language, modelName, comprehension, sketches, structuredAnswers } = body;
   if (!itemId) {
     return NextResponse.json({ error: "Item ID is required" }, { status: 400 });
+  }
+
+  // ── Structured answers (revisit snapshot) ─────────────────────────────────
+  // Optional per-task copy of the answers, persisted (latest attempt only) so
+  // the answered quiz can be revisited. Malformed shapes are dropped, not 400d:
+  // the snapshot is a bonus artifact and must never block a grading run.
+  const MAX_SNAPSHOT_ANSWER_CHARS = 40_000;   // one answer box
+  const MAX_SNAPSHOT_TOTAL_CHARS = 400_000;   // all boxes together
+  let cleanStructuredAnswers: { tasks: Record<string, string>; free: string } | undefined;
+  if (structuredAnswers && typeof structuredAnswers === "object") {
+    const tasks: Record<string, string> = {};
+    let total = 0;
+    const rawTasks = (structuredAnswers as { tasks?: unknown }).tasks;
+    if (rawTasks && typeof rawTasks === "object") {
+      for (const [taskId, answer] of Object.entries(rawTasks as Record<string, unknown>)) {
+        if (typeof answer !== "string" || !answer.trim()) continue;
+        const clipped = answer.slice(0, MAX_SNAPSHOT_ANSWER_CHARS);
+        total += clipped.length;
+        if (total > MAX_SNAPSHOT_TOTAL_CHARS) break;
+        tasks[taskId.slice(0, 80)] = clipped;
+      }
+    }
+    const rawFree = (structuredAnswers as { free?: unknown }).free;
+    const free = typeof rawFree === "string" ? rawFree.slice(0, MAX_SNAPSHOT_TOTAL_CHARS) : "";
+    if (Object.keys(tasks).length > 0 || free.trim()) {
+      cleanStructuredAnswers = { tasks, free };
+    }
   }
 
   // Gate the client-supplied model through an allow-list (mirrors quiz/route.ts):
@@ -62,6 +89,7 @@ export async function POST(req: NextRequest) {
     const cleaned: GradingSketch[] = [];
     for (const raw of sketches) {
       const label = typeof raw?.label === "string" ? raw.label.trim().slice(0, 80) : "";
+      const taskId = typeof raw?.taskId === "string" ? raw.taskId.trim().slice(0, 80) : undefined;
       const image = typeof raw?.image === "string" ? raw.image : "";
       // Accept "data:image/png;base64,AAAA…" or raw base64 (PNG assumed).
       const dataUrlMatch = image.match(/^data:([a-z0-9./+-]+);base64,(.+)$/i);
@@ -73,7 +101,7 @@ export async function POST(req: NextRequest) {
       if (data.length > MAX_SKETCH_B64_CHARS || (totalChars += data.length) > MAX_TOTAL_B64_CHARS) {
         return NextResponse.json({ error: "Sketch images too large" }, { status: 413 });
       }
-      cleaned.push({ label, data: data.replace(/\s+/g, ""), mimeType });
+      cleaned.push({ label, data: data.replace(/\s+/g, ""), mimeType, taskId });
     }
     if (cleaned.length > 0) normalizedSketches = cleaned;
   }
@@ -111,6 +139,7 @@ export async function POST(req: NextRequest) {
           language,
           modelName: safeModel,
           comprehension: comprehension === true,
+          structuredAnswers: cleanStructuredAnswers,
           onProgress: (step, message) => sendEvent("progress", { step, message }),
         });
 
