@@ -44,6 +44,13 @@ interface ChatRequestBody {
   /** Base64 PNG (no data: prefix) of the scribbled answer for the focused task,
    *  sent once at the start of a per-task thread. */
   focusedSketch?: string;
+  /** Which quiz sheet the tutor should see. The CURRENT level quiz is wrong in
+   *  three situations: right after grading (the slot already holds the freshly
+   *  generated follow-up quiz), when revisiting a stored attempt, and in
+   *  comprehension mode (own column). "…Answered" variants read the answered-
+   *  quiz snapshot so the tutor talks about the sheet the student actually
+   *  worked on. Defaults to "current" (legacy behavior). */
+  quizContext?: "current" | "lastAnswered" | "comprehensionCurrent" | "comprehensionAnswered";
 }
 
 function defaultTutorRole(subject: string): string {
@@ -111,9 +118,32 @@ export async function POST(req: NextRequest) {
       ? (storedAssessRole.startsWith("Rolle:") ? storedAssessRole : defaultAssessmentRole(subject))
       : (storedQuizRole.startsWith("Rolle:") ? storedQuizRole : defaultTutorRole(subject));
 
-  // The student-facing quiz for the CURRENT level (marker-extracted; legacy
-  // quizzes without markers fall back to the full stored text).
-  const fullQuiz = currentQuizText(item);
+  // The quiz sheet this chat is about (see ChatRequestBody.quizContext). The
+  // snapshots store the student-facing text as answered; the current-level quiz
+  // stays the fallback so items graded before the snapshot feature still work.
+  const snapshotQuizText = (raw: string | null): string => {
+    if (!raw) return "";
+    try {
+      return ((JSON.parse(raw) as { quizText?: string }).quizText || "").trim();
+    } catch {
+      return "";
+    }
+  };
+  let fullQuiz: string;
+  switch (body.quizContext) {
+    case "comprehensionAnswered":
+      fullQuiz = snapshotQuizText(item.comprehensionAnswersJson) || item.comprehensionQuizText || "";
+      break;
+    case "comprehensionCurrent":
+      fullQuiz = item.comprehensionQuizText || "";
+      break;
+    case "lastAnswered":
+      fullQuiz = snapshotQuizText(item.lastAnswersJson) || currentQuizText(item);
+      break;
+    default:
+      // Marker-extracted below; legacy quizzes fall back to the full stored text.
+      fullQuiz = currentQuizText(item);
+  }
   const studentQuiz = extractSectionOr(fullQuiz, "===STUDENT_QUIZ_START===", "===STUDENT_QUIZ_END===", fullQuiz).trim();
 
   const phaseRules =

@@ -72,6 +72,11 @@ interface TutorPanelProps {
   /** When set, the matching task is pinned at the top of the chat so the
    *  original question stays in view through a long conversation. */
   focusedTaskId?: string | null;
+  /** Which quiz sheet the server should inject as context: the current level
+   *  quiz, the answered-quiz snapshot (assessment/revisit — the level slot
+   *  already holds the follow-up quiz by then), or the comprehension quiz.
+   *  Defaults to "current". */
+  quizContext?: "current" | "lastAnswered" | "comprehensionCurrent" | "comprehensionAnswered";
 }
 
 const HISTORY_CAP = 30;
@@ -99,17 +104,19 @@ function saveHistory(itemId: string, messages: TutorMessage[]) {
   }
 }
 
-export default function TutorPanel({ open, onClose, itemId, subject, topic, language, phase = "quiz", tasks, getDraft, getSketch, getAssessment, focusedTaskId }: TutorPanelProps) {
+export default function TutorPanel({ open, onClose, itemId, subject, topic, language, phase = "quiz", tasks, getDraft, getSketch, getAssessment, focusedTaskId, quizContext = "current" }: TutorPanelProps) {
   const de = language !== "english";
   const assess = phase === "assessment";
+  const comp = quizContext === "comprehensionCurrent" || quizContext === "comprehensionAnswered";
   const focusedTask = focusedTaskId ? tasks.find((t) => t.id === focusedTaskId) ?? null : null;
   // Each task's tutor chat is its OWN thread; the header (global) tutor keeps the
   // bare-itemId thread. Keying the stored history by task means a per-task
   // conversation never bleeds into another task's chat or the global one.
   // Assessment-phase chats get their own suffix: the debrief tutor is a
   // different persona with different rules, so it must not inherit a mid-quiz
-  // conversation (or vice versa on a repeat attempt).
-  const threadKey = `${focusedTaskId ? `${itemId}::${focusedTaskId}` : itemId}${assess ? "::assess" : ""}`;
+  // conversation (or vice versa on a repeat attempt). Comprehension chats are
+  // about a different quiz sheet entirely — same reasoning, own suffix.
+  const threadKey = `${focusedTaskId ? `${itemId}::${focusedTaskId}` : itemId}${comp ? "::comp" : ""}${assess ? "::assess" : ""}`;
 
   const [messages, setMessages] = useState<TutorMessage[]>(() => loadHistory(threadKey));
   const [input, setInput] = useState("");
@@ -336,6 +343,7 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
           itemId,
           language: de ? "german" : "english",
           phase,
+          quizContext,
           drafts: buildDrafts(),
           messages: historyForApi,
           focusedTask: focusedTask
@@ -405,7 +413,7 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
         }
       }
     }
-  }, [messages, streaming, itemId, threadKey, de, phase, buildDrafts, focusedTask, getDraft, getSketch, getAssessment]);
+  }, [messages, streaming, itemId, threadKey, de, phase, quizContext, buildDrafts, focusedTask, getDraft, getSketch, getAssessment]);
 
   /** "Erneut senden" on an error row: prune the failed exchange, resend the same text. */
   const retrySend = useCallback((errRow: TutorMessage) => {
