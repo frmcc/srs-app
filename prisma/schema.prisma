@@ -71,7 +71,15 @@ model SRSItem {
   comprehensionAt       DateTime?
   comprehensionFeedback String?
   comprehensionQuizText String?
-  
+
+  // Answered-quiz snapshot (revisit feature): JSON with the quiz text as it was
+  // answered, the student's per-task answers, free text and size-capped sketches.
+  // Latest attempt only — overwritten on every grade, in the same transaction as
+  // lastFeedback so the pair always describes the same attempt. Regular and
+  // comprehension runs are kept apart, mirroring lastFeedback/comprehensionFeedback.
+  lastAnswersJson          String?
+  comprehensionAnswersJson String?
+
   // Relationship to User for future multi-tenant support
   userId           String?
   user             User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
