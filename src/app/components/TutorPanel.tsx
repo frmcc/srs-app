@@ -224,6 +224,53 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
     };
   }, [open]);
 
+  // MT-12: touch gestures on the panel's NON-scrolling parts (header, pinned
+  // task, composer — and the chat while it's too short to scroll) must not
+  // hand the pan to the page behind: iOS then rubber-bands <main>/<body>
+  // under the fixed panel — the split-view "weird scrolling". Let touches
+  // inside any actually-scrollable descendant pan natively; swallow the rest.
+  // Non-passive listener — React's synthetic touchmove can't preventDefault.
+  useEffect(() => {
+    const el = panelRef.current;
+    if (!open || !el) return;
+    const onTouchMove = (e: TouchEvent) => {
+      let n = e.target instanceof Element ? e.target : null;
+      while (n && n !== el) {
+        const oy = getComputedStyle(n).overflowY;
+        if ((oy === "auto" || oy === "scroll") && n.scrollHeight > n.clientHeight + 1) return;
+        n = n.parentElement;
+      }
+      e.preventDefault();
+    };
+    el.addEventListener("touchmove", onTouchMove, { passive: false });
+    return () => el.removeEventListener("touchmove", onTouchMove);
+  }, [open]);
+
+  // MT-12b: below sm the panel covers the full width — the page behind is
+  // invisible, so its scroller is locked outright while the panel is open
+  // (scroll-chaining into an invisible page reads as rubber-band jank).
+  useEffect(() => {
+    if (!open || typeof window === "undefined") return;
+    const mql = window.matchMedia("(max-width: 639.9px)");
+    const root = document.documentElement;
+    const apply = () => {
+      if (mql.matches) {
+        root.style.overflow = "hidden";
+        root.style.overscrollBehaviorY = "none";
+      } else {
+        root.style.overflow = "";
+        root.style.overscrollBehaviorY = "";
+      }
+    };
+    apply();
+    mql.addEventListener("change", apply);
+    return () => {
+      mql.removeEventListener("change", apply);
+      root.style.overflow = "";
+      root.style.overscrollBehaviorY = "";
+    };
+  }, [open]);
+
   // Follow the stream: keep the newest content in view.
   useEffect(() => {
     const el = scrollRef.current;
@@ -478,7 +525,7 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
           // instead of reusing the decelerating entrance curve.
           exit={{ x: 24, opacity: 0, transition: { duration: 0.2, ease: EASE_IN_OUT } }}
           transition={{ duration: 0.24, ease: EASE_OUT }}
-          className="fixed inset-y-0 right-0 z-[70] w-full sm:w-[376px] bg-(--paper-tutor) border-l border-(--hairline-card) flex flex-col print:hidden shadow-(--shadow-e3) xl:shadow-none"
+          className="fixed inset-y-0 right-0 z-[70] w-full sm:w-[376px] overscroll-y-none bg-(--paper-tutor) border-l border-(--hairline-card) flex flex-col print:hidden shadow-(--shadow-e3) xl:shadow-none"
           aria-label={de ? "Live Tutor Chat" : "Live tutor chat"}
         >
           {/* Header */}

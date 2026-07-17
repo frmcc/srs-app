@@ -3119,7 +3119,10 @@ export default function DashboardClient({
         {/* Main Content */}
         {/* Mobile: page scrolls naturally (URL bar can collapse, native momentum).
             md+: fixed app-shell — sidebar stays put, main scrolls internally. */}
-        <main id="main" tabIndex={-1} ref={mainRef} className="app-shell-main block flex-1 relative px-4 md:px-8 lg:px-12 pt-8 md:pt-11.5 pb-[calc(4.5rem_+_env(safe-area-inset-bottom))] md:pb-[max(3rem,env(safe-area-inset-bottom))] md:h-[100dvh] md:overflow-y-auto focus:outline-none">
+        {/* md:overscroll-y-contain — <main> is the md+ scroller; without it iOS
+            chains its end-of-scroll into a BODY rubber-band that visibly drags
+            the fixed tutor panel along (the split-view "weird scrolling"). */}
+        <main id="main" tabIndex={-1} ref={mainRef} className="app-shell-main block flex-1 relative px-4 md:px-8 lg:px-12 pt-8 md:pt-11.5 pb-[calc(4.5rem_+_env(safe-area-inset-bottom))] md:pb-[max(3rem,env(safe-area-inset-bottom))] md:h-[100dvh] md:overflow-y-auto md:overscroll-y-contain focus:outline-none">
           <AnimatePresence mode="wait">
             {activeTab === "dashboard" && (
               <motion.div
