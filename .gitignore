@@ -54,3 +54,4 @@ prisma/dev.db-journal
 
 # local logs
 *.log
+dev-local.db
