@@ -183,6 +183,18 @@ interface GradingOutcome {
   /** Set when the screen is a RECONSTRUCTION of a stored attempt (ISO date the
    *  quiz was answered) — the header drops the celebration/reschedule copy. */
   revisitedAt?: string | null;
+  /** Revisit only: the level the replayed attempt belonged to (snapshot.level).
+   *  The card's own level is the CURRENT one — wrong for a passed attempt. */
+  revisitLevel?: number | null;
+  /** Revisit only: no per-task answers exist in the snapshot (scanned-PDF
+   *  attempt or legacy client) — task cards hide the answer section instead of
+   *  claiming "Not answered", and pdf scans get an explanatory banner line. */
+  revisitAnswersUnavailable?: boolean;
+  /** Revisit only: true when the attempt arrived as a scanned PDF (Shortcut). */
+  revisitPdfScan?: boolean;
+  /** Revisit only: task ids whose sketches were dropped from the snapshot for
+   *  size — their cards say "sketch too large to keep" instead of unanswered. */
+  revisitSketchesDropped?: string[];
 }
 
 /** Answered-quiz snapshot from GET /api/reviews/[id]/answers (see AnswerSnapshot
@@ -575,6 +587,20 @@ function splitFeedback(feedback: string): { brief: string; perTasks: PerTaskAsse
   return { brief, perTasks };
 }
 
+/**
+ * First top-level section of a brief — the "# Gesamtbewertung" / "# Overall
+ * assessment" block. The revisit view shows only this: the remediation brief
+ * that follows ("# Lern- und Nacharbeitsbrief …") plans the NEXT loop and the
+ * per-task details already sit on the task cards. Cut at the second top-level
+ * "# " heading (## subheadings don't count); briefs without one pass through.
+ */
+function overallSection(brief: string): string {
+  const t = brief.trim();
+  const headings = [...t.matchAll(/(?:^|\n)#\s/g)];
+  if (headings.length < 2 || headings[1].index === undefined) return t;
+  return t.slice(0, headings[1].index).replace(/\s*-{3,}\s*$/, "").trim();
+}
+
 /** Mastery % → grade tone (sage pass / grade-mid / clay fail — never the accent). */
 function masteryTone(pct: number | null): string {
   if (pct === null) return "bg-paper-2 text-ink-400";
@@ -590,7 +616,7 @@ function masteryTone(pct: number | null): string {
  * screen — the per-task Tutor button.
  */
 function TaskReviewCard({
-  number, label, questionText, assessment, typedAnswer, sketch, onTutor, tutorActive, language,
+  number, label, questionText, assessment, typedAnswer, sketch, sketchDropped, onTutor, tutorActive, language,
 }: {
   number: number;
   label: string;
@@ -599,6 +625,9 @@ function TaskReviewCard({
   /** undefined = answers unavailable (history); "" = answered-but-empty is treated as not answered. */
   typedAnswer?: string;
   sketch?: string;
+  /** Revisit: a sketch existed but was too large for the snapshot — say so
+   *  instead of rendering the task as unanswered. */
+  sketchDropped?: boolean;
   onTutor?: () => void;
   tutorActive?: boolean;
   language: string;
@@ -606,7 +635,7 @@ function TaskReviewCard({
   const [open, setOpen] = useState(false);
   const de = language === "german";
   const pct = assessment?.mastery ?? null;
-  const showAnswer = typedAnswer !== undefined || sketch !== undefined;
+  const showAnswer = typedAnswer !== undefined || sketch !== undefined || !!sketchDropped;
   const answered = (typedAnswer && typedAnswer.trim()) || !!sketch;
   return (
     <div className="card-surface-elevated p-6 md:p-8">
@@ -648,7 +677,14 @@ function TaskReviewCard({
             // eslint-disable-next-line @next/next/no-img-element -- client-only data-URL of the user's own drawing
             <img src={sketch} alt={de ? "Gescribbelte Antwort" : "Scribbled answer"} className="max-w-full rounded-xl border border-(--hairline-card) bg-[#fffefb]" />
           ) : answered ? (
-            <p className="text-[15px] text-ink-900 whitespace-pre-wrap leading-[1.6]">{typedAnswer}</p>
+            <>
+              <p className="text-[15px] text-ink-900 whitespace-pre-wrap leading-[1.6]">{typedAnswer}</p>
+              {sketchDropped && (
+                <p className="text-sm text-ink-400 italic mt-2">{de ? "Zusätzliche Skizze war zu groß zum Speichern — nicht mehr verfügbar." : "An additional sketch was too large to keep — no longer available."}</p>
+              )}
+            </>
+          ) : sketchDropped ? (
+            <p className="text-sm text-ink-400 italic">{de ? "Skizze war zu groß zum Speichern — nicht mehr verfügbar." : "Sketch was too large to keep — no longer available."}</p>
           ) : (
             <p className="text-sm text-ink-400 italic">{de ? "Nicht beantwortet." : "Not answered."}</p>
           )}
@@ -1239,10 +1275,12 @@ export default function DashboardClient({
   const [gradingError, setGradingError] = useState("");
   const [gradingResult, setGradingResult] = useState<GradingOutcome | null>(null);
   // Task-by-task assessment view on the result screen (default off — the short
-  // brief shows first). Reset whenever a fresh result arrives.
+  // brief shows first). Reset whenever a fresh result arrives — EXCEPT on a
+  // revisit, where seeing the answered tasks is the whole point (openRevisit
+  // would set it true only for this effect to snap it shut again).
   const [showTaskReview, setShowTaskReview] = useState(false);
   // eslint-disable-next-line react-hooks/set-state-in-effect -- collapse the detail view when a fresh result arrives
-  useEffect(() => { setShowTaskReview(false); }, [gradingResult]);
+  useEffect(() => { setShowTaskReview(gradingResult?.revisitedAt !== undefined); }, [gradingResult]);
   // Parse the graded brief into the short summary + per-task assessments, and
   // map each per-task block onto the current quiz's tasks (by 1-based index).
   const taskReview = useMemo(() => {
@@ -1794,6 +1832,12 @@ export default function DashboardClient({
       setStudentAnswers(snapshot.free || "");
       setAnswerSketches(snapshot.sketches ?? {});
       setOpenScribbles({});
+      // Scanned-PDF attempts (Shortcut) and legacy clients store no per-task
+      // answers — the cards must say "unavailable", not "Not answered".
+      const sketchKeys = Object.keys(snapshot.sketches ?? {});
+      const hasPerTaskAnswers =
+        tasks.some(t => (snapshot.tasks?.[t.id] ?? "").trim()) ||
+        sketchKeys.some(k => k !== FREE_SKETCH_KEY);
       setGradingResult({
         isPass: !!snapshot.passed,
         feedback: data.feedback ?? "",
@@ -1802,8 +1846,13 @@ export default function DashboardClient({
         comprehension,
         comprehensionScore: typeof snapshot.score === "number" ? snapshot.score : null,
         revisitedAt: snapshot.answeredAt ?? "",
+        revisitLevel: typeof snapshot.level === "number" ? snapshot.level : null,
+        revisitAnswersUnavailable: !hasPerTaskAnswers && tasks.length > 0,
+        revisitPdfScan: !!snapshot.pdfScan,
+        revisitSketchesDropped: snapshot.sketchesDropped ?? [],
       });
-      setShowTaskReview(true); // seeing the answered tasks is the point of revisiting
+      // The [gradingResult] effect opens the task review on revisits — seeing
+      // the answered tasks is the point of revisiting.
       setShowTutorPanel(false);
       setFocusedTaskId(null);
       setGradingError("");
@@ -4687,16 +4736,23 @@ export default function DashboardClient({
                   <div className="flex items-center gap-2.5 mb-3">
                     <span className="caps-label truncate">{selectedReview.subject}</span>
                     <span className="text-ink-300">·</span>
-                    {!comprehensionMode && selectedReview.level >= LIB_LEVEL_SHORT.length ? (
-                      /* MC-8: the quiz header inherits the uncapped mastery counter — show the Meister badge instead */
-                      <MasteryBadge level={selectedReview.level} language={language} />
-                    ) : (
-                      <span className="caps-label whitespace-nowrap">
-                        {comprehensionMode
-                          ? (language === "german" ? "Verständnis-Check" : "Comprehension check")
-                          : <>Level {selectedReview.level + 1}</>}
-                      </span>
-                    )}
+                    {(() => {
+                      /* On a revisit the card carries the CURRENT level — label the
+                         replayed attempt with the level it was answered at instead. */
+                      const headerLevel = gradingResult?.revisitedAt !== undefined && gradingResult.revisitLevel != null
+                        ? gradingResult.revisitLevel
+                        : selectedReview.level;
+                      return !comprehensionMode && headerLevel >= LIB_LEVEL_SHORT.length ? (
+                        /* MC-8: the quiz header inherits the uncapped mastery counter — show the Meister badge instead */
+                        <MasteryBadge level={headerLevel} language={language} />
+                      ) : (
+                        <span className="caps-label whitespace-nowrap">
+                          {comprehensionMode
+                            ? (language === "german" ? "Verständnis-Check" : "Comprehension check")
+                            : <>Level {headerLevel + 1}</>}
+                        </span>
+                      );
+                    })()}
                     {interactive.active && (
                       <span className="inline-flex items-center gap-1.5 h-[34px] px-3.5 rounded-full bg-(--accent-wash) border border-(--accent-border-soft) text-(--accent-text-strong) text-[13px] font-semibold">
                         <MicrophoneIcon className="w-3.5 h-3.5" strokeWidth={2} />
@@ -4967,12 +5023,16 @@ export default function DashboardClient({
                               {(language === "german" ? "Beantwortet am " : "Answered on ")}
                               <strong className="text-ink-900 font-semibold tnum">
                                 {gradingResult.revisitedAt
-                                  ? new Date(gradingResult.revisitedAt).toLocaleDateString(language === "german" ? "de-DE" : "en-GB", { weekday: "long", day: "numeric", month: "long" })
+                                  ? new Date(gradingResult.revisitedAt).toLocaleDateString(language === "german" ? "de-DE" : "en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })
                                   : "—"}
                               </strong>
-                              {language === "german"
-                                ? " — Fragen, deine Antworten und die Bewertung, wie sie bewertet wurden."
-                                : " — questions, your answers and the assessment, exactly as graded."}
+                              {gradingResult.revisitPdfScan
+                                ? (language === "german"
+                                    ? " — als gescanntes PDF eingereicht. Der Scan selbst wird nicht gespeichert, nur die Bewertung."
+                                    : " — submitted as a scanned PDF. The scan itself isn't stored, only the assessment.")
+                                : (language === "german"
+                                    ? " — Fragen, deine Antworten und die Bewertung, wie sie bewertet wurden."
+                                    : " — questions, your answers and the assessment, exactly as graded.")}
                             </p>
                           ) : gradingResult.comprehension ? (
                             <p className="text-ink-600 mt-3 text-sm">
@@ -5017,14 +5077,22 @@ export default function DashboardClient({
                         </h3>
                       </div>
                       <div className="p-6 md:p-8">
-                        <FeedbackBody text={taskReview.brief || gradingResult.feedback} />
+                        {/* Revisit: overall assessment only — the remediation plan
+                            belongs to the live result, the per-task text to the cards. */}
+                        <FeedbackBody text={gradingResult.revisitedAt !== undefined
+                          ? overallSection(taskReview.brief || gradingResult.feedback)
+                          : (taskReview.brief || gradingResult.feedback)} />
                       </div>
                       </div>
                     </motion.div>
 
                     {/* Free-form quizzes have no task cards — on a revisit, still show
-                        the submitted sheet (typed and/or scribbled) next to the brief. */}
-                    {gradingResult.revisitedAt !== undefined && parsedTasks.length === 0 &&
+                        the submitted sheet (typed and/or scribbled) next to the brief.
+                        Also shown when a legacy snapshot has no per-task answers but
+                        the whole sheet survived in `free` — better one combined sheet
+                        than task cards all claiming "Not answered". */}
+                    {gradingResult.revisitedAt !== undefined &&
+                      (parsedTasks.length === 0 || gradingResult.revisitAnswersUnavailable) &&
                       (studentAnswers.trim() || answerSketches[FREE_SKETCH_KEY]) && (
                       <motion.div variants={riseChild}>
                         <TaskReviewCard
@@ -5033,6 +5101,7 @@ export default function DashboardClient({
                           assessment={null}
                           typedAnswer={studentAnswers}
                           sketch={answerSketches[FREE_SKETCH_KEY]}
+                          sketchDropped={gradingResult.revisitSketchesDropped?.includes(FREE_SKETCH_KEY)}
                           language={language}
                         />
                       </motion.div>
@@ -5064,8 +5133,11 @@ export default function DashboardClient({
                                     label={task.label}
                                     questionText={task.questionText}
                                     assessment={taskReview.byTask.get(task.id) ?? null}
-                                    typedAnswer={individualAnswers[task.id] ?? ""}
+                                    /* Snapshot without per-task answers (PDF scan / legacy):
+                                       undefined = answer section hidden, not "Not answered". */
+                                    typedAnswer={gradingResult.revisitAnswersUnavailable ? undefined : individualAnswers[task.id] ?? ""}
                                     sketch={answerSketches[task.id]}
+                                    sketchDropped={gradingResult.revisitSketchesDropped?.includes(task.id)}
                                     tutorActive={showTutorPanel && focusedTaskId === task.id}
                                     onTutor={() => { setFocusedTaskId(task.id); setShowTutorPanel(true); }}
                                     language={language}
