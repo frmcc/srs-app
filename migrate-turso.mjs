@@ -12,8 +12,12 @@ import 'dotenv/config';
 //  - tracks applied migrations in `_srs_migrations` and skips them next run;
 //  - runs each migration's statements in a single transaction (batch);
 //  - FAILS LOUDLY on any real error (unlike the old "continue on error" version).
-//    "already exists" / "duplicate column" are tolerated ONLY for the very first
-//    baseline applied to a pre-existing (hand-built) DB, then recorded as applied.
+//    "already exists" / "duplicate column" are tolerated and logged: they mean
+//    the schema object was created before the tracker knew about it (hand-applied
+//    hotfix, or rows added to the DB before _srs_migrations existed). Skipping
+//    the statement and recording the migration reconciles that drift — without
+//    it, ONE pre-existing column blocks every later migration from ever running
+//    (exactly how prod ended up missing the answer-snapshot columns).
 
 const IGNORABLE = /already exists|duplicate column name/i;
 
@@ -51,19 +55,22 @@ async function migrate() {
 
     console.log(`Applying migration: ${dir}`);
     const sql = fs.readFileSync(sqlPath, 'utf8');
+    // Strip comments BEFORE splitting: a ';' inside a comment line must not
+    // cut a statement in half (it produced unparseable fragments).
     const statements = sql
+      .replace(/--.*$/gm, '')
       .split(';')
-      .map((s) => s.replace(/--.*$/gm, '').trim())
+      .map((s) => s.trim())
       .filter(Boolean);
-
-    // Baseline against a possibly-pre-existing DB tolerates "already exists".
-    const isBaseline = applied.size === 0 && dir.includes('baseline');
 
     for (const statement of statements) {
       try {
         await client.execute(statement);
       } catch (e) {
-        if (isBaseline && IGNORABLE.test(String(e?.message))) continue;
+        if (IGNORABLE.test(String(e?.message))) {
+          console.log(`  · already present, skipping statement: ${statement.split('\n')[0].slice(0, 70)}`);
+          continue;
+        }
         console.error(`\nMigration ${dir} failed on statement:\n${statement}\n`);
         console.error(e);
         process.exit(1);
