@@ -35,6 +35,14 @@ ${pass ? "Solide Leistung — die Kernkonzepte sitzen." : "Die Grundidee ist da,
 
 ---
 
+# Lern- und Nacharbeitsbrief für das nächste Modul
+## Schwächste Konzepte oder Themen
+- Hyperkonjugative Stabilisierung von Carbenium-Ionen
+## Prioritäten für die nächste Lernschleife
+1. Zwischenstufen zeichnen und vergleichen
+
+---
+
 # Bewertung pro Aufgabe
 
 ## Aufgabe 1

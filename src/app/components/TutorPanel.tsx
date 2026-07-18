@@ -229,15 +229,26 @@ export default function TutorPanel({ open, onClose, itemId, subject, topic, lang
   // hand the pan to the page behind: iOS then rubber-bands <main>/<body>
   // under the fixed panel — the split-view "weird scrolling". Let touches
   // inside any actually-scrollable descendant pan natively; swallow the rest.
-  // Non-passive listener — React's synthetic touchmove can't preventDefault.
+  // Kept native on purpose: pinch-zoom (multi-touch), horizontal scrollers
+  // (wide KaTeX/chem blocks render as overflow-x-auto), and capped textareas
+  // (the auto-grow composer scrolls its content despite computed overflow
+  // hidden once max-h clips it). Non-passive listener — React's synthetic
+  // touchmove can't preventDefault.
   useEffect(() => {
     const el = panelRef.current;
     if (!open || !el) return;
     const onTouchMove = (e: TouchEvent) => {
+      if (e.touches.length > 1) return; // pinch-zoom, never a page pan
       let n = e.target instanceof Element ? e.target : null;
       while (n && n !== el) {
-        const oy = getComputedStyle(n).overflowY;
-        if ((oy === "auto" || oy === "scroll") && n.scrollHeight > n.clientHeight + 1) return;
+        const cs = getComputedStyle(n);
+        const scrollsY =
+          (cs.overflowY === "auto" || cs.overflowY === "scroll" || n.tagName === "TEXTAREA") &&
+          n.scrollHeight > n.clientHeight + 1;
+        const scrollsX =
+          (cs.overflowX === "auto" || cs.overflowX === "scroll") &&
+          n.scrollWidth > n.clientWidth + 1;
+        if (scrollsY || scrollsX) return;
         n = n.parentElement;
       }
       e.preventDefault();

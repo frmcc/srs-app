@@ -14,10 +14,15 @@ const getApiUrl = () => {
 // black-holed NOTEBOOKLM_API_URL can't hang the worker for undici's ~5-min
 // default (a worker doing upload + sleep + askChat could otherwise pin
 // resources far past maxDuration).
+// Control calls (create/ask/generate) get 120s; file transfers scale with
+// PDF size over a home uplink, so uploads/downloads get 10 minutes — a big
+// scanned lecture must not be silently dropped from the notebook by a
+// too-eager abort (the per-file catch would swallow it).
 const FETCH_TIMEOUT_MS = 120_000;
-async function nlmFetch(url: string, init: RequestInit = {}): Promise<Response> {
+const TRANSFER_TIMEOUT_MS = 600_000;
+async function nlmFetch(url: string, init: RequestInit = {}, timeoutMs = FETCH_TIMEOUT_MS): Promise<Response> {
   const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
     return await fetch(url, { ...init, signal: ctrl.signal });
   } finally {
@@ -168,7 +173,7 @@ export async function uploadFile(notebookId: string, filePath: string, base64Dat
   const res = await nlmFetch(`${getApiUrl()}/v1/notebooks/${notebookId}/sources/file`, {
     method: "POST",
     body: formData
-  });
+  }, TRANSFER_TIMEOUT_MS);
   if (!res.ok) throw new Error(`Failed to upload file: ${await res.text()}`);
   return await res.json();
 }
@@ -202,7 +207,7 @@ export async function generateArtifact(notebookId: string, type: "audio" | "vide
 export async function downloadArtifact(notebookId: string, type: "audio" | "video") {
   const res = await nlmFetch(`${getApiUrl()}/v1/notebooks/${notebookId}/artifacts/download?type=${type}`, {
     method: "GET"
-  });
+  }, TRANSFER_TIMEOUT_MS);
   
   if (!res.ok) {
     // 404/400 = genuinely "not ready yet" (expected while polling). A 500 is a
@@ -280,10 +285,22 @@ export async function generatePodcastWorker(
     console.log(`[NotebookLM] Waiting 30 seconds for NotebookLM to index the uploaded materials...`);
     await new Promise(resolve => setTimeout(resolve, 30000));
     
-    // As per user instructions: JUST put the Regieanweisung into askChat
-    console.log(`[NotebookLM] Sending chat/ask to NotebookLM...`);
-    const makeComQuestion = `Erstelle mir einen podcast  hier die Regieanweisung: ${finalInstructions}`;
-    await askChat(notebookId, makeComQuestion);
+    // START the podcast: /artifacts/generate is the purpose-built endpoint —
+    // it applies the Regieanweisung as the Audio-Overview customization AND
+    // kicks off generation. The old chat-ask ("Erstelle mir einen podcast …")
+    // only typed into the notebook chat: sources arrived, but the instruction
+    // prompt never reached the customization field and nothing was generated.
+    // The chat-ask stays as a best-effort fallback for an automation service
+    // that predates the artifacts endpoint. (Ported from srs-saas 2cd41d9.)
+    console.log(`[NotebookLM] Triggering audio generation with instructions...`);
+    try {
+      await generateArtifact(notebookId, "audio", finalInstructions);
+      console.log(`[NotebookLM] Audio generation triggered for ${podcastType}.`);
+    } catch (e) {
+      console.error(`[NotebookLM] artifacts/generate failed — falling back to chat-ask:`, e);
+      const makeComQuestion = `Erstelle mir einen podcast  hier die Regieanweisung: ${finalInstructions}`;
+      await askChat(notebookId, makeComQuestion);
+    }
 
     console.log(`[NotebookLM] Finished configuring NotebookLM for ${podcastType}. User can now generate audio in the NotebookLM UI if desired.`);
     // Update DB with just a placeholder to mark it as configured

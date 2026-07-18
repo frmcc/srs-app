@@ -5096,7 +5096,8 @@ export default function DashboardClient({
                         than task cards all claiming "Not answered". */}
                     {gradingResult.revisitedAt !== undefined &&
                       (parsedTasks.length === 0 || gradingResult.revisitAnswersUnavailable) &&
-                      (studentAnswers.trim() || answerSketches[FREE_SKETCH_KEY]) && (
+                      (studentAnswers.trim() || answerSketches[FREE_SKETCH_KEY] ||
+                        gradingResult.revisitSketchesDropped?.includes(FREE_SKETCH_KEY)) && (
                       <motion.div variants={riseChild}>
                         <TaskReviewCard
                           number={1}
